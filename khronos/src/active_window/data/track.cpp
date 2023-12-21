@@ -35,80 +35,38 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#pragma once
-
-#include <map>
-#include <vector>
-
-#include "khronos/active_window/data/measurement_clusters.h"
-#include "khronos/common/common_types.h"
+#include "khronos/active_window/data/track.h"
 
 namespace khronos {
 
-/**
- * @brief Data structure for a single observation of an object.
- */
-struct Observation {
-  // Construction.
-  Observation() = default;
-  explicit Observation(const TimeStamp& stamp) : stamp(stamp) {}
-  Observation(const TimeStamp& stamp, int semantic_cluster_id, int dynamic_cluster_id)
-      : stamp(stamp),
-        semantic_cluster_id(semantic_cluster_id),
-        dynamic_cluster_id(dynamic_cluster_id) {}
+void Track::updateSemantics(const std::optional<SemanticClusterInfo>& other) {
+  if (!other) {
+    return;
+  }
 
-  // Timestamp of the observation.
-  TimeStamp stamp;
+  if (!semantics) {
+    semantics = other;
+    return;
+  }
 
-  // ID of the corresponding SemanticCluster, -1 indicates none.
-  int semantic_cluster_id = -1;
+  const bool other_has_feature = other->feature.size() != 1;
+  const bool has_feature = semantics->feature.size() != 1;
+  if (has_feature && !other_has_feature) {
+    return;  // prefer to keep feature
+  }
 
-  // ID of the corresponding DynamicCluster, -1 indicates none.
-  int dynamic_cluster_id = -1;
-};
-using Observations = std::vector<Observation>;
+  if (other_has_feature && !has_feature) {
+    semantics->feature = other->feature;
+    ++num_features;
+    return;
+  }
 
-/**
- * @brief Data structure to track objects and associations throughout the active window.
- */
-struct Track {
-  // ID of the track.
-  int id;
-
-  // Last observation timestamp.
-  TimeStamp last_seen;
-
-  // First observation timestamp.
-  TimeStamp first_seen;
-
-  // All timestamps of frames in which this object was observed and the corresponding
-  // cluster ID in the respective image.
-  Observations observations;
-
-  // Most recent data stored for tracking. These will be adaptively set by the tracker as needed.
-  BoundingBox last_bounding_box;
-  GlobalIndexSet last_voxels;
-  Points last_points;
-  float last_voxel_size;
-
-  // Centroid of the observation, used for dynamic tracking.
-  Point last_centroid;
-
-  //! Semantic information associated with the track
-  std::optional<SemanticClusterInfo> semantics;
-  size_t num_features = 0;
-
-  // Whether this object is dynamic.
-  bool is_dynamic = false;
-
-  // Probability estimate [0-1] the object exists.
-  float confidence;
-
-  // Whether this object is still active.
-  bool is_active = true;
-
-  void updateSemantics(const std::optional<SemanticClusterInfo>& other_semantics);
-};
-using Tracks = std::vector<Track>;
+  // incremental mean
+  const auto total_features = static_cast<float>(num_features + 1);
+  const auto prev_weight = static_cast<float>(num_features) / total_features;
+  const auto new_weight = 1.0f / total_features;
+  semantics->feature = prev_weight * semantics->feature + new_weight * other->feature;
+  ++num_features;
+}
 
 }  // namespace khronos

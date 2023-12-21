@@ -314,7 +314,7 @@ void ActiveWindowVisualizer::visualizeObjectBoundingBoxes(const FrameData& data)
   std_msgs::Header header;
   header.frame_id = config.global_frame_name;
   header.stamp = getStamp();
-  for (const SemanticCluster& cluster : data.semantic_clusters) {
+  for (const auto& cluster : data.semantic_clusters) {
     if (cluster.bounding_box.isValid()) {
       auto& marker = msg.markers.emplace_back(
           setBoundingBox(cluster.bounding_box,
@@ -519,7 +519,7 @@ void ActiveWindowVisualizer::visualizeDynamicPoints(const FrameData& data) const
   msg.type = visualization_msgs::Marker::POINTS;
 
   // Get all cluster points.
-  for (const DynamicCluster& cluster : data.dynamic_clusters) {
+  for (const auto& cluster : data.dynamic_clusters) {
     for (const Pixel& p : cluster.pixels) {
       const auto& point = data.input.vertex_map.at<InputData::VertexType>(p.v, p.u);
       const Point p_W(point[0], point[1], point[2]);

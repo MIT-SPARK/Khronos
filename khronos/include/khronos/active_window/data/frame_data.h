@@ -64,14 +64,14 @@ struct FrameData {
   const InputData input;
 
   // Dynamic clusters in this frame.
-  DynamicClusters dynamic_clusters;
+  std::vector<MeasurementCluster> dynamic_clusters;
 
   // ID of detected dynamic clusters in this frame as 8UC1. 0 indicates static.
   Image dynamic_image;
   using DynamicImageType = int;
 
   // Semantic clusters in this frame.
-  SemanticClusters semantic_clusters;
+  std::vector<MeasurementCluster> semantic_clusters;
 
   // ID of detected semantic clusters in this frame as 8UC1. 0 indicates background.
   // NOTE(lschmid): Per frame we store a maximum of 255 objects. If a larger number is

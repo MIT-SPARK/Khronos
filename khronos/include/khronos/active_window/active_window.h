@@ -97,6 +97,8 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   ActiveWindow(const Config& config, const OutputQueue::Ptr& output_queue);
   virtual ~ActiveWindow() = default;
 
+  std::string printInfo() const override;
+
   // Access. These are not thread-safe!
   VolumetricMap& getMap() { return map_; }
   const VolumetricMap& getMap() const { return map_; }

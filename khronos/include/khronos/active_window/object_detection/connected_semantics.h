@@ -72,6 +72,9 @@ class ConnectedSemantics : public ObjectDetector {
     // Discard clusters with fewer pixels than this.
     int min_cluster_size = 0;
 
+    // Discard clusters with more pixels than this (<= 0 disables this check).
+    int max_cluster_size = -1;
+
     // True: Cluster pixels in voxel space, false: cluster pixels in image space.
     bool use_3d = true;
 

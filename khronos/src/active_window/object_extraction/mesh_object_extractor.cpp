@@ -93,7 +93,10 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractObject(const Track& tra
   }
 
   // General information.
-  object->semantic_label = track.semantic_id;
+  if (track.semantics) {
+    object->semantic_label = track.semantics->category_id;
+    object->semantic_feature = track.semantics->feature;
+  }
   object->first_observed_ns = {track.first_seen};
   object->last_observed_ns = {track.last_seen};
   object->position = object->bounding_box.world_P_center.cast<double>();
@@ -120,13 +123,13 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractDynamicObject(
     }
     const auto it2 = std::find_if(frame->dynamic_clusters.begin(),
                                   frame->dynamic_clusters.end(),
-                                  [&observation](const DynamicCluster& cluster) {
+                                  [&observation](const auto& cluster) {
                                     return cluster.id == observation.dynamic_cluster_id;
                                   });
     if (it2 == frame->dynamic_clusters.end()) {
       continue;
     }
-    const DynamicCluster& cluster = *it2;
+    const auto& cluster = *it2;
     const auto& vertex_map = frame->input.vertex_map;
 
     // Compute the dynamic points, centroid, and mean bounding box.
@@ -230,8 +233,8 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
           << ", max_index=" << max_block_index.format(fmt) << ")";
 
   // Perform 3D reconstruction using projective updates over all frames.
-  for (const auto& data_id_pair : frames) {
-    integrator_.updateObjectMap(*data_id_pair.first, map, data_id_pair.second);
+  for (const auto& [frame_data, segment_id] : frames) {
+    integrator_.updateObjectMap(*frame_data, map, segment_id);
   }
 
   // Erase low_confidence voxels to extract the object of interest.
@@ -301,6 +304,7 @@ std::vector<std::pair<FrameData::Ptr, int>> MeshObjectExtractor::collectSemantic
   std::vector<std::pair<FrameData::Ptr, int>> result;
   for (const Observation& observation : track.observations) {
     if (observation.semantic_cluster_id == -1) {
+      // TODO(nathan) this might need to be relaxed
       continue;
     }
     const auto frame = frame_data.getData(observation.stamp);
@@ -318,10 +322,10 @@ BoundingBox MeshObjectExtractor::computeExtent(
   for (const auto& [frame, id] : frames) {
     // explicit variable required for lambda capture by clang for some reason
     const auto object_id = id;
-    const auto it = std::find_if(
-        frame->semantic_clusters.begin(),
-        frame->semantic_clusters.end(),
-        [object_id](const SemanticCluster& cluster) { return cluster.id == object_id; });
+    const auto it =
+        std::find_if(frame->semantic_clusters.begin(),
+                     frame->semantic_clusters.end(),
+                     [object_id](const auto& cluster) { return cluster.id == object_id; });
     if (it == frame->semantic_clusters.end()) {
       continue;
     }
@@ -360,8 +364,13 @@ bool MeshObjectExtractor::trackIsValid(const Track& track) const {
 
 std::string MeshObjectExtractor::getTrackName(const Track& track) {
   std::stringstream ss;
-  ss << "track " << track.id << " ("
-     << hydra::GlobalInfo::instance().getLabelToNameMap().at(track.semantic_id) << ")";
+  ss << "track " << track.id << " (";
+  if (track.semantics) {
+    ss << hydra::GlobalInfo::instance().getLabelToNameMap().at(track.semantics->category_id);
+  } else {
+    ss << "unknown";
+  }
+  ss << ")";
   return ss.str();
 }
 

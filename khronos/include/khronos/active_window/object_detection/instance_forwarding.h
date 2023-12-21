@@ -64,6 +64,18 @@ class InstanceForwarding : public ObjectDetector {
     int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
     // Maximum depth values to consider for object extraction in meters. Use 0 for infinity.
     float max_range = 0.f;
+
+    // Discard clusters with fewer pixels than this.
+    int min_cluster_size = 0;
+
+    // Discard clusters with more pixels than this (<= 0 disables).
+    int max_cluster_size = -1;
+
+    // Discard clusters with less volume than this
+    double min_object_volume = 0.0;
+
+    // Discard clusters with more volume than this (if enabled)
+    double max_object_volume = -1.0;
   } const config;
 
   // Construction.
@@ -92,6 +104,8 @@ class InstanceForwarding : public ObjectDetector {
       config::RegistrationWithConfig<ObjectDetector,
                                      InstanceForwarding,
                                      InstanceForwarding::Config>("InstanceForwarding");
+
+  const bool filter_by_volume_;
 
   // Variables.
   TimeStamp processing_stamp_;

@@ -56,14 +56,14 @@ void declare_config(ActiveWindow::Config& config) {
 
   field(config.projective_integrator, "projective_integrator");
   field(config.tracking_integrator, "tracking_integrator");
-  field(config.motion_detector, "motion_detector");
   config.motion_detector.setOptional();
-  field(config.object_detector, "object_detector");
+  field(config.motion_detector, "motion_detector");
   config.object_detector.setOptional();
-  field(config.tracker, "tracker");
+  field(config.object_detector, "object_detector");
   config.tracker.setOptional();
-  field(config.object_extractor, "object_extractor");
+  field(config.tracker, "tracker");
   config.object_extractor.setOptional();
+  field(config.object_extractor, "object_extractor");
   field(config.mesh_integrator, "mesh_integrator");
   field(config.frame_data_buffer, "frame_data_buffer");
 }
@@ -100,8 +100,13 @@ ActiveWindow::ActiveWindow(const Config& config, const OutputQueue::Ptr& output_
 
   if (!map_.config.with_tracking) {
     LOG(WARNING) << "[Khronos Active Window] Tracking layer disabled for volumetric map! Tracking "
-                    "layer is strongly recommended as block archival and motion detection may not work as intended!";
+                    "layer is strongly recommended as block archival and motion detection may not "
+                    "work as intended!";
   }
+}
+
+std::string ActiveWindow::printInfo() const {
+  return config::toString(config) + "\n" + Sink::printSinks(sinks_);
 }
 
 void ActiveWindow::addSink(const Sink::Ptr& sink) {
@@ -157,15 +162,16 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& 
   // Extract the resulting output and push to frontend queue.
   CLOG(5) << "[Khronos Active Window] Extracting output data.";
   auto output = extractOutputData(*data, config.detach_object_extraction);
-  spatial_hash::BlockIndices to_archive;
+  output->sensor_data = std::make_shared<hydra::InputData>(data->input);
   for (const auto& block : *map_.getTrackingLayer()) {
     if (!block.has_active_data) {
-      to_archive.push_back(block.index);
+      output->archived_mesh_indices.push_back(block.index);
     }
   }
 
-  map_.removeBlocks(to_archive);
-  CLOG(4) << "[Khronos Active Window] Archiving " << to_archive.size() << " blocks.";
+  map_.removeBlocks(output->archived_mesh_indices);
+  CLOG(4) << "[Khronos Active Window] Archiving " << output->archived_mesh_indices.size()
+          << " blocks.";
 
   return output;
 }

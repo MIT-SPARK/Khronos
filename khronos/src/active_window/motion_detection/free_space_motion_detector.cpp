@@ -79,8 +79,7 @@ void FreeSpaceMotionDetector::processInput(const VolumetricMap& map, FrameData& 
   setUpPointMap(data, *map.getTrackingLayer(), point_map, voxel_seeds);
 
   // Cluster them through voxels.
-  DynamicClusters clusters =
-      clusterDynamicVoxels(point_map, voxel_seeds, map.config.voxels_per_side);
+  auto clusters = clusterDynamicVoxels(point_map, voxel_seeds, map.config.voxels_per_side);
   const size_t num_initial_clusters = clusters.size();
 
   // Merge nearby clusters.
@@ -197,12 +196,13 @@ void FreeSpaceMotionDetector::setUpPointMapPart(const FrameData& data,
   }
 }
 
-DynamicClusters FreeSpaceMotionDetector::clusterDynamicVoxels(const BlockToPointsMap& point_map,
-                                                              const GlobalIndexSet& voxel_seeds,
-                                                              const size_t voxels_per_side) const {
+MeasurementClusters FreeSpaceMotionDetector::clusterDynamicVoxels(
+    const BlockToPointsMap& point_map,
+    const GlobalIndexSet& voxel_seeds,
+    const size_t voxels_per_side) const {
   Timer timer("motion_detection/clustering", processing_stamp_);
 
-  DynamicClusters result;
+  MeasurementClusters result;
   GlobalIndexSet closed_set;
   const spatial_hash::NeighborSearch search(config.neighbor_connectivity);
 
@@ -211,7 +211,7 @@ DynamicClusters FreeSpaceMotionDetector::clusterDynamicVoxels(const BlockToPoint
       continue;
     }
     GlobalIndices stack = {seed};
-    DynamicCluster cluster;
+    MeasurementCluster cluster;
 
     while (!stack.empty()) {
       // Get the voxel.
@@ -265,7 +265,7 @@ DynamicClusters FreeSpaceMotionDetector::clusterDynamicVoxels(const BlockToPoint
   return result;
 }
 
-void FreeSpaceMotionDetector::mergeClusters(DynamicClusters& clusters) const {
+void FreeSpaceMotionDetector::mergeClusters(MeasurementClusters& clusters) const {
   Timer timer("motion_detection/merge_clusters", processing_stamp_);
 
   // Comput exhaustive overlap to merge multiple overlapping clusters correctly.
@@ -336,8 +336,8 @@ std::unordered_set<int> FreeSpaceMotionDetector::getConnectedClusters(
   return result;
 }
 
-bool FreeSpaceMotionDetector::checkClusterOverlap(const DynamicCluster& cluster1,
-                                                  const DynamicCluster& cluster2) const {
+bool FreeSpaceMotionDetector::checkClusterOverlap(const MeasurementCluster& cluster1,
+                                                  const MeasurementCluster& cluster2) const {
   for (const GlobalIndex& p1 : cluster1.voxels) {
     for (const GlobalIndex& p2 : cluster2.voxels) {
       if ((p1 - p2).norm() < config.min_separation_distance) {
@@ -348,23 +348,22 @@ bool FreeSpaceMotionDetector::checkClusterOverlap(const DynamicCluster& cluster1
   return false;
 }
 
-void FreeSpaceMotionDetector::mergeClusters(const DynamicCluster& cluster1,
-                                            DynamicCluster& cluster2) const {
+void FreeSpaceMotionDetector::mergeClusters(const MeasurementCluster& cluster1,
+                                            MeasurementCluster& cluster2) const {
   // NOTE(lschmid): The sets of pixels and voxels are disjoint by construction so we can
   // just insert.
   cluster2.pixels.insert(cluster2.pixels.end(), cluster1.pixels.begin(), cluster1.pixels.end());
   cluster2.voxels.insert(cluster1.voxels.begin(), cluster1.voxels.end());
 }
 
-void FreeSpaceMotionDetector::applyClusterLevelFilters(DynamicClusters& candidates) const {
-  candidates.erase(
-      std::remove_if(candidates.begin(),
-                     candidates.end(),
-                     [this](const DynamicCluster& cluster) { return filterCluster(cluster); }),
-      candidates.end());
+void FreeSpaceMotionDetector::applyClusterLevelFilters(MeasurementClusters& candidates) const {
+  candidates.erase(std::remove_if(candidates.begin(),
+                                  candidates.end(),
+                                  [this](const auto& cluster) { return filterCluster(cluster); }),
+                   candidates.end());
 }
 
-bool FreeSpaceMotionDetector::filterCluster(const DynamicCluster& cluster) const {
+bool FreeSpaceMotionDetector::filterCluster(const MeasurementCluster& cluster) const {
   // Check point count.
   const int cluster_size = static_cast<int>(cluster.pixels.size());
   if (cluster_size < config.min_cluster_size || cluster_size > config.max_cluster_size) {
@@ -373,11 +372,11 @@ bool FreeSpaceMotionDetector::filterCluster(const DynamicCluster& cluster) const
   return false;
 }
 
-void FreeSpaceMotionDetector::writeClustersToData(const DynamicClusters& clusters,
+void FreeSpaceMotionDetector::writeClustersToData(const MeasurementClusters& clusters,
                                                   FrameData& data) const {
   data.dynamic_clusters = clusters;
   int id = 1;  // 0 is reserved for static parts.
-  for (DynamicCluster& cluster : data.dynamic_clusters) {
+  for (auto& cluster : data.dynamic_clusters) {
     cluster.id = id;
     for (const Pixel& pixel : cluster.pixels) {
       data.dynamic_image.at<FrameData::DynamicImageType>(pixel.v, pixel.u) = id;

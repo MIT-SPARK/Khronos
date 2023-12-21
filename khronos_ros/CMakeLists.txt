@@ -25,6 +25,7 @@ cs_add_library(${PROJECT_NAME}
         src/experiments/experiment_logger.cpp
         src/experiments/experiment_manager.cpp
         src/experiments/experiment_directory.cpp
+        src/input/openset_subscriber.cpp
         src/khronos_pipeline.cpp
         src/visualization/active_window_visualizer.cpp
         src/visualization/khronos_mesh_visualizer.cpp
