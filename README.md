@@ -28,8 +28,7 @@ If you find this useful for your research, please consider citing our paper:
 * Lukas Schmid, Marcus Abate, Yun Chang, and Luca Carlone, "**Khronos: A Unified Approach for Spatio-Temporal Metric-Semantic SLAM in Dynamic Environments**", in *ArXiv Preprint*, 2024.
   ```bibtex
   @inproceedings{Schmid2024Khronos,
-    title={Khronos: A Unified Approach for Spatio-Temporal Metric-Semantic SLAM
-           in Dynamic Environments},
+    title={Khronos: A Unified Approach for Spatio-Temporal Metric-Semantic SLAM in Dynamic Environments},
     author={Schmid, Lukas and Abate, Marcus and Chang, Yun and Carlone, Luca},
     booktitle={ArXiv Preprint},
     year={2024},
