@@ -1,5 +1,5 @@
 # Khronos
-This repository will contain the code for **Khronos**, our framework for online Spatio-temporal Metric-Semantic SLAM (SMS).
+This repository will contain the code for **Khronos**, our framework for online Spatio-Temporal Metric-Semantic SLAM (SMS).
 
 ![Khronos](https://github.mit.edu/storage/user/26675/files/2c13cac1-32d1-40fc-a41b-b63f7ed2c050)
 
