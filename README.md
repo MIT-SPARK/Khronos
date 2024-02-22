@@ -25,16 +25,14 @@ Khronos is a unified approach that can reason about short-term dynamics and long
 # Paper
 If you find this useful for your research, please consider citing our paper:
 
-* Lukas Schmid, Marcus Abate, Yun Chang, and Luca Carlone, "**Khronos: A Unified Approach for Spatio-Temporal Metric-Semantic SLAM in Dynamic Environments**", in *ArXiv Preprint*, 2024.
+* Lukas Schmid, Marcus Abate, Yun Chang, and Luca Carlone, "**Khronos: A Unified Approach for Spatio-Temporal Metric-Semantic SLAM in Dynamic Environments**", in *ArXiv Preprint*, 2024. [ [ArXiv](https://arxiv.org/abs/2402.13817) ]
   ```bibtex
-  @inproceedings{Schmid2024Khronos,
-    title={Khronos: A Unified Approach for Spatio-Temporal Metric-Semantic SLAM in Dynamic Environments},
-    author={Schmid, Lukas and Abate, Marcus and Chang, Yun and Carlone, Luca},
-    booktitle={ArXiv Preprint},
-    year={2024},
-    volume={},
-    number={},
-    pages={},
-    doi={}
-  }
-  ```
+   @misc{Schmid2024Khronos,
+      title={Khronos: A Unified Approach for Spatio-Temporal Metric-Semantic SLAM in Dynamic Environments}, 
+      author={Lukas Schmid and Marcus Abate and Yun Chang and Luca Carlone},
+      year={2024},
+      eprint={2402.13817},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO}
+   }
+```
