@@ -1,0 +1,13 @@
+<launch>
+
+    <!-- Args  -->
+    <arg name="visualizer_config" default="4d_visualizer.yaml"/>
+    <arg name="visualizer_node_name" default="spatio_temporal_visualizer"/>
+    <arg name="gui_required" default="true"/>
+
+
+    <node pkg="khronos_ros" type="spatio_temporal_visualizer_gui.py" name="spatio_temporal_visualizer_gui" output="screen" required="$(arg gui_required)">
+        <rosparam file="$(find khronos_ros)/config/visualization/$(arg visualizer_config)" command="load"/>
+        <param name="gui/visualizer_ns" value="$(arg visualizer_node_name)"/>
+    </node>
+</launch>

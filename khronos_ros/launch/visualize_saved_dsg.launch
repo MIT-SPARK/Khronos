@@ -1,0 +1,28 @@
+<launch>
+
+    <!-- Args  -->
+    <arg name="visualiziation_config" default="saved_dsg_visualizer.yaml"/>
+    <arg name="dsg_file" default="/mnt/c/Users/DerFu/Desktop/khronos_ICRA40/00043_reconciled_dsg.json"/>
+
+
+    <arg name="world_frame" default="world"/>
+    <arg name="rviz_file" default="uhumans2.rviz"/>
+
+    <!-- Visualize -->
+    <include file="$(find khronos_ros)/launch/dsg_visualizer.launch" pass_all_args="true">
+        <arg name="dsg_topic" value="khronos_node/dsg"/>
+        <arg name="visualizer_config" value="$(find khronos_ros)/config/visualization/$(arg visualiziation_config)"/>
+        <arg name="dsg_mesh_topic" value="khronos_node/dsg_mesh"/>
+        <arg name="load_dsg_path" value="$(arg dsg_file)"/>
+        <arg name="start_rviz" default="true"/>
+        <arg name="rviz_dir" default="$(find khronos_ros)/config/rviz"/>
+        <arg name="rviz_file" default="uhumans2.rviz"/>
+    </include>
+
+    <include file="$(find pose_graph_tools_ros)/launch/posegraph_view.launch">
+        <arg name="frame_id" value="$(arg world_frame)" />
+        <arg name="graph_topic" value="pose_graph" />
+        <arg name="ns" value="incremental_dsg_builder_node/pgmo"/>
+    </include>
+
+</launch>

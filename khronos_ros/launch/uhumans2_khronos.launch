@@ -1,0 +1,94 @@
+<launch>
+    <arg name="sim_time_required" default="false"/>
+
+    <!-- ============ Arguments ============ -->
+    <!-- Evaluation  -->
+    <arg name="evaluate" default="true"/>
+    <arg name="output_dir" default="$(find khronos)/../output/tmp"/>
+    <arg name="log_vio" default="false"/>
+
+    <!-- Mapper: uHumans2.yaml, ground_truth.yaml -->
+    <arg name="mapper_config" default="uHumans2.yaml"/>
+
+    <!-- Semantics: Use openset objects (pre-recorded) -->
+    <arg name="use_prerecorded_objects" default="false"/>
+    <arg name="use_oneformer" default="false"/>
+    <arg name="use_gt_frame" default="true"/>
+
+    <!-- Dataset: tesse_cd_office, tesse_cd_apartment -->
+    <arg name="dataset" default="tesse_cd_office"/>
+    <arg name="play_rate" default="1"/>
+
+    <!-- Input topics -->
+    <arg name="rgb_topic" default="/tesse/left_cam/rgb/image_raw"/>
+    <arg name="rgb_info_topic" default="/tesse/left_cam/camera_info"/>
+    <arg name="depth_topic" default="/tesse/depth_cam/mono/image_raw"/>
+    <arg name="label_topic" default="/tesse/seg_cam/converted/image_raw"/>
+    <arg name="label_topic" value="/semantic/image_raw" if="$(arg use_oneformer)"/>
+    <arg name="label_topic" value="/semantic/image_raw" if="$(arg use_prerecorded_objects)"/>
+    <arg name="prerecorded_topic" default="/oneformer/labels/image_raw"/>
+
+    <!-- Dataset -->
+    <arg name="bag_path" default="" if="$(eval dataset == 'tesse_cd_office')"/>
+    <arg name="bag_path" default="" if="$(eval dataset == 'tesse_cd_apartment')"/>
+
+    <!-- ============ Auto-generated args ============ -->
+    <!-- Sensing frame -->
+    <arg name="sensor_frame" default="$(eval 'left_cam' if arg('use_gt_frame') else 'left_cam_kimera')"/>
+    <arg name="robot_frame" default="$(eval 'base_link_gt' if arg('use_gt_frame') else 'base_link_kimera')"/>
+    <arg name="map_frame" default="map"/>
+    <arg name="odom_frame" default="$(eval 'world' if arg('use_gt_frame') else 'odom')"/>
+
+    <!-- Semantics: Use these for ground truth semantic labels from uH2 -->
+    <arg name="gt_seg_semantic_map" value="$(arg dataset).csv"/>
+
+    <arg name="semantic_map_dir" value="$(find khronos_ros)/config/colors" unless="$(arg use_oneformer)"/>
+    <arg name="semantic_map_file" value="$(arg gt_seg_semantic_map)" unless="$(arg use_oneformer)"/>
+    <arg name="semantic_map_dir" value="$(find semantic_recolor)/config/colors" if="$(arg use_oneformer)"/>
+    <arg name="semantic_map_file" value="ade20k_mp3d.csv" if="$(arg use_oneformer)"/>
+
+    <arg name="labelspace_config" default="$(arg dataset)_label_space.yaml"/>
+    <arg name="semantic_label_remap_filepath" default="$(find hydra)/config/label_remaps/$(arg dataset).yaml"/>
+
+    <!-- ============ Run ============ -->
+    <!-- Play data uHumans data -->
+    <include file="$(find khronos_ros)/launch/datasets/play_uHumans.launch" ns="khronos_node">
+        <arg name="bag_file" value="$(arg bag_path)"/>
+        <arg name="semantic_image_topic" value="$(arg label_topic)"/>
+        <arg name="semantic_color_mapping" value="$(arg semantic_map_dir)/$(arg semantic_map_file)"/>
+        <arg name="use_gt_frame" value="$(arg use_gt_frame)"/>
+        <arg name="use_prerecorded_objects" value="$(arg use_prerecorded_objects)"/>
+        <arg name="play_rate" value="$(arg play_rate)"/>
+        <arg name="sim_time_required" value="$(arg sim_time_required)"/>
+        <arg name="use_oneformer" value="$(arg use_oneformer)"/>
+        <arg name="paused" value="true" unless="$(arg use_gt_frame)"/>
+    </include>
+
+    <group unless="$(arg use_gt_frame)">
+        <include file="$(find hydra_vio_configs)/launch/uh2_vio.launch" pass_all_args="true">
+            <arg name="odom_frame_id" default="world"/>
+            <arg name="map_frame_id" default="map"/>
+            <arg name="should_use_sim_time" value="$(arg sim_time_required)"/>
+            <arg name="glog_to_dir" value="true"/>
+            <arg name="use_lcd" value="true"/>
+            <arg name="lcd_no_detection" default="false"/>
+            <!-- clean, noisy -->
+            <arg name="imu_topic" value="/tesse/imu/noisy/imu"/>
+            <arg name="log_output_path" value="$(arg output_dir)"/>
+            <arg name="log_output" value="$(arg log_vio)"/>
+        </include>
+    </group>
+
+    <include file="$(find khronos_ros)/launch/khronos.launch" pass_all_args="true">
+        <arg name="robot_id" default="0"/>
+        <arg name="hydra_config_dir" default="$(arg output_dir)"/>
+        <arg name="dsg_output_prefix" default="dsg"/>
+        <arg name="extrinsics" default="$(find hydra)/config/extrinsics/uhumans2.yaml"/>
+        <arg name="rviz_dir" default="$(find khronos_ros)/config/rviz"/>
+        <arg name="rviz_file" default="uhumans2.rviz"/>
+        <arg name="use_oriented_bounding_boxes" default="false"/>
+    </include>
+
+    <node if="$(arg use_gt_frame)" pkg="tf2_ros" type="static_transform_publisher" name="world_static_tf" args="0 0 0 0 0 0 1 map world"/>
+
+</launch>

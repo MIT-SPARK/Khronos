@@ -1,0 +1,20 @@
+# Params for the DSG visualizer.
+
+# Initial dynamic config for visualization
+dynamic_config:
+  background_color: 0 # 0: color, 1: first seen, 2: last seen
+  object_bbox_color: 2 # 0: semantic, 1: instance, 2: presence
+  dynamic_object_color: 1
+  play_rate: 1.0
+  fade_duration: 0.0
+
+# Visualizer params.
+initial_robot_time: 0 # Percentage of initial robot time [0, 1] -> earliest, latest
+initial_query_time: 0 # Percentage of initial query time [0, 1] -> earliest, latest
+initial_time_mode: Online # Robot, Query, Online
+max_frame_rate: 30 # FPS, visualizer can do 1000 but RVIZ can't.
+
+# Params for the GUI.
+gui:
+  query_time_unit: s  # s, ns, idx
+  robot_time_unit: s  # s, ns, idx

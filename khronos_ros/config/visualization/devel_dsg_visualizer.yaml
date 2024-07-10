@@ -1,0 +1,16 @@
+# Params for the DSG visualizer.
+
+# Hydra Visualizer params.
+load_graph: false
+scene_graph_filepath: ""
+output_path: ""
+
+# Khronos DSG viusalizer plugins.
+plugins:
+  objects:
+    type: KhronosObjectPlugin
+    color_mode: ID # 'ID', 'SEMANTIC', 'ATTRIBUTE'
+    queue_size: 100
+  mesh:
+    type: KhronosMeshPlugin
+    changes_topic: /khronos_node/changes
