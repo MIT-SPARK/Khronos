@@ -1,0 +1,19 @@
+# Params for the DSG visualizer.
+
+# Hydra Visualizer params.
+load_graph: false
+scene_graph_filepath: ""
+output_path: ""
+
+# Khronos DSG viusalizer plugins.
+plugins:
+  objects:
+    type: "KhronosObjectPlugin"
+    color_mode: ID # 'ID', 'SEMANTIC', 'ATTRIBUTE'
+    queue_size: 100
+  mesh:
+    type: "KhronosMeshPlugin"
+    changes_topic: /khronos_node/changes
+    #NOTE(lschmid): Setting these file is optional. Only if changes of a saved DSG are to be visualized. Otherwise takes a bit to load.
+    # background_changes_file: "/mnt/c/Users/DerFu/Documents/khronos/data/test/pipeline/Middle/00028_background_changes.csv"
+    # object_changes_file: "/mnt/c/Users/DerFu/Documents/khronos/data/test/pipeline/Middle/00028_object_changes.csv"plugins:

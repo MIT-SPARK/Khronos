@@ -1,0 +1,16 @@
+# No request.
+
+---
+# All fixed information available once the visualizer is setup.
+
+# All timestamps of the laoded maps, defining the min max bound of relevant times.
+uint64[] map_stamps
+
+# Timestamp of the first robot time to visualize.
+uint64 initial_robot_time
+
+# Timestamp of the first query time to visualize.
+uint64 initial_query_time
+
+# Initial time mode: 0: robot, 1: query, 2: online
+uint8 initial_time_mode

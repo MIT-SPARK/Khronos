@@ -1,0 +1,36 @@
+<launch>
+
+    <!-- Args  -->
+    <!-- Data to visualize  -->
+    <arg name="map_file" default="$(find khronos)/../output/tmp/final.4dmap"/>
+
+    <!-- Visualization config -->
+    <arg name="show_gui" default="true"/>
+    <arg name="visualizer_config" default="4d_visualizer.yaml"/>
+    <arg name="world_frame" default="world"/>
+    <arg name="rviz_file" default="4d_visualizer.rviz"/>
+
+
+    <!-- Visualize -->
+    <arg name="visualizer_node_name" default="spatio_temporal_visualizer"/>
+
+    <include file="$(find hydra_ros)/launch/visualizer/includes/hydra_visualizer_params.xml">
+        <arg name="visualizer_ns" value="$(arg visualizer_node_name)"/>
+        <arg name="visualizer_frame" value="$(arg world_frame)"/>
+    </include>
+
+    <node pkg="khronos_ros" type="spatio_temporal_visualizer_node" name="$(arg visualizer_node_name)" output="screen" args="-alsologtostderr -colorlogtostderr">
+        <rosparam file="$(find khronos_ros)/config/visualization/$(arg visualizer_config)" command="load"/>
+        <param name="map_file" value="$(arg map_file)"/>
+        <param name="global_frame_name" value="$(arg world_frame)"/>
+    </node>
+
+    <include file="$(find khronos_ros)/launch/gui_4d_visualizer.launch" if="$(arg show_gui)">
+        <arg name="visualizer_node_name" value="$(arg visualizer_node_name)"/>
+        <arg name="visualizer_config" value="$(arg visualizer_config)"/>
+    </include>
+
+    <node name="rviz" pkg="rviz" type="rviz" output="screen" args="-d $(find khronos_ros)/config/rviz/$(arg rviz_file)"/>
+
+    <node name="global_tf" pkg="tf2_ros" type="static_transform_publisher" args="0 0 0 0 0 0 1 map world" />
+</launch>

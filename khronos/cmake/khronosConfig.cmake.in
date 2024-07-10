@@ -1,0 +1,22 @@
+@PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
+
+get_filename_component(khronos_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
+
+find_dependency(config_utilities REQUIRED)
+find_dependency(Eigen3 REQUIRED)
+find_dependency(GTSAM REQUIRED)
+find_dependency(OpenCV REQUIRED COMPONENTS core imgproc)
+find_dependency(spark_dsg REQUIRED)
+find_dependency(kimera_pgmo REQUIRED)
+find_dependency(spatial_hash REQUIRED)
+find_dependency(hydra REQUIRED)
+
+if(NOT TARGET khronos::khronos)
+  include("${khronos_CMAKE_DIR}/khronosTargets.cmake")
+endif()
+
+set(khronos_LIBRARIES khronos::khronos)
+check_required_components(khronos)
+
+set(khronos_FOUND_CATKIN_PROJECT TRUE)

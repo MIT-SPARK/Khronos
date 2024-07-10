@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>khronos</name>
+  <version>0.0.0</version>
+  <description>Spatio-temporal Metric-Semantic SLAM.</description>
+
+  <author email="lschmid@mit.edu">Lukas Schmid</author>
+  <author email="mabate@mit.edu">Marcus Abate</author>
+  <author email="yunchang@mit.edu">Yun Chang</author>
+
+  <maintainer email="lschmid@mit.edu">Lukas Schmid</maintainer>
+  <maintainer email="mabate@mit.edu">Marcus Abate</maintainer>
+  <maintainer email="yunchang@mit.edu">Yun Chang</maintainer>
+
+  <license>BSD</license>
+
+  <buildtool_depend>cmake</buildtool_depend>
+  <depend>eigen</depend>
+  <depend>pose_graph_tools</depend>
+  <depend>config_utilities</depend>
+  <depend>spatial_hash</depend>
+  <depend>spark_dsg</depend>
+  <depend>kimera_pgmo</depend>
+  <depend>hydra</depend>
+
+  <export>
+      <build_type>cmake</build_type>
+  </export>
+</package>
