@@ -1,0 +1,317 @@
+# Definition of shared parameters (not read by the system).
+# TODO(lschmid): Maybe these should be unified in globals, have more flexibility like this though.
+shared_parameters:
+  max_range: &max_range 5 # m
+  temporal_window: &temporal_window 3 # s
+  active_window_threads: &active_window_threads -1 # Num threads in the AW to give resources to other parts, too. Use -1 for hardware concurrency.
+  map_update_frequency: &map_update_frequency 300 # -1 to disable, 0 for on loop closure, n for every n frames.
+
+# =============================== Experiment Setup ===============================
+finish_processing_on_shutdown: true
+save_active_window_objects: false
+
+# Experiment setup (what to save and log)
+# TODO(lschmid): Factor this out of the main config...
+experiment:
+  overwrite: true
+  log_timing_details: true
+  save_full_state: false
+  save_every_n_frames: 0
+
+# =============================== Global & Pipeline properties ===============================
+# Global properties.
+global_frame_name: "world"
+default_verbosity: 2 # Set global verbosity. Can be overridden for individual modules below.
+default_num_threads: -1 # -1 for all, 1 sets the program to single threaded. Can be overridden by individual modules below.
+
+# Store additional details for the spatio-temporal visualizer.
+store_visualization_details: true
+
+# Pipeline properties.
+verbosity: 3
+
+# =============================== Khronos Active Window ===============================
+# Active Window.
+active_window:
+  verbosity: 2
+  min_output_separation: 0.0 # s
+
+  frame_data_buffer:
+    max_buffer_size: 300
+    store_every_n_frames: 1
+
+  # Map.
+  volumetric_map:
+    voxel_size: 0.1 # m
+    truncation_distance: 0.2 # m (Usually 2-3x voxel size)
+    voxels_per_side: 16
+
+  # Motion Detector. The motion detector is optional, by not setting the 'type' param no motion detection will be performed.
+  motion_detector:
+    type: "FreeSpaceMotionDetector" # 'FreeSpaceMotionDetector'
+    min_cluster_size: 500 # pixels
+    min_separation_distance: 2 # voxels
+    num_threads: *active_window_threads
+    max_range: *max_range # m
+
+  # Semantic Object Detector. The object detector is optional, by not setting the 'type' param no object detection will be performed.
+  object_detector:
+    type: "ConnectedSemantics" # 'ConnectedSemantics' 'InstanceForwarding'
+    min_cluster_size: 50 # pixels
+    use_full_connectivity: true
+    use_3d: true
+    grid_size: 0.1 # m
+    max_range: *max_range # m, 0 for infinite.
+
+  # Object association and tracking. The tracker is optional, by not setting the 'type' param no tracking will be performed.
+  tracker:
+    type: "MaxIouTracker" # 'MaxIouTracker'
+    track_by: "voxels" # 'pixels', 'voxels', 'bounding_box'
+    min_semantic_iou: 0.25
+    min_cross_iou: 0.1
+    voxel_size: 0.2 # m
+    temporal_window: *temporal_window # s
+    min_num_observations: 15
+
+  # (Background) map integration.
+  projective_integrator:
+    num_threads: *active_window_threads
+
+  tracking_integrator:
+    temporal_window: *temporal_window # Time unobserved until a voxel exits the active window [s]
+    num_threads: *active_window_threads
+
+  object_extractor:
+    type: MeshObjectExtractor
+    verbosity: 1
+    min_object_allocation_confidence: 0.5
+    min_object_volume: 0.005 # m^3
+    max_object_volume: 10.0 # m^3
+    min_dynamic_displacement: 1 # m
+    only_extract_reconstructed_objects: true # used to be false
+    min_object_reconstruction_confidence: 0.5
+    min_object_reconstruction_observations: 0 # Can use higher for very noisy detections.
+    object_reconstruction_resolution: -0.02 # Positive: voxel size in meters. Negative: fraction of the extent. 0: Skip. (-0.02)
+    visualize_classification: false # For debugging.
+    projective_integrator:
+      num_threads: 8 # NOTE(lschmid): Test less threads for parallel object extraction.
+      semantic_integrator:
+        type: BinarySemanticIntegrator
+
+# =============================== Frontend ===============================
+frontend:
+  verbosity: 1
+  pgmo:
+    time_horizon: 15.0
+    d_graph_resolution: 2.5
+    mesh_resolution: 0.005 # smaller than voxel size
+  freespace_places:
+    type: gvd
+    filter_places: true
+    min_places_component_size: 3
+    filter_ground: false
+    gvd:
+      max_distance_m: 4.5
+      min_distance_m: 0.1
+      min_diff_m: 0.1
+      min_weight: 1.0e-6
+      positive_distance_only: true
+      min_basis_for_extraction: 1
+      num_buckets: 20
+      multi_queue: false
+      extract_graph: true
+      voronoi_config:
+        mode: L1_THEN_ANGLE
+        min_distance_m: 0.30
+        parent_l1_separation: 20
+        parent_cos_angle_separation: 0.2
+    graph:
+      type: CompressionGraphExtractor
+      compression_distance_m: 1.5
+      validate_graph: false
+      min_node_distance_m: 0.4
+      min_edge_distance_m: 0.25
+      node_merge_distance_m: 0.7
+      # heurisitic edges
+      add_heuristic_edges: false
+      add_overlap_edges: true
+      overlap_edges:
+        num_neighbors_to_check: 4
+        min_clearance_m: 0.4
+      add_freespace_edges: false
+      merge_policy: distance
+    tsdf_interpolator:
+      type: downsample
+      ratio: 2
+
+# =============================== Backend ===============================
+backend:
+  verbosity: 2
+  add_merge_factor: true
+  optimize_on_new_merge: true
+  max_dt_merge_proposal: 3.0 # max time between looking for node merge
+  pose_object_covariance: 1.0e-01
+  object_merge_covariance: 10.0 # very permissive for now
+  pose_object_consistency_threshold: 0.2 # meters / node # 0.2
+  fix_input_pose_variance: 1.0e-02 # if fix input poses, covariance on priors
+  update_objects:
+    # Params that govern which objects can be proposed to be merged.
+    merge_require_same_label: true
+    merge_require_no_co_visibility: true
+    merge_min_iou: 0.00001 # 0.25
+  dsg:
+    add_places_to_deformation_graph: false
+    optimize_on_lc: true
+    enable_node_merging: true # Propose node merges
+    use_active_flag_for_updates: false
+    num_neighbors_to_find_for_merge: 1
+    places_merge_pos_threshold_m: 0.0 # Effectively disable
+    places_merge_distance_tolerance_m: 0.0 # Effectively disable
+    merge_update_dynamic: true
+    merge_update_map:
+      { BUILDINGS: false, ROOMS: false, PLACES: true, OBJECTS: false }
+
+  # =============================== Change Detection ===============================
+  change_detection:
+    run_every_n_frames: *map_update_frequency
+    ray_verificator:
+      verbosity: 0 #4 to show merges
+      block_size: 0.5 # m
+      radial_tolerance: 0.08 # m
+      depth_tolerance: 0.3 # m
+      ray_policy: Middle # First, Last, FirstAndLast, Middle, All, Random, Random3
+      active_window_duration: *temporal_window # s
+    ray_change_detector:
+      temporal_resolution: 1.0 # s
+      window_size: 5 # times the temporal_resolution
+      absence_confidence: 0.6 # [0,1]
+      presence_confidence: 0.5 # [0,1]
+    objects:
+      type: "RayObjectChangeDetector" # 'RayObjectChangeDetector'. Leave empty to not perform object change detection.
+      time_filtering_threshold: *temporal_window # s
+
+  reconciler:
+    verbosity: 0 # 4 to show merges
+    time_estimates_conservative: false # Whether to use the conservative or optimistic time estimates.
+    allow_overestimation: true
+    merge_object_meshes: false
+
+# =============================== Optimization Params ===============================
+  pgmo:
+    run_mode: FULL # kimera_pgmo run mode FULL is required
+    use_msg_time: true
+    embed_trajectory_delta_t: 5.0
+    num_interp_pts: 3
+    interp_horizon: 10.0
+    enable_sparsify: true
+    trans_node_dist: 1.0
+    rot_node_dist: 0.5
+    rpgo:
+      odom_trans_threshold: 0.05
+      odom_rot_threshold: 0.01
+      pcm_trans_threshold: -1
+      pcm_rot_threshold: -1
+      lm_diagonal_damping: true
+      gnc_alpha: 0.9 # 0.7
+      gnc_max_iterations: 100
+      gnc_mu_step: 1.5
+      gnc_cost_tolerance: 1.0e-03
+      gnc_weight_tolerance: 1.0e-03
+      gnc_fix_prev_inliers: false # since also have node merges
+      verbosity: UPDATE
+      solver: LM
+    add_initial_prior: true
+    covariance:
+      odom: 1.0e-02
+      loop_close: 1.0e-02
+      sg_loop_close: 1.0e-01
+      prior: 1.0e-02
+      mesh_mesh: 1.0
+      pose_mesh: 1.0
+      place_mesh: 1.0
+      place_edge: 10.0
+  building_semantic_label: 22
+  building_color: [169, 8, 194]
+  visualize_place_factors: false
+  enable_rooms: true
+  room_finder:
+    min_dilation_m: 0.5
+    max_dilation_m: 1.2
+    min_window_size: 0.2
+    clip_dilation_window_to_max: false
+    min_component_size: 10
+    min_room_size: 10
+    dilation_threshold_mode: PLATEAU
+    min_lifetime_length_m: 0.1
+    plateau_ratio: 0.15
+    clustering_mode: NEIGHBORS
+    max_modularity_iters: 5
+    modularity_gamma: 1.0
+    room_prefix: R
+    dilation_diff_threshold_m: -1.0
+    log_filtrations: false
+    log_place_graphs: false
+
+# =============================== Loop Closure Detection ===============================
+# NOTE(lschmid): Copied from hydra/config/uhumans2/lcd_config.yaml. Not used for now.
+lcd:
+  lcd_visualizer_ns: /dsg/lcd_visualizer
+  lcd_agent_horizon_s: 3.5
+  descriptor_creation_horizon_m: 15.0
+  lcd:
+    enable_agent_registration: true
+    place_histogram_config: { min: 0.5, max: 2.5, bins: 30 }
+    num_semantic_classes: 20
+    object_extraction: { fixed_radius: true, max_radius_m: 13.0 }
+    places_extraction: { fixed_radius: true, max_radius_m: 13.0 }
+    agent:
+      min_time_separation_s: 25.0
+      min_score: 0.040
+      min_registration_score: 0.01 # this gets overriden
+      max_registration_matches: 2
+      min_score_ratio: 0.95
+      min_match_separation_m: 0.0
+      type: L1
+    objects:
+      search:
+        min_time_separation_s: 25.0
+        min_score: 0.3
+        min_registration_score: 0.90
+        max_registration_matches: 2
+        min_score_ratio: 0.9
+        min_match_separation_m: 5.0
+        type: L1
+      registration:
+        min_correspondences: 5
+        min_inliers: 5
+        log_registration_problem: false
+        registration_output_path: ""
+        recreate_subgraph: false
+    places:
+      search:
+        min_time_separation_s: 25.0
+        min_score: 0.2
+        min_registration_score: 1.5
+        max_registration_matches: 5
+        min_score_ratio: 0.7
+        min_match_separation_m: 5.0
+        type: L1
+    teaser:
+      estimate_scaling: false
+      noise_bound: 0.100
+      cbar2: 1.0
+      rotation_gnc_factor: 1.4
+      rotation_max_iterations: 100
+      rotation_cost_threshold: 1.0e-6
+      kcore_heuristic_threshold: 0.5
+      inlier_selection_mode: PMC_EXACT
+      max_clique_time_limit: 3600
+
+# =============================== Visualization ===============================
+# Visualization.
+# NOTE(lschmid): This is currently the active window visualizer.
+visualization:
+  color_mode: "color" # 'color', 'active'
+  slice_height: -0.5 # m (2.0 abs, -0.5 rel)
+  slice_height_is_relative: true
+  show_unknown_voxels: false

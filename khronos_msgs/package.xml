@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>khronos_msgs</name>
+  <version>0.0.0</version>
+  <description>Spatio-temporal Metric-Semantic SLAM.</description>
+
+  <author email="lschmid@mit.edu">Lukas Schmid</author>
+  <author email="mabate@mit.edu">Marcus Abate</author>
+  <author email="yunchang@mit.edu">Yun Chang</author>
+
+  <maintainer email="lschmid@mit.edu">Lukas Schmid</maintainer>
+  <maintainer email="mabate@mit.edu">Marcus Abate</maintainer>
+  <maintainer email="yunchang@mit.edu">Yun Chang</maintainer>
+
+  <license>BSD</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend>catkin_simple</buildtool_depend>
+
+  <build_depend>dynamic_reconfigure</build_depend>
+  <exec_depend>dynamic_reconfigure</exec_depend>
+
+  <depend>message_generation</depend>
+  <depend>message_runtime</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+  </export>
+</package>
