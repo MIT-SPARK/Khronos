@@ -12,23 +12,19 @@
 - git:
     local-name: spark_dsg
     uri: https://github.com/MIT-SPARK/Spark-DSG.git
-    version: develop
+    version: main
 - git:
     local-name: hydra
     uri: https://github.com/MIT-SPARK/Hydra.git
-    version: develop
+    version: main
 - git:
     local-name: hydra_ros
     uri: https://github.com/MIT-SPARK/Hydra-ROS.git
-    version: develop
-- git:
-    local-name: hydra_vio_configs
-    uri: https://github.com/MIT-SPARK/hydra_vio_configs.git
-    version: khronos/main
+    version: main
 - git:
     local-name: pose_graph_tools
     uri: https://github.com/MIT-SPARK/pose_graph_tools.git
-    version: develop
+    version: master
 - git:
     local-name: teaser_plusplus
     uri: https://github.com/MIT-SPARK/TEASER-plusplus.git
@@ -41,12 +37,6 @@
     uri: https://github.com/MIT-SPARK/config_utilities.git
     version: main
 
-# semantic_recolor
-- git:
-    local-name: semantic_recolor
-    uri: https://github.com/MIT-SPARK/semantic_recolor_nodelet.git
-    version: khronos/main
-
 # Additional Kimera-VIO dependencies:
 - git:
     local-name: kimera_vio
@@ -55,7 +45,7 @@
 - git:
     local-name: kimera_ros
     uri: https://github.com/MIT-SPARK/Kimera-VIO-ROS.git
-    version: develop
+    version: master
 - git:
     local-name: opengv_catkin
     uri: https://github.com/MIT-SPARK/opengv_catkin.git
