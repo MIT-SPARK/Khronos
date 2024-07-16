@@ -301,9 +301,12 @@ BoundingBox MeshObjectExtractor::computeExtent(
     const std::vector<std::pair<FrameData::Ptr, int>>& frames) const {
   BoundingBox extent;
   for (const auto& [frame, id] : frames) {
-    const auto it = std::find_if(frame->semantic_clusters.begin(),
-                                 frame->semantic_clusters.end(),
-                                 [id](const SemanticCluster& cluster) { return cluster.id == id; });
+    // explicit variable required for lambda capture by clang for some reason
+    const auto object_id = id;
+    const auto it = std::find_if(
+        frame->semantic_clusters.begin(),
+        frame->semantic_clusters.end(),
+        [object_id](const SemanticCluster& cluster) { return cluster.id == object_id; });
     if (it == frame->semantic_clusters.end()) {
       continue;
     }
