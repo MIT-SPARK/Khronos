@@ -22,6 +22,10 @@ Khronos is a unified approach that can reason about short-term dynamics and long
 **Contributing**
 * [Contributing](#contributing)
 
+
+# News
+* [07/2024] Khronos won the **Outstanding Systems Paper Award** at RSS in Delft!
+
 # Paper
 
 If you use this code in your work, please cite the following paper:
