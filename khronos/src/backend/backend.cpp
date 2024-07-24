@@ -130,9 +130,7 @@ void Backend::spinCallback(const hydra::BackendInput& input) {
     // measurement to a node aXXX not previously seen before"
     // fixInputPoses(input);
   }
-  if (!config.use_mesh_subscribers) {
-    copyMeshDelta(input);
-  }
+  copyMeshDelta(input);
   updateFromLcdQueue();
   status_.total_loop_closures = num_loop_closures_;
 
