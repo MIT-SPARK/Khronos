@@ -1,0 +1,58 @@
+# Evaluation config for mesh evaluation.
+vertex_batch_size: 1000
+thresholds: [0.05, 0.08, 0.1, 0.2, 0.3, 0.5] # Threshold for accuracy/completeness and truncation distance for RMSE/MAD/Chamfer.
+
+# Reconcilers to run.
+runs:
+  - name: overwrite
+    mesh_merger:
+      type: overwrite
+      voxel_size: 0.08  # m
+      time_threshold: 10.0  #s
+      max_extent: 100
+
+  - name: change
+    mesh_merger:
+      type: change
+
+  # - name: 1m_30s
+  #   mesh_merger:
+  #     type: overwrite
+  #     voxel_size: 1.0  # m
+  #     time_threshold: 30.0  #s
+  #     max_extent: 100
+
+  # - name: 20cm_10s
+  #   mesh_merger:
+  #     type: overwrite
+  #     voxel_size: 0.2  # m
+  #     time_threshold: 10.0  #s
+  #     max_extent: 100
+
+  # - name: 8cm_10s
+  #   mesh_merger:
+  #     type: overwrite
+  #     voxel_size: 0.08  # m
+  #     time_threshold: 10.0  #s
+  #     max_extent: 100
+
+  # - name: 2cm_10s
+  #   mesh_merger:
+  #     type: overwrite
+  #     voxel_size: 0.02  # m
+  #     time_threshold: 10.0  #s
+  #     max_extent: 100
+
+  # - name: 8cm_30s
+  #   mesh_merger:
+  #     type: overwrite
+  #     voxel_size: 0.08  # m
+  #     time_threshold: 30.0  #s
+  #     max_extent: 100
+
+  # - name: 8cm_1s
+  #   mesh_merger:
+  #     type: overwrite
+  #     voxel_size: 0.08  # m
+  #     time_threshold: 1.0  #s
+  #     max_extent: 100

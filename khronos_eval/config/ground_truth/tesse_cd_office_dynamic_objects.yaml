@@ -1,0 +1,34 @@
+# Files to read for processing.
+rosbag_file: /data/datasets/khronos/tesse_cd/office_2/khronos_office_2_full.bag
+semantic_colors_file: /home/marcus/code/khronos_ws/src/khronos/khronos_ros/config/colors/tesse_cd_office.csv
+
+# Dynamic object labels (full names).
+dynamic_object_colors:
+- [186,237,8,255]  # SMPL_Female_Autonomous
+- [24,139,0,255]   # SMPL_Male_Autonomous
+- [79,145,95,255]  # Soccer
+
+# Prune these objects from the graph after formation.
+# In this case, soccer ball becomes a static object in khronos.
+# This is expected behavior so the GT cannot penalize it.
+# Generate the GT without this then pick out the IDs to remove for a second pass.
+remove_object_ids: [2, 7]
+
+# Intrinsic camera params.
+fx: 415.69219381653056
+fy: 415.69219381653056
+cx: 360.0
+cy: 240.0
+
+# ROS parameters.
+rgb_topic: /tesse/seg_cam/rgb/image_raw
+depth_topic: /tesse/depth_cam/mono/image_raw
+camera_frame_id: left_cam
+body_frame_id: base_link_gt
+world_frame_id: world
+
+# Algorithm params.
+max_observation_distance: 5.0
+
+# Output.
+output_directory: /data/datasets/khronos/tesse_cd/office_2/ground_truth

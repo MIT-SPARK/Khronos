@@ -1,0 +1,87 @@
+# Configuration to run the entire processing pipeline of khronos. Will run all [change detectors X reconciliators] specified in the config.
+# Data.
+ground_truth_dsg_file: "/mnt/c/Users/DerFu/Documents/khronos/ground_truth/office/gt_dsg.sparkdsg"
+ground_truth_background_file: "/mnt/c/Users/DerFu/Documents/khronos/ground_truth/office/gt_background.ply"
+gt_changes_file: &gt_changes "/mnt/c/Users/DerFu/Documents/khronos/ground_truth/office/gt_changes.csv"
+
+# General evaluation params.
+only_evaluate_final_map: false # Whether to evaluate all or only the final map.
+
+# Whetherto save the reconciled DSGs (these take some disk space).
+save_reconciled_dsg: true
+
+# Whether to write additional details for visualization.
+save_visualization_detals: true
+
+# Specify all change detectors to be run.
+change_detection:
+  # Everything in 'common' is used for all runs, overwritten by the specific runs below. At least one run must be specified.
+  - name: common
+    ray_verificator:
+      verbosity: 0 #4 to show merges
+      block_size: 0.5 # m
+      radial_tolerance: 0.08 # m
+      depth_tolerance: 0.5 # m
+      ray_policy: Middle # First, Last, FirstAndLast, Middle, All, Random, Random3
+      active_window_duration: 3.0 # s
+    ray_change_detector:
+      temporal_resolution: 1.0 # s
+      window_size: 5 # times the temporal_resolution
+      use_relative_confidence: true
+      absence_confidence: 0.5 # [0,1] if relatice, num rays otherwise
+      presence_confidence: 0.5 # [0,1]
+    objects:
+      type: "RayObjectChangeDetector" # 'RayObjectChangeDetector'. Leave empty to not perform object change detection.
+      time_filtering_threshold: 10.0 # s
+    # background:
+    #   type: "RayBackgroundChangeDetector" # 'RayBackgroundChangeDetector'. Leave empty to not perform background change detection.
+    #   time_filtering_threshold: 3.0 # s
+
+  # Experiments to run for change detection. These overwrite the common data.
+  - name: "M36"
+    ray_verificator:
+      ray_policy: Middle
+      depth_tolerance: 0.3 # m
+    ray_change_detector:
+      absence_confidence: 0.6
+
+
+
+
+
+# Specify all reconciliators to be run.
+reconciliation:
+  # Everything in 'common' is used for all runs, overwritten by the specific runs below. At least one run must be specified.
+  - name: common
+    verbosity: 0 # 4 to show merges
+    mesh_merger:
+      type: change # erases any changed vertices. overwrite, change
+      remove_objects_from_background: true
+      object_proximity_threshold: 0.05 # m
+    time_estimates_conservative: false # Whether to use the conservative or optimistic time estimates.
+
+  - name: "Optimistic" #"Optimistic"
+    time_estimates_conservative: false
+
+# Specify all evaluations to run.
+evaluation:
+  evaluate_mesh: true # TMP
+  evaluate_objects: true
+  evaluate_dynamic_objects: true
+
+  mesh_evaluation:
+    thresholds: [0.05, 0.1, 0.2, 0.5]
+
+  object_evaluation:
+    verbosity: 0 # 4 to show details
+    match_require_semantics: true
+    compensate_missegmentation: false
+    changes_file: *gt_changes
+    max_matching_distance: 2 # m, recommended: surface ~0.5, centroid ~2, bbox ~ 0
+    association_method: Surface # Surface, Centroid, BoundingBox
+    surface_subsampling_rate: 100
+
+  dynamic_object_evaluation:
+    verbosity: 0
+    compensate_missegmentation: true
+    max_matching_distance: 0.5 # m

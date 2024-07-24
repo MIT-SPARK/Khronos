@@ -1,0 +1,15 @@
+# Files to read for processing.
+ground_truth_cloud_file: /mnt/c/Users/DerFu/Documents/khronos/ground_truth/apartment/raw/surface_cloud_10000.ply
+semantic_colors_file: /home/lukas/khronos_ws/src/khronos/khronos_ros/config/colors/uhumans2_apartment.csv
+khronos_panoptic_file: /home/lukas/khronos_ws/src/khronos/khronos_ros/config/semantic_labels/uHumans2_apartment.csv
+khronos_observed_dsg_file: /mnt/c/Users/DerFu/Documents/khronos/ground_truth/apartment/raw/khronos_dsg_5m.sparkdsg
+
+# Algorithm params.
+unknown_label_is_background: false
+min_object_separation: 0.1
+max_observation_distance: 0.1
+
+# Output.
+output_directory: /mnt/c/Users/DerFu/Documents/khronos/ground_truth/apartment
+save_ply_clouds: true
+save_dsgs: true

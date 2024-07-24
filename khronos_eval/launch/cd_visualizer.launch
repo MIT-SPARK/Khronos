@@ -1,0 +1,29 @@
+<launch>
+
+    <!-- Args  -->
+    <arg name="dsg_file" default="/mnt/c/Users/DerFu/Documents/khronos/data/khronos/apartment_gt/maps/00027/backend/dsg_with_mesh.sparkdsg"/>
+
+    <arg name="visualizer_config" default="$(find khronos_ros)/config/visualization/devel_dsg_visualizer.yaml"/>
+    <arg name="change_detector_config" default="$(find khronos_eval)/config/visualization/cd_visualizer.yaml"/>
+
+    <arg name="visualizer_ns" default="/dsg_visualizer"/>
+
+
+    <!-- Run -->
+    <include file="$(find hydra_ros)/launch/visualizer/includes/hydra_visualizer_params.xml">
+        <arg name="viz_config_dir" default="$(find hydra_ros)/config"/>
+        <arg name="visualizer_ns" default="$(arg visualizer_ns)"/>
+    </include>
+
+    <node pkg="khronos_eval" type="cd_visualizer_node" name="eval_visualizer_node" output="screen" required="true">
+        <rosparam file="$(arg visualizer_config)" command="load"/>
+        <rosparam file="$(arg change_detector_config)" command="load"/>
+        <param name="visualizer_ns" value="$(arg visualizer_ns)" if="$(eval arg('visualizer_ns')!='')"/>
+        <param name="scene_graph_filepath" value="$(arg dsg_file)"/>
+        <param name="load_graph" value="true"/>
+    </node>
+
+    <node name="rviz" pkg="rviz" type="rviz" output="log" args="-d $(find khronos_eval)/config/visualization/cd_visualizer.rviz"/>
+
+    <node name="global_tf" pkg="tf2_ros" type="static_transform_publisher" args="0 0 0 0 0 0 1 map world" />
+</launch>

@@ -1,0 +1,15 @@
+<launch>
+
+    <!-- Args  -->
+    <!-- <arg name="visualization_directory" default="/mnt/c/Users/DerFu/Documents/khronos/data/panoptic_mapping/apartment_gt/eval_visualization/Panoptic/Mapping/"/> -->
+    <!-- <arg name="visualization_directory" default="/mnt/c/Users/DerFu/Documents/khronos/data/hydra/apartment_gt/eval_visualization/Hydra/Hydra/"/> -->
+    <arg name="visualization_directory" default="/mnt/c/Users/DerFu/Documents/khronos/data/jackal/eval_visualization/Middle/Optimistic"/>
+
+
+    <!-- Run  -->
+    <node pkg="khronos_eval" type="eval_visualizer_node" name="eval_visualizer_node" output="screen" required="true">
+        <param name="visualization_directory" value="$(arg visualization_directory)"/>
+    </node>
+
+    <node name="rviz" pkg="rviz" type="rviz" output="log" args="-d $(find khronos_eval)/config/visualization/eval_visualizer.rviz"/>
+</launch>

@@ -1,0 +1,34 @@
+# Configuration to run the entire processing pipeline of khronos. Will run all [change detectors X reconciliators] specified in the config.
+# Data.
+# apartment,  office
+ground_truth_dsg_file: "/mnt/c/Users/DerFu/Documents/khronos/ground_truth/apartment/gt_dsg.sparkdsg"
+ground_truth_background_file: "/mnt/c/Users/DerFu/Documents/khronos/ground_truth/apartment/gt_background.ply"
+gt_changes_file: &gt_changes "/mnt/c/Users/DerFu/Documents/khronos/ground_truth/apartment/gt_changes.csv"
+
+# General evaluation params.
+only_evaluate_final_map: false # Whether to evaluate all or only the final map.
+
+# Whetherto save the reconciled DSGs (these take some disk space).
+save_reconciled_dsg: true
+
+change_detection:
+  - name: Panoptic
+reconciliation:
+  - name: Mapping
+
+# Specify all evaluations to run.
+evaluation:
+  evaluate_mesh: true
+  evaluate_objects: true
+
+  mesh_evaluation:
+    thresholds: [0.05, 0.1, 0.2, 0.5]
+
+  object_evaluation:
+    verbosity: 0  # 4 to show details
+    match_require_semantics: true
+    compensate_missegmentation: false
+    changes_file: *gt_changes
+    max_matching_distance: 0.5 # m, recommended: surface ~0.5, centroid ~2
+    association_method: Surface # Surface, Centroid
+    surface_subsampling_rate: 100

@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>khronos_eval</name>
+  <version>0.0.0</version>
+  <description>Spatio-temporal Dense Semantic Mapping.</description>
+
+  <author email="lschmid@mit.edu">Lukas Schmid</author>
+  <maintainer email="lschmid@mit.edu">Lukas Schmid</maintainer>
+
+  <license>BSD</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend>catkin_simple</buildtool_depend>
+
+  <depend>khronos</depend>
+  <depend>khronos_ros</depend>
+
+  <depend>spark_dsg</depend>
+  <depend>sensor_msgs</depend>
+  <depend>roscpp</depend>
+  <depend>glog_catkin</depend>
+  <depend>gflags_catkin</depend>
+
+  <export>
+  </export>
+</package>

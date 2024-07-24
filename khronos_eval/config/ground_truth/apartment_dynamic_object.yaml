@@ -1,0 +1,26 @@
+# Files to read for processing.
+rosbag_file: /data/datasets/khronos/tesse_cd/apartment_3/khronos_apartment_3.bag
+semantic_colors_file: /home/marcus/code/khronos_ws/src/khronos/khronos_ros/config/colors/uhumans2_apartment.csv
+
+# Dynamic object labels (full names).
+dynamic_object_colors:
+- [35,213,234,255]
+
+# Intrinsic camera params.
+fx: 415.69219381653056
+fy: 415.69219381653056
+cx: 360.0
+cy: 240.0
+
+# ROS parameters.
+rgb_topic: /tesse/seg_cam/rgb/image_raw
+depth_topic: /tesse/depth_cam/mono/image_raw
+camera_frame_id: left_cam
+body_frame_id: base_link_gt
+world_frame_id: world
+
+# Algorithm params.
+max_observation_distance: 5.0
+
+# Output.
+output_directory: /data/datasets/khronos/tesse_cd/apartment_3/ground_truth
