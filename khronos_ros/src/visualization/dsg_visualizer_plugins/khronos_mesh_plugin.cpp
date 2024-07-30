@@ -60,7 +60,7 @@ KhronosMeshPlugin::KhronosMeshPlugin(const Config& config,
       config(config::checkValid(config)),
       dynamic_config_(nh_, ""),
       mesh_visualizer_(config.mesh_visualizer, nh_) {
-  dynamic_config_.setUpdateCallback([this]() { has_changes_ = true; });
+  dynamic_config_.setUpdateCallback([this](const auto&) { has_changes_ = true; });
   changes_sub_ = nh_.subscribe(config.changes_topic, 1, &KhronosMeshPlugin::changesCallback, this);
 
   // Load files if specified.
@@ -84,9 +84,7 @@ KhronosMeshPlugin::KhronosMeshPlugin(const Config& config,
   }
 }
 
-void KhronosMeshPlugin::draw(const hydra::ConfigManager&,
-                             const std_msgs::Header& /* header */,
-                             const DynamicSceneGraph& graph) {
+void KhronosMeshPlugin::draw(const std_msgs::Header& /* header */, const DynamicSceneGraph& graph) {
   // Compute time stamps for normalization.
   computeTimingData(graph);
 
@@ -97,8 +95,7 @@ void KhronosMeshPlugin::draw(const hydra::ConfigManager&,
   publishObjectMesh(graph);
 }
 
-void KhronosMeshPlugin::reset(const std_msgs::Header& /*header*/,
-                              const DynamicSceneGraph& /*graph*/) {
+void KhronosMeshPlugin::reset(const std_msgs::Header& /*header*/) {
   mesh_visualizer_.resetBackground();
   mesh_visualizer_.resetObjects();
 }
@@ -154,7 +151,7 @@ void KhronosMeshPlugin::publishObjectMesh(const DynamicSceneGraph& dsg) {
       const uint64_t duration = attrs.last_observed_ns.front() - attrs.first_observed_ns.front();
       max_duration = std::max(max_duration, duration);
     }
-    coloring_fn = [this, max_duration](NodeId, const KhronosObjectAttributes& attrs) {
+    coloring_fn = [max_duration](NodeId, const KhronosObjectAttributes& attrs) {
       const uint64_t duration = attrs.last_observed_ns.front() - attrs.first_observed_ns.front();
       return hydra::colorFromTime(0, max_duration, duration);
     };

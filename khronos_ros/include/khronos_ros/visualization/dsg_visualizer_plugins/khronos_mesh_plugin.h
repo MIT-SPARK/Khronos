@@ -45,6 +45,7 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
+#include <hydra_ros/visualizer/config_wrapper.h>
 #include <hydra_ros/visualizer/dsg_visualizer_plugin.h>
 #include <khronos/backend/change_state.h>
 #include <khronos/common/common_types.h>
@@ -73,16 +74,14 @@ class KhronosMeshPlugin : public hydra::DsgVisualizerPlugin {
     KhronosMeshVisualizer::Config mesh_visualizer;
   } const config;
 
-  using DynamicConfig = hydra::ConfigWrapper<khronos_msgs::KhronosMeshPluginConfig>;
+  using DynamicConfig = hydra::visualizer::ConfigWrapper<khronos_msgs::KhronosMeshPluginConfig>;
 
   // Construction.
   KhronosMeshPlugin(const Config& config, const ros::NodeHandle& nh, const std::string& name);
 
   // Implement visualization interfaces.
-  void draw(const hydra::ConfigManager&,
-            const std_msgs::Header& header,
-            const DynamicSceneGraph& graph) override;
-  void reset(const std_msgs::Header& header, const DynamicSceneGraph& graph) override;
+  void draw(const std_msgs::Header& header, const DynamicSceneGraph& graph) override;
+  void reset(const std_msgs::Header& header) override;
   bool hasChange() const override { return has_changes_; }
   void clearChangeFlag() override { has_changes_ = false; }
 

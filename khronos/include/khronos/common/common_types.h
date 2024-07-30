@@ -45,7 +45,9 @@
 #include <hydra/reconstruction/voxel_types.h>
 #include <hydra/utils/timing_utilities.h>
 #include <opencv2/core/mat.hpp>
+#include <spark_dsg/node_attributes.h>
 #include <spark_dsg/dynamic_scene_graph.h>
+#include <spark_dsg/node_symbol.h>
 
 #include "khronos/common/pixel.h"
 

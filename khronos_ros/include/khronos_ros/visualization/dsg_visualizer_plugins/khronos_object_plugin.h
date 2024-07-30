@@ -68,10 +68,9 @@ class KhronosObjectPlugin : public hydra::DsgVisualizerPlugin {
   KhronosObjectPlugin(const Config& config, const ros::NodeHandle& nh, const std::string& name);
 
   // Implement visualization interfaces.
-  void draw(const hydra::ConfigManager&,
-            const std_msgs::Header& header,
+  void draw(const std_msgs::Header& header,
             const DynamicSceneGraph& graph) override;
-  void reset(const std_msgs::Header& header, const DynamicSceneGraph& graph) override;
+  void reset(const std_msgs::Header& header) override;
 
  protected:
   // Helper functions.

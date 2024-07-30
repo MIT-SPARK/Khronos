@@ -43,6 +43,7 @@
 #include <config_utilities/config_utilities.h>
 #include <config_utilities/parsing/ros.h>
 #include <hydra/common/global_info.h>
+#include <hydra/common/pipeline_queues.h>
 #include <hydra_ros/backend/ros_backend_publisher.h>
 #include <hydra_ros/frontend/ros_frontend_publisher.h>
 #include <hydra_ros/loop_closure/ros_lcd_registration.h>
@@ -120,8 +121,8 @@ void KhronosPipeline::stop() {
   frontend_->stop();
 
   if (config.finish_processing_on_shutdown) {
-    CLOG(1) << "[Khronos Pipeline] Finishing processing " << shared_state_->backend_queue.size()
-            << " backend packets ...";
+    CLOG(1) << "[Khronos Pipeline] Finishing processing "
+            << hydra::PipelineQueues::instance().backend_queue.size() << " backend packets ...";
   }
   backend_->stop();
   if (config.finish_processing_on_shutdown) {
@@ -233,11 +234,10 @@ void KhronosPipeline::setupMembers() {
     auto lcd_config = config::fromRos<hydra::LoopClosureConfig>(nh_, RosNs::LOOPCLOSURE);
     lcd_config.detector.num_semantic_classes = hydra::GlobalInfo::instance().getTotalLabels();
     CLOG(3) << "Number of classes for LCD: " << lcd_config.detector.num_semantic_classes;
-    shared_state_->lcd_queue.reset(new hydra::InputQueue<hydra::LcdInput::Ptr>());
     lcd_.reset(new LoopClosureModule(lcd_config, shared_state_));
 
     // noop if bow vectors are not enabled
-    bow_subscriber_ = std::make_unique<BowSubscriber>(nh_, shared_state_);
+    bow_subscriber_ = std::make_unique<BowSubscriber>(nh_);
     if (lcd_config.detector.enable_agent_registration) {
       lcd_->getDetector().setRegistrationSolver(0, std::make_unique<hydra::lcd::DsgAgentSolver>());
     }

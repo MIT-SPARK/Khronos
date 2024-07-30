@@ -42,6 +42,7 @@
 #include <hydra/backend/update_places_functor.h>
 #include <hydra/backend/update_rooms_buildings_functor.h>
 #include <hydra/common/global_info.h>
+#include <hydra/common/pipeline_queues.h>
 #include <hydra/rooms/room_finder.h>
 #include <hydra/utils/pgmo_mesh_traits.h>
 #include <khronos/backend/change_state.h>
@@ -103,14 +104,15 @@ void Backend::spin() {
   should_shutdown_ = false;
   bool should_shutdown = false;
   while (!should_shutdown) {
-    bool has_data = state_->backend_queue.poll();
+    auto& queue = hydra::PipelineQueues::instance().backend_queue;
+    bool has_data = queue.poll();
     if (hydra::GlobalInfo::instance().force_shutdown() || !has_data) {
       // copy over shutdown request
       should_shutdown = should_shutdown_;
     }
 
     if (has_data) {
-      spinCallback(*state_->backend_queue.pop());
+      spinCallback(*queue.pop());
     }
   }
 }
@@ -118,7 +120,7 @@ void Backend::spin() {
 void Backend::spinCallback(const hydra::BackendInput& input) {
   status_.reset();
   std::lock_guard<std::mutex> lock(mutex_);
-  last_timestamp_received_ = state_->backend_queue.back()->timestamp_ns;
+  last_timestamp_received_ = input.timestamp_ns;
   if (config.run_change_detection_every_n_frames > 0) {
     num_frames_since_last_change_detection_++;
   }

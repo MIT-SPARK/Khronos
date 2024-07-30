@@ -99,7 +99,7 @@ SpatioTemporalVisualizer::SpatioTemporalVisualizer(const ros::NodeHandle& nh)
       }),
       min_time_delta_(config.max_frame_rate > 0 ? 1.0 / config.max_frame_rate : 0),
       mesh_visualizer_(config.mesh_visualizer, nh),
-      dsg_visualizer_(nh),
+      dsg_renderer_(nh),
       map_(SpatioTemporalMap::Config()) {
   // Load all data and setup.
   LOG(INFO) << "Config:\n" << config;
@@ -133,8 +133,12 @@ void SpatioTemporalVisualizer::draw() {
   recolorObjectDsgBoundingBoxes();
   drawDynamicObjects();
   drawAgent();
-  dsg_visualizer_.setNeedRedraw();
-  dsg_visualizer_.redraw();
+
+  std_msgs::Header header;
+  header.stamp = ros::Time::now();
+  header.frame_id = config.global_frame_name;
+  dsg_renderer_.draw(header, *current_dsg_);
+
   mesh_visualizer_.drawBackground(*current_dsg_, getBackgroundMeshColoring());
   mesh_visualizer_.drawObjects(*current_dsg_, getObjectMeshColors());
   needs_redraw_ = false;
@@ -193,7 +197,6 @@ void SpatioTemporalVisualizer::updateDsgTime() {
     return;
   }
   current_dsg_ = map_.getDsgPtr(robot_time_);
-  dsg_visualizer_.setGraph(current_dsg_, false);
 
   // Update time tracking.
   prev_query_time_ = query_time_;
@@ -209,8 +212,12 @@ void SpatioTemporalVisualizer::reset() {
   // Create a new empty scene graph.
   current_dsg_.reset(new DynamicSceneGraph(layer_ids_));
   current_dsg_->createDynamicLayer(DsgLayers::AGENTS, config.robot_prefix.key);
-  dsg_visualizer_.reset();
-  dsg_visualizer_.setGraph(current_dsg_);
+
+  std_msgs::Header header;
+  header.stamp = ros::Time::now();
+  header.frame_id = config.global_frame_name;
+  dsg_renderer_.reset(header);
+
   mesh_visualizer_.resetBackground();
   mesh_visualizer_.resetObjects();
   resetDynamicObjects();
@@ -547,7 +554,7 @@ void SpatioTemporalVisualizer::recolorObjectDsgBoundingBoxes() {
     };
   } else if (dyn_config.object_bbox_color == 1) {
     // Instance.
-    coloring_fn = [this](const KhronosObjectAttributes&, const NodeId id) {
+    coloring_fn = [](const KhronosObjectAttributes&, const NodeId id) {
       return Color::rainbowId(NodeSymbol(id).categoryId());
     };
   } else {

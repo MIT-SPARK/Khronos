@@ -62,9 +62,7 @@ KhronosObjectPlugin::KhronosObjectPlugin(const Config& config,
   traj_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("trajectory", config.queue_size, true);
 }
 
-void KhronosObjectPlugin::draw(const hydra::ConfigManager&,
-                               const std_msgs::Header& header,
-                               const DynamicSceneGraph& graph) {
+void KhronosObjectPlugin::draw(const std_msgs::Header& header, const DynamicSceneGraph& graph) {
   if (traj_pub_.getNumSubscribers() == 0) {
     return;
   }
@@ -116,8 +114,7 @@ void KhronosObjectPlugin::draw(const hydra::ConfigManager&,
   traj_pub_.publish(msg);
 }
 
-void KhronosObjectPlugin::reset(const std_msgs::Header& header,
-                                const DynamicSceneGraph& /* graph */) {
+void KhronosObjectPlugin::reset(const std_msgs::Header& header) {
   // Clear all objects.
   visualization_msgs::MarkerArray msg;
   for (const auto& id_pair : previous_objects_) {

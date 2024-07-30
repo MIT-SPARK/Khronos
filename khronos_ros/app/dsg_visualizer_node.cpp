@@ -35,6 +35,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
+#include <config_utilities/parsing/ros.h>
 #include <glog/logging.h>
 #include <hydra_ros/visualizer/hydra_visualizer.h>
 #include <ros/ros.h>
@@ -55,8 +56,9 @@ int main(int argc, char** argv) {
 
   ros::NodeHandle nh("~");
 
-  hydra::HydraVisualizer visualizer(nh);
-  visualizer.spin();
+  const auto config = config::fromRos<hydra::HydraVisualizer::Config>(nh);
+  hydra::HydraVisualizer visualizer(config);
+  ros::spin();
 
   return 0;
 }
