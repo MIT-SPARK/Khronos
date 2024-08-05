@@ -38,10 +38,12 @@
 #include "khronos/active_window/graph_builder.h"
 
 #include <config_utilities/config_utilities.h>
+#include <hydra/common/launch_callbacks.h>
 #include <hydra/utils/mesh_utilities.h>
 #include <hydra/utils/pgmo_mesh_interface.h>
 #include <hydra/utils/pgmo_mesh_traits.h>
 #include <kimera_pgmo/compression/delta_compression.h>
+#include <spark_dsg/colormaps.h>
 
 #include "khronos/active_window/data/output_data.h"
 
@@ -122,7 +124,7 @@ void GraphBuilder::addObjectToGraph(const KhronosObjectAttributes& object) {
 
   // Compute all attributes not necessarily given in the input object.
   auto attrs = std::make_unique<KhronosObjectAttributes>(object);
-  attrs->color = Color::rainbowId(object.semantic_label);
+  attrs->color = spark_dsg::colormaps::rainbowId(object.semantic_label);
   attrs->position = object.bounding_box.world_P_center.cast<double>();
   attrs->name = object_id.getLabel();
   // TODO(lschmid): Consider moving this into a proper attribute.

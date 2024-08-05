@@ -45,8 +45,8 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra_ros/visualizer/config_wrapper.h>
-#include <hydra_ros/visualizer/dsg_visualizer_plugin.h>
+#include <hydra_visualizer/plugins/visualizer_plugin.h>
+#include <hydra_visualizer/utils/config_wrapper.h>
 #include <khronos/backend/change_state.h>
 #include <khronos/common/common_types.h>
 #include <khronos_msgs/Changes.h>
@@ -56,7 +56,7 @@
 
 namespace khronos {
 
-class KhronosMeshPlugin : public hydra::DsgVisualizerPlugin {
+class KhronosMeshPlugin : public hydra::VisualizerPlugin {
  public:
   // Config that is const and loaded.
   struct Config {
@@ -116,7 +116,7 @@ class KhronosMeshPlugin : public hydra::DsgVisualizerPlugin {
 
   // Registration.
   inline static const auto registration_ =
-      config::RegistrationWithConfig<hydra::DsgVisualizerPlugin,
+      config::RegistrationWithConfig<hydra::VisualizerPlugin,
                                      KhronosMeshPlugin,
                                      KhronosMeshPlugin::Config,
                                      ros::NodeHandle,

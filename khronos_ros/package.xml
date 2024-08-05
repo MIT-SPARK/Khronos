@@ -21,6 +21,7 @@
   <depend>spark_dsg</depend>
   <depend>hydra</depend>
   <depend>hydra_ros</depend>
+  <depend>hydra_visualizer</depend>
   <depend>pose_graph_tools</depend>
   <depend>pose_graph_tools_ros</depend>
   <depend>kimera_pgmo</depend>

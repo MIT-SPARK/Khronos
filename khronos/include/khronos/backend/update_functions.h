@@ -44,7 +44,6 @@
 #include <config_utilities/config_utilities.h>
 #include <gtsam/nonlinear/Values.h>
 #include <hydra/backend/update_functions.h>
-#include <hydra/common/common.h>
 #include <khronos/common/common_types.h>
 
 namespace khronos {

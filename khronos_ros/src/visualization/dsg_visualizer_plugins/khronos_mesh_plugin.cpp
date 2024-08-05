@@ -37,6 +37,8 @@
 
 #include "khronos_ros/visualization/dsg_visualizer_plugins/khronos_mesh_plugin.h"
 
+#include <spark_dsg/colormaps.h>
+
 #include "khronos_ros/utils/ros_conversions.h"
 #include "khronos_ros/visualization/visualization_utils.h"
 
@@ -56,7 +58,7 @@ void declare_config(KhronosMeshPlugin::Config& config) {
 KhronosMeshPlugin::KhronosMeshPlugin(const Config& config,
                                      const ros::NodeHandle& nh,
                                      const std::string& name)
-    : DsgVisualizerPlugin(nh, name),
+    : VisualizerPlugin(nh, name),
       config(config::checkValid(config)),
       dynamic_config_(nh_, ""),
       mesh_visualizer_(config.mesh_visualizer, nh_) {
@@ -159,7 +161,7 @@ void KhronosMeshPlugin::publishObjectMesh(const DynamicSceneGraph& dsg) {
     // Changes (=presence).
     coloring_fn = [this](NodeId, const KhronosObjectAttributes& attrs) {
       if (attrs.first_observed_ns.front() > current_query_time_) {
-        return Color::gray(0.7);  // Not yet observed.
+        return spark_dsg::colormaps::gray(0.7);  // Not yet observed.
       } else if (attrs.last_observed_ns.front() < current_query_time_) {
         return Color::red();  // Absent.
       } else {
@@ -227,11 +229,20 @@ hydra::MeshColoring::Ptr KhronosMeshPlugin::getBackgroundColoring(
     const DynamicSceneGraph& dsg) const {
   const auto& config = dynamic_config_.get();
   if (config.color_mode == 1) {
-    return std::make_shared<hydra::FirstSeenMeshColoring>(time_start_, time_end_);
+    auto coloring = std::make_shared<hydra::FirstSeenMeshColoring>();
+    coloring->setBounds(time_start_, time_end_);
+    return coloring;
   } else if (config.color_mode == 2) {
-    return std::make_shared<hydra::LastSeenMeshColoring>(time_start_, time_end_);
+    auto coloring = std::make_shared<hydra::LastSeenMeshColoring>();
+    coloring->setBounds(time_start_, time_end_);
+    return coloring;
   } else if (config.color_mode == 3) {
-    return std::make_shared<hydra::SeenDurationMeshColoring>(*dsg.mesh());
+    auto coloring = std::make_shared<hydra::SeenDurationMeshColoring>();
+    auto mesh = dsg.mesh();
+    if (mesh) {
+      coloring->setMesh(*mesh);
+    }
+    return coloring;
   } else if (config.color_mode == 4) {
     return std::make_shared<ChangeMeshColoring>(changes_.background_changes);
   }
@@ -253,7 +264,7 @@ Color colorFromChangeState(ChangeState state) {
     case ChangeState::kPersistent:
       return Color::blue();
     case ChangeState::kUnobserved:
-      return Color::gray(0.7);
+      return spark_dsg::colormaps::gray(0.7);
   }
   return Color::black();
 }

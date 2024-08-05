@@ -44,6 +44,7 @@
 #include <config_utilities/parsing/ros.h>
 #include <config_utilities/types/path.h>
 #include <khronos_msgs/SpatioTemporalVisualizerState.h>
+#include <spark_dsg/colormaps.h>
 #include <visualization_msgs/MarkerArray.h>
 
 #include "khronos/utils/geometry_utils.h"
@@ -65,6 +66,8 @@ void declare_config(KhronosSpatioTemporalVisConfig& config) {
 }  // namespace khronos_msgs
 
 namespace khronos {
+
+namespace colormaps = spark_dsg::colormaps;
 
 void declare_config(SpatioTemporalVisualizer::Config& config) {
   using namespace config;
@@ -139,7 +142,12 @@ void SpatioTemporalVisualizer::draw() {
   header.frame_id = config.global_frame_name;
   dsg_renderer_.draw(header, *current_dsg_);
 
-  mesh_visualizer_.drawBackground(*current_dsg_, getBackgroundMeshColoring());
+  const auto mesh = current_dsg_->mesh();
+  auto mesh_coloring = getBackgroundMeshColoring();
+  if (mesh && mesh_coloring) {
+    mesh_coloring->setMesh(*mesh);
+  }
+  mesh_visualizer_.drawBackground(*current_dsg_, mesh_coloring);
   mesh_visualizer_.drawObjects(*current_dsg_, getObjectMeshColors());
   needs_redraw_ = false;
 }
@@ -341,9 +349,9 @@ void SpatioTemporalVisualizer::visualizeDynamicObject(const std_msgs::Header& he
 
   // Setup shared preliminaries.
   const Color color =
-      dynamic_config_.get().dynamic_object_color == 1 ? Color::pink() : Color::rainbowId(id);
+      dynamic_config_.get().dynamic_object_color == 1 ? Color::pink() : colormaps::rainbowId(id);
   const Color point_color =
-      dynamic_config_.get().dynamic_object_color != 0 ? Color::pink() : Color::rainbowId(id);
+      dynamic_config_.get().dynamic_object_color != 0 ? Color::pink() : colormaps::rainbowId(id);
   size_t qt_index = std::lower_bound(attrs.trajectory_timestamps.begin(),
                                      attrs.trajectory_timestamps.end(),
                                      query_time_,
@@ -531,10 +539,10 @@ KhronosMeshVisualizer::ObjectColors SpatioTemporalVisualizer::getObjectMeshColor
 hydra::MeshColoring::Ptr SpatioTemporalVisualizer::getBackgroundMeshColoring() const {
   const auto& config = dynamic_config_.get();
   if (config.background_color == 1) {
-    return std::make_shared<hydra::FirstSeenMeshColoring>(*current_dsg_->mesh());
+    return std::make_shared<hydra::FirstSeenMeshColoring>();
   }
   if (config.background_color == 2) {
-    return std::make_shared<hydra::LastSeenMeshColoring>(*current_dsg_->mesh());
+    return std::make_shared<hydra::LastSeenMeshColoring>();
   }
   return nullptr;
 }
@@ -550,12 +558,12 @@ void SpatioTemporalVisualizer::recolorObjectDsgBoundingBoxes() {
   if (dyn_config.object_bbox_color == 0) {
     // Semantics.
     coloring_fn = [](const KhronosObjectAttributes& attrs, const NodeId) {
-      return Color::rainbowId(attrs.semantic_label);
+      return colormaps::rainbowId(attrs.semantic_label);
     };
   } else if (dyn_config.object_bbox_color == 1) {
     // Instance.
     coloring_fn = [](const KhronosObjectAttributes&, const NodeId id) {
-      return Color::rainbowId(NodeSymbol(id).categoryId());
+      return colormaps::rainbowId(NodeSymbol(id).categoryId());
     };
   } else {
     // Presence.
@@ -570,7 +578,7 @@ void SpatioTemporalVisualizer::recolorObjectDsgBoundingBoxes() {
         if (hasDisappeared(attrs, query_time_)) {
           return Color::red();
         }
-        return Color::gray(0.7);
+        return colormaps::gray(0.7);
       }
     };
   }

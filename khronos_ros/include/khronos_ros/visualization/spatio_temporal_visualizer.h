@@ -45,8 +45,8 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/robot_prefix_config.h>
-#include <hydra_ros/visualizer/config_wrapper.h>
-#include <hydra_ros/visualizer/scene_graph_renderer.h>
+#include <hydra_visualizer/scene_graph_renderer.h>
+#include <hydra_visualizer/utils/config_wrapper.h>
 #include <khronos/common/common_types.h>
 #include <khronos/spatio_temporal_map/spatio_temporal_map.h>
 #include <khronos_msgs/KhronosSpatioTemporalVisConfig.h>

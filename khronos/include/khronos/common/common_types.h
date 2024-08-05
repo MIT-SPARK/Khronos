@@ -59,7 +59,7 @@ namespace khronos {
 
 // Images.
 using Image = cv::Mat;
-using hydra::Color;
+using spark_dsg::Color;
 
 // Time.
 using hydra::fromSeconds;

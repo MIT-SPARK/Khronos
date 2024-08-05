@@ -40,10 +40,13 @@
 #include <config_utilities/config.h>
 #include <config_utilities/types/enum.h>
 #include <config_utilities/validation.h>
+#include <spark_dsg/colormaps.h>
 
 #include "khronos_ros/visualization/visualization_utils.h"
 
 namespace khronos {
+
+namespace colormaps = spark_dsg::colormaps;
 
 void declare_config(KhronosObjectPlugin::Config& config) {
   using namespace config;
@@ -58,7 +61,7 @@ void declare_config(KhronosObjectPlugin::Config& config) {
 KhronosObjectPlugin::KhronosObjectPlugin(const Config& config,
                                          const ros::NodeHandle& nh,
                                          const std::string& name)
-    : DsgVisualizerPlugin(nh, name), config(config::checkValid(config)) {
+    : VisualizerPlugin(nh, name), config(config::checkValid(config)) {
   traj_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("trajectory", config.queue_size, true);
 }
 
@@ -178,9 +181,9 @@ void KhronosObjectPlugin::addClearingMarkers(const std_msgs::Header& header,
 Color KhronosObjectPlugin::getColor(const KhronosObjectAttributes& attrs, const uint64_t id) const {
   switch (config.color_mode) {
     case Config::ColorMode::ID:
-      return Color::rainbowId(id, config.id_color_revolutions);
+      return colormaps::rainbowId(id, config.id_color_revolutions);
     case Config::ColorMode::SEMANTIC:
-      return Color::rainbowId(attrs.semantic_label, config.id_color_revolutions);
+      return colormaps::rainbowId(attrs.semantic_label, config.id_color_revolutions);
     case Config::ColorMode::ATTRIBUTE:
       return attrs.color;
     default:

@@ -41,6 +41,7 @@
 #include <numeric>
 
 #include <config_utilities/config.h>
+#include <config_utilities/validation.h>
 #include <spark_dsg/serialization/binary_serialization.h>
 #include <spark_dsg/serialization/graph_binary_serialization.h>
 #include <spark_dsg/serialization/versioning.h>

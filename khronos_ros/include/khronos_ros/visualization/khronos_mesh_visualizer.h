@@ -45,7 +45,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include <hydra_ros/visualizer/mesh_color_adaptor.h>
+#include <hydra_visualizer/color/mesh_color_adaptor.h>
 #include <khronos/common/common_types.h>
 #include <ros/node_handle.h>
 #include <tf2_ros/transform_broadcaster.h>

@@ -37,7 +37,7 @@
 
 #include <config_utilities/parsing/ros.h>
 #include <glog/logging.h>
-#include <hydra_ros/visualizer/hydra_visualizer.h>
+#include <hydra_visualizer/dsg_visualizer.h>
 #include <ros/ros.h>
 
 #include "khronos_ros/visualization/dsg_visualizer_plugins/khronos_mesh_plugin.h"
@@ -56,8 +56,8 @@ int main(int argc, char** argv) {
 
   ros::NodeHandle nh("~");
 
-  const auto config = config::fromRos<hydra::HydraVisualizer::Config>(nh);
-  hydra::HydraVisualizer visualizer(config);
+  const auto config = config::fromRos<hydra::DsgVisualizer::Config>(nh);
+  hydra::DsgVisualizer visualizer(config);
   ros::spin();
 
   return 0;

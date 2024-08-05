@@ -38,6 +38,7 @@
 #include "khronos/active_window/object_extraction/mesh_object_extractor.h"
 
 #include <sstream>
+#include <spark_dsg/colormaps.h>
 
 #include "khronos/active_window/data/reconstruction_types.h"
 #include "khronos/utils/geometry_utils.h"
@@ -233,7 +234,7 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
       if (config.visualize_classification) {
         // Do not prune away low confidence voxels but instead visualize them.
         // NOTE(lschmid): High jack confidence -1 to idnicate not enough observations.
-        tsdf_voxel.color = confidence >= 0 ? Color::quality(confidence) : Color::gray();
+        tsdf_voxel.color = confidence >= 0 ? spark_dsg::colormaps::quality(confidence) : Color::gray();
       } else if (confidence < config.min_object_reconstruction_confidence) {
         tsdf_voxel.distance = map_config.truncation_distance;
       }

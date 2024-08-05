@@ -44,13 +44,13 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra_ros/visualizer/dsg_visualizer_plugin.h>
+#include <hydra_visualizer/plugins/visualizer_plugin.h>
 #include <khronos/common/common_types.h>
 #include <visualization_msgs/MarkerArray.h>
 
 namespace khronos {
 
-class KhronosObjectPlugin : public hydra::DsgVisualizerPlugin {
+class KhronosObjectPlugin : public hydra::VisualizerPlugin {
  public:
   // Config.
   struct Config {
@@ -68,8 +68,7 @@ class KhronosObjectPlugin : public hydra::DsgVisualizerPlugin {
   KhronosObjectPlugin(const Config& config, const ros::NodeHandle& nh, const std::string& name);
 
   // Implement visualization interfaces.
-  void draw(const std_msgs::Header& header,
-            const DynamicSceneGraph& graph) override;
+  void draw(const std_msgs::Header& header, const DynamicSceneGraph& graph) override;
   void reset(const std_msgs::Header& header) override;
 
  protected:
@@ -95,7 +94,7 @@ class KhronosObjectPlugin : public hydra::DsgVisualizerPlugin {
 
   // Registration.
   inline static const auto registration_ =
-      config::RegistrationWithConfig<hydra::DsgVisualizerPlugin,
+      config::RegistrationWithConfig<hydra::VisualizerPlugin,
                                      KhronosObjectPlugin,
                                      KhronosObjectPlugin::Config,
                                      ros::NodeHandle,
