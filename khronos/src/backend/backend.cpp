@@ -39,11 +39,8 @@
 
 #include <config_utilities/types/path.h>
 #include <glog/logging.h>
-#include <hydra/backend/update_places_functor.h>
-#include <hydra/backend/update_rooms_buildings_functor.h>
 #include <hydra/common/global_info.h>
 #include <hydra/common/pipeline_queues.h>
-#include <hydra/rooms/room_finder.h>
 #include <hydra/utils/pgmo_mesh_traits.h>
 #include <khronos/backend/change_state.h>
 #include <khronos/common/common_types.h>
@@ -90,10 +87,11 @@ Backend::Backend(const Config& config,
     : hydra::BackendModule(config::checkValid(config), dsg, state),
       config(config),
       map_(config.spatio_temporal_map) {
-  setupKhronosFunctors();
   change_detector_ = std::make_unique<SequentialChangeDetector>(config.change_detection);
   change_detector_->setDsg(unmerged_graph_);
   reconciler_ = std::make_unique<Reconciler>(config.reconciler);
+  update_functors_.push_back(
+      std::make_shared<UpdateObjectsFunctor>(config.update_objects, new_proposed_merges_));
 }
 
 Backend::~Backend() {}
@@ -361,34 +359,6 @@ void Backend::extractProposedMergeResults(size_t timestamp_ns) {
   // Clear the proposed merges
   deformation_graph_->clearTemporaryStructures();
   new_proposed_merges_.clear();
-}
-
-void Backend::setupKhronosFunctors() {
-  using namespace hydra;
-  // The object functor will write proposed merges to new_proposed_mergs_. Factor this out more
-  // elegantly in the future.
-  layer_functors_[DsgLayers::OBJECTS] =
-      std::make_shared<UpdateObjectsFunctor>(config.update_objects, new_proposed_merges_);
-
-  if (hydra::GlobalInfo::instance().getConfig().enable_places) {
-    layer_functors_[DsgLayers::PLACES] = std::make_shared<UpdatePlacesFunctor>(
-        config.places_merge_pos_threshold_m, config.places_merge_distance_tolerance_m);
-  }
-
-  if (config.enable_rooms) {
-    auto room_functor = std::make_shared<UpdateRoomsFunctor>(config.room_finder);
-    if (logs_) {
-      const auto log_path = logs_->getLogDir("backend/room_filtrations");
-      room_functor->room_finder->enableLogging(log_path);
-    }
-
-    layer_functors_[DsgLayers::ROOMS] = room_functor;
-  }
-
-  if (config.enable_buildings) {
-    layer_functors_[DsgLayers::BUILDINGS] = std::make_shared<UpdateBuildingsFunctor>(
-        config.building_color, config.building_semantic_label);
-  }
 }
 
 void Backend::copyMeshDelta(const hydra::BackendInput& input) {

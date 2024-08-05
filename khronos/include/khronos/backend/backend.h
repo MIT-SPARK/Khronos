@@ -135,8 +135,6 @@ class Backend : public hydra::BackendModule {
 
   void extractProposedMergeResults(size_t timestamp_ns);
 
-  void setupKhronosFunctors();
-
   void runChangeDetection();
 
   void runChangeDetectionThread(DynamicSceneGraph::Ptr dsg,
