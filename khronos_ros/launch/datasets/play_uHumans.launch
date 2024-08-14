@@ -6,10 +6,7 @@
   <arg name="play_rate" default="1"/>
   <arg name="sim_time_required" default="true"/>
   <arg name="use_gt_frame" default="true"/>
-  <arg name="use_prerecorded_objects" default="false"/>
   <arg name="use_oneformer" default="false"/>
-  <arg name="semantic_image_topic" default="/tesse/seg_cam/rgb/image_raw" unless="$(arg use_oneformer)"/>
-  <arg name="semantic_image_topic" default="semantic_color/image_raw" if="$(arg use_oneformer)"/>
   <arg name="paused" default="false"/>
 
   <!-- ============ Run ============ -->

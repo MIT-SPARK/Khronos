@@ -27,8 +27,6 @@ cs_add_library(${PROJECT_NAME}
         src/experiments/experiment_directory.cpp
         src/khronos_pipeline.cpp
         src/visualization/active_window_visualizer.cpp
-        src/visualization/dsg_visualizer_plugins/khronos_mesh_plugin.cpp
-        src/visualization/dsg_visualizer_plugins/khronos_object_plugin.cpp
         src/visualization/khronos_mesh_visualizer.cpp
         src/visualization/visualization_utils.cpp
         src/visualization/spatio_temporal_visualizer.cpp
@@ -43,9 +41,6 @@ add_dependencies(${PROJECT_NAME} ${catkin_EXPORTED_TARGETS} ${${PROJECT_NAME}_EX
 
 add_executable(khronos_node app/khronos_node.cpp)
 target_link_libraries(khronos_node ${PROJECT_NAME} ${gflags_LIBRARIES})
-
-add_executable(dsg_visualizer_node app/dsg_visualizer_node.cpp)
-target_link_libraries(dsg_visualizer_node ${PROJECT_NAME} ${gflags_LIBRARIES})
 
 add_executable(spatio_temporal_visualizer_node app/spatio_temporal_visualizer_node.cpp)
 target_link_libraries(spatio_temporal_visualizer_node ${PROJECT_NAME} ${gflags_LIBRARIES})

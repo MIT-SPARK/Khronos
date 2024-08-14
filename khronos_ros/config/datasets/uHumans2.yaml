@@ -1,17 +1,16 @@
 
 # uHumans2 dataset intrinsics.
----
 type: RosInput
 tf_verbosity: 1
 clear_queue_on_fail: true
-receivers:
-  - type: ImageReceiver
-    input_separation_s: 0.099 # Limit Input rate to max 10 Hz
+inputs:
+  left_cam:
+    receiver:
+      type: ImageReceiver
+      input_separation_s: 0.099 # Limit Input rate to max 10 Hz
     sensor:
       type: camera_info
       min_range: $(arg sensor_min_range)
       max_range: $(arg sensor_max_range)
-      camera_info_topic: $(arg rgb_info_topic)
       extrinsics:
         type: ros
-        sensor_frame: $(arg sensor_frame)
