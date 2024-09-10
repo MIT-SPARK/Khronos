@@ -30,14 +30,17 @@ Khronos is a unified approach that can reason about short-term dynamics and long
 
 If you use this code in your work, please cite the following paper:
 
-Lukas Schmid, Marcus Abate, Yun Chang, and Luca Carlone, "**Khronos: A Unified Approach for Spatio-Temporal Metric-Semantic SLAM in Dynamic Environments**", in *Robotics: Science and Systems*, 2024. [ [ArXiv](https://arxiv.org/abs/2402.13817) | [Video](https://www.youtube.com/watch?v=YsH6YIL5_kc) ]
+Lukas Schmid, Marcus Abate, Yun Chang, and Luca Carlone, "**Khronos: A Unified Approach for Spatio-Temporal Metric-Semantic SLAM in Dynamic Environments**", in *Robotics: Science and Systems (RSS)*, Delft, the Netherlands, July, 2024. [ [RSS](https://www.roboticsproceedings.org/rss20/p081.html) | [ArXiv](https://arxiv.org/abs/2402.13817) | [Video](https://www.youtube.com/watch?v=YsH6YIL5_kc) ]
 
 ```bibtex
-@inproceedings{Schmid2024Khronos,
-title={Khronos: A Unified Approach for Spatio-Temporal Metric-Semantic SLAM in Dynamic Environments},
-author={Lukas Schmid and Marcus Abate and Yun Chang and Luca Carlone},
-year={2024},
-booktitle = "Proc. of Robotics: Science and Systems",
+@inproceedings{Schmid-RSS24-Khronos,
+title     = {Khronos: A Unified Approach for Spatio-Temporal Metric-Semantic SLAM in Dynamic Environments},
+author    = {Lukas Schmid and Marcus Abate and Yun Chang and Luca Carlone},
+booktitle = {Proc. of Robotics: Science and Systems (RSS)},
+year      = {2024},
+month     = {July},
+address   = {Delft, Netherlands}, 
+doi       = {10.15607/RSS.2024.XX.081}
 }
 ```
 
