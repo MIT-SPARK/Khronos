@@ -38,6 +38,7 @@
 #include "khronos/active_window/object_extraction/mesh_object_extractor.h"
 
 #include <sstream>
+
 #include <spark_dsg/colormaps.h>
 
 #include "khronos/active_window/data/reconstruction_types.h"
@@ -95,6 +96,7 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractObject(const Track& tra
   object->semantic_label = track.semantic_id;
   object->first_observed_ns = {track.first_seen};
   object->last_observed_ns = {track.last_seen};
+  object->position = object->bounding_box.world_P_center.cast<double>();
   return object;
 }
 
@@ -189,6 +191,9 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
     return nullptr;
   }
 
+  CLOG(5) << "[MeshObjectExtractor] Using extents of " << extent << " for " << getTrackName(track)
+          << " during extraction";
+
   // Setup a volumetric map to reconstruct this object.
   VolumetricMap::Config map_config;
   if (config.object_reconstruction_resolution < 0.f) {
@@ -198,10 +203,12 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
   }
   map_config.voxels_per_side = 8;
   map_config.truncation_distance = map_config.voxel_size * 2;
+  map_config.with_semantics = true;
+  map_config.with_tracking = false;
   if (!config::isValid(map_config)) {
     return nullptr;
   }
-  VolumetricMap map(map_config, true, false);
+  VolumetricMap map(map_config);
 
   // Allocate all blocks.
   TsdfLayer& tsdf_layer = map.getTsdfLayer();
@@ -215,6 +222,12 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
       }
     }
   }
+
+  const Eigen::IOFormat fmt(
+      Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "; ", "", "", "[", "]");
+  CLOG(5) << "[MeshObjectExtractor] Allocated TSDF layer for " << getTrackName(track) << " with "
+          << tsdf_layer.numBlocks() << " blocks (min_index=" << min_block_index.format(fmt)
+          << ", max_index=" << max_block_index.format(fmt) << ")";
 
   // Perform 3D reconstruction using projective updates over all frames.
   for (const auto& data_id_pair : frames) {
@@ -234,7 +247,8 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
       if (config.visualize_classification) {
         // Do not prune away low confidence voxels but instead visualize them.
         // NOTE(lschmid): High jack confidence -1 to idnicate not enough observations.
-        tsdf_voxel.color = confidence >= 0 ? spark_dsg::colormaps::quality(confidence) : Color::gray();
+        tsdf_voxel.color =
+            confidence >= 0 ? spark_dsg::colormaps::quality(confidence) : Color::gray();
       } else if (confidence < config.min_object_reconstruction_confidence) {
         tsdf_voxel.distance = map_config.truncation_distance;
       }

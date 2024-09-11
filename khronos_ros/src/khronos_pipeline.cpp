@@ -47,7 +47,6 @@
 #include <hydra_ros/backend/ros_backend_publisher.h>
 #include <hydra_ros/frontend/ros_frontend_publisher.h>
 #include <hydra_ros/loop_closure/ros_lcd_registration.h>
-#include <khronos/active_window/data/output_data.h>
 #include <khronos/utils/khronos_attribute_utils.h>
 #include <khronos_msgs/Changes.h>
 
@@ -73,10 +72,6 @@ void declare_config(KhronosPipeline::Config& config) {
 
 KhronosPipeline::Config initializeConfig(const ros::NodeHandle& nh) {
   auto config = config::fromRos<KhronosPipeline::Config>(nh);
-  // Synchronize global map info and AW params.
-  config.map.voxel_size = config.active_window.volumetric_map.voxel_size;
-  config.map.voxels_per_side = config.active_window.volumetric_map.voxels_per_side;
-  config.map.truncation_distance = config.active_window.volumetric_map.truncation_distance;
   config.enable_places = false;
   return config;
 }
@@ -108,14 +103,14 @@ void KhronosPipeline::stop() {
 
   input_module_->stop();
   if (config.finish_processing_on_shutdown) {
-    CLOG(1) << "[Khronos Pipeline] Finishing processing " << input_queue_->size()
+    CLOG(1) << "[Khronos Pipeline] Finishing processing " << active_window_->queue()->size()
             << " input frames...";
   }
 
   active_window_->stop();
   if (config.finish_processing_on_shutdown) {
     active_window_->finishMapping();
-    CLOG(1) << "[Khronos Pipeline] Finishing processing " << frontend_queue_->size()
+    CLOG(1) << "[Khronos Pipeline] Finishing processing " << frontend_->queue()->size()
             << " frontend packets ...";
   }
   frontend_->stop();
@@ -209,21 +204,14 @@ void KhronosPipeline::setupDsgs() {
 }
 
 void KhronosPipeline::setupMembers() {
-  // Setup input->AW->frontend queues.
-  input_queue_ = std::make_shared<InputQueue>();
-  frontend_queue_ = std::make_shared<FrontendQueue>();
-
-  // Setup the input module.
-  input_module_ = std::make_shared<hydra::RosInputModule>(config.input, input_queue_);
-
-  // Setup the active window.
-  active_window_ = std::make_shared<ActiveWindow>(config.active_window);
-  active_window_->setInputQueue(input_queue_);
-  active_window_->setOutputQueue(frontend_queue_);
-
   // Setup the frontend.
   frontend_ = std::make_shared<GraphBuilder>(config.frontend, frontend_dsg_, shared_state_);
-  frontend_->setQueue(frontend_queue_);
+
+  // Setup the active window.
+  active_window_ = std::make_shared<ActiveWindow>(config.active_window, frontend_->queue());
+
+  // Setup the input module.
+  input_module_ = std::make_shared<hydra::RosInputModule>(config.input, active_window_->queue());
 
   // Setup the backend.
   backend_ = std::make_shared<Backend>(config.backend, backend_dsg_, shared_state_);

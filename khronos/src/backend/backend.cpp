@@ -39,11 +39,13 @@
 
 #include <config_utilities/types/path.h>
 #include <glog/logging.h>
+#include <hydra/backend/mst_factors.h>
 #include <hydra/common/global_info.h>
 #include <hydra/common/pipeline_queues.h>
 #include <hydra/utils/pgmo_mesh_traits.h>
-#include <khronos/backend/change_state.h>
-#include <khronos/common/common_types.h>
+
+#include "khronos/backend/change_state.h"
+#include "khronos/common/common_types.h"
 
 namespace khronos {
 
@@ -217,7 +219,13 @@ void Backend::finishProcessing() {
 
 void Backend::optimize(size_t timestamp_ns, bool force_find_merge_proposals) {
   if (config.add_places_to_deformation_graph) {
-    addPlacesToDeformationGraph(timestamp_ns);
+    const auto vertex_key = hydra::GlobalInfo::instance().getRobotPrefix().vertex_key;
+    hydra::addPlacesToDeformationGraph(*unmerged_graph_,
+                                       timestamp_ns,
+                                       *deformation_graph_,
+                                       config.pgmo.place_edge_variance,
+                                       config.pgmo.place_mesh_variance,
+                                       [vertex_key](auto) { return vertex_key; });
   }
 
   addObjectsToDeformationGraph(timestamp_ns);
@@ -433,9 +441,9 @@ void Backend::save(const hydra::LogSetup& log_setup) {
 void Backend::fixInputPoses(const hydra::BackendInput& input) {
   std::vector<std::pair<gtsam::Key, gtsam::Pose3>> prior_measurements;
   for (const auto& msg : input.agent_updates.pose_graphs) {
-    status_.new_factors += msg->edges.size();
+    status_.new_factors += msg.edges.size();
 
-    for (const auto& node : msg->nodes) {
+    for (const auto& node : msg.nodes) {
       if (node.key == 0) {
         continue;  // This should already be set by 'add_initial_prior'
       }

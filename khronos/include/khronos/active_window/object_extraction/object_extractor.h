@@ -40,7 +40,6 @@
 #include <optional>
 
 #include "khronos/active_window/data/frame_data_buffer.h"
-#include "khronos/active_window/data/output_data.h"
 #include "khronos/active_window/data/track.h"
 
 namespace khronos {

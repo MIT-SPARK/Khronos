@@ -57,7 +57,10 @@ void ProjectiveIntegrator::updateObjectMap(const FrameData& data,
   current_data_ = &data;
   // NOTE(lschmid): We abuse 'canIntegrate' which is not used in hydra.
   semantic_integrator_->canIntegrate(object_id);
-  hydra::ProjectiveIntegrator::updateMap(data.input, map, false);
+
+  // NOTE(nathan) we side-step finding "in-view" blocks and just integrate all of the allocated blocks
+  const auto indices = map.getTsdfLayer().allocatedBlockIndices();
+  hydra::ProjectiveIntegrator::updateBlocks(indices, data.input, map);
 }
 
 bool ProjectiveIntegrator::computeLabel(const InputData& /* data */,

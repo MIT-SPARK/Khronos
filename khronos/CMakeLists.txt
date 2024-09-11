@@ -29,8 +29,6 @@ include(GNUInstallDirs)
 add_library(${PROJECT_NAME}
         src/active_window/active_window.cpp
         src/active_window/data/frame_data_buffer.cpp
-        src/active_window/data/output_data.cpp
-        src/active_window/graph_builder.cpp
         src/active_window/integration/binary_semantic_integrator.cpp
         src/active_window/integration/projective_integrator.cpp
         src/active_window/integration/tracking_integrator.cpp

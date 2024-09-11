@@ -46,15 +46,13 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
+#include <hydra/active_window/active_window_module.h>
 #include <hydra/common/global_info.h>
-#include <hydra/common/input_queue.h>
-#include <hydra/common/module.h>
 #include <hydra/common/output_sink.h>
 #include <hydra/reconstruction/mesh_integrator.h>
 
 #include "khronos/active_window/data/frame_data.h"
 #include "khronos/active_window/data/frame_data_buffer.h"
-#include "khronos/active_window/data/output_data.h"
 #include "khronos/active_window/data/reconstruction_types.h"
 #include "khronos/active_window/integration/projective_integrator.h"
 #include "khronos/active_window/integration/tracking_integrator.h"
@@ -66,15 +64,12 @@
 
 namespace khronos {
 
-class ActiveWindow : public hydra::Module {
+class ActiveWindow : public hydra::ActiveWindowModule {
  public:
-  using Ptr = std::shared_ptr<ActiveWindow>;
-  using InputQueue = hydra::InputQueue<hydra::InputPacket::Ptr>;
-  using OutputQueue = hydra::InputQueue<hydra::ReconstructionOutput::Ptr>;
   using Sink = hydra::OutputSink<const FrameData&, const VolumetricMap&, const Tracks&>;
 
   // Config.
-  struct Config {
+  struct Config : hydra::ActiveWindowModule::Config {
     int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
 
     // Minimum duration for full updates and sending an output message [s]. A value of 0 will
@@ -85,7 +80,6 @@ class ActiveWindow : public hydra::Module {
     bool detach_object_extraction = true;
 
     // Configs of the sub-modules to create.
-    VolumetricMap::Config volumetric_map;
     hydra::ProjectiveIntegratorConfig projective_integrator;
     TrackingIntegrator::Config tracking_integrator;
     config::VirtualConfig<MotionDetector> motion_detector;
@@ -94,10 +88,13 @@ class ActiveWindow : public hydra::Module {
     config::VirtualConfig<ObjectExtractor> object_extractor;
     hydra::MeshIntegratorConfig mesh_integrator;
     FrameDataBuffer::Config frame_data_buffer;
+
+    // override layer defaults of Hydra
+    Config() : hydra::ActiveWindowModule::Config(false, true) {}
   } const config;
 
   // Construction.
-  explicit ActiveWindow(const Config& config);
+  ActiveWindow(const Config& config, const OutputQueue::Ptr& output_queue);
   virtual ~ActiveWindow() = default;
 
   // Access. These are not thread-safe!
@@ -106,26 +103,7 @@ class ActiveWindow : public hydra::Module {
   const FrameData& getLatestFrameData() const { return frame_data_buffer_.getLatestData(); }
   const Tracks& getTracks() const { return tracker_->getTracks(); }
 
-  // Module interface.
-  void start() override;
-  void stop() override;
-  void save(const hydra::LogSetup& /* setup */) override {}
-
   // Module setup.
-  /**
-   * @brief Set the input queue for the active window. This must be set before starting
-   * the active window.
-   * @param input_queue The input queue to use.
-   */
-  void setInputQueue(InputQueue::Ptr input_queue) { input_queue_ = std::move(input_queue); }
-
-  /**
-   * @brief Set the output queue for the active window. This must be set before starting
-   * the active window.
-   * @param output_queue The output queue to use.
-   */
-  void setOutputQueue(OutputQueue::Ptr output_queue) { output_queue_ = std::move(output_queue); }
-
   /**
    * @brief Add a sink to the active window. The sink will be called whenever the active window
    * finishes processing a frame.
@@ -149,8 +127,7 @@ class ActiveWindow : public hydra::Module {
 
  protected:
   // Spin the active window in a separate thread.
-  void spin();
-  void spinCallback(const hydra::InputPacket& input);
+  hydra::ActiveWindowOutput::Ptr spinOnce(const hydra::InputPacket& input) override;
 
   // Processing.
   /**
@@ -174,14 +151,7 @@ class ActiveWindow : public hydra::Module {
    * @param threaded If true, extract objects in detached threads. Otherwise wait for object
    * extraction to finish.
    */
-  void extractOutputData(const FrameData& data, bool threaded);
-
-  /**
-   * @brief Extract all mesh vertices that have turned inactive, i.e. are
-   * exiting the active window.
-   * @param output The output data to store the extracted mesh vertices in.
-   */
-  void extractInactiveBackgroundMesh(OutputData& output);
+  hydra::ActiveWindowOutput::Ptr extractOutputData(const FrameData& data, bool threaded);
 
   /**
    * @brief Extract all objects that have turned inactive, i.e. are exiting the
@@ -198,7 +168,6 @@ class ActiveWindow : public hydra::Module {
 
  protected:
   // Members.
-  VolumetricMap map_;
   ProjectiveIntegrator integrator_;
   TrackingIntegrator tracking_integrator_;
   hydra::MeshIntegrator mesh_integrator_;
@@ -207,14 +176,7 @@ class ActiveWindow : public hydra::Module {
   std::unique_ptr<Tracker> tracker_;
   std::unique_ptr<ObjectExtractor> object_extractor_;
 
-  // Spinning the active window in separate thread.
-  std::unique_ptr<std::thread> spin_thread_;
-  std::atomic<bool> should_shutdown_{false};
   std::mutex mutex_;
-
-  // Input output queues.
-  InputQueue::Ptr input_queue_;
-  OutputQueue::Ptr output_queue_;
   Sink::List sinks_;
 
   // Internal processing.
@@ -223,13 +185,18 @@ class ActiveWindow : public hydra::Module {
 
   // Output data for detached object extraction.
   mutable std::mutex output_objects_mutex_;
-  std::vector<std::shared_ptr<KhronosObjectAttributes>> output_objects_;
+  std::list<spark_dsg::NodeAttributes::Ptr> output_objects_;
   std::atomic<int> output_objects_processing_{0};
 
   // Variables.
   TimeStamp latest_stamp_;
   TimeStamp last_full_upated_ = 0;
   size_t num_frames_processed_ = 0;  // For info only.
+
+ private:
+  inline static const auto registration_ = config::
+      RegistrationWithConfig<hydra::ActiveWindowModule, ActiveWindow, Config, OutputQueue::Ptr>(
+          "ActiveWindow");
 };
 
 void declare_config(ActiveWindow::Config& config);

@@ -49,11 +49,11 @@ namespace khronos {
 void declare_config(ActiveWindow::Config& config) {
   using namespace config;
   name("ActiveWindow::Config");
+  base<hydra::ActiveWindowModule::Config>(config);
   field(config.verbosity, "verbosity");
   field(config.detach_object_extraction, "detach_object_extraction");
   field(config.min_output_separation, "min_output_separation", "s");
 
-  field(config.volumetric_map, "volumetric_map");
   field(config.projective_integrator, "projective_integrator");
   field(config.tracking_integrator, "tracking_integrator");
   field(config.motion_detector, "motion_detector");
@@ -68,9 +68,9 @@ void declare_config(ActiveWindow::Config& config) {
   field(config.frame_data_buffer, "frame_data_buffer");
 }
 
-ActiveWindow::ActiveWindow(const Config& config)
-    : config(config::checkValid(config)),
-      map_(config.volumetric_map, false, true),
+ActiveWindow::ActiveWindow(const Config& config, const OutputQueue::Ptr& output_queue)
+    : hydra::ActiveWindowModule(config, output_queue),
+      config(config::checkValid(config)),
       integrator_(config.projective_integrator),
       tracking_integrator_(config.tracking_integrator),
       mesh_integrator_(config.mesh_integrator),
@@ -97,49 +97,10 @@ ActiveWindow::ActiveWindow(const Config& config)
   if (!object_extractor_) {
     object_extractor_ = std::make_unique<ObjectExtractor>();
   }
-}
 
-void ActiveWindow::start() {
-  if (spin_thread_) {
-    LOG(ERROR) << "[Khronos Active Window] Cannot start: Already running.";
-    return;
-  }
-  if (!input_queue_) {
-    LOG(ERROR) << "[Khronos Active Window] Cannot start: Input queue not set.";
-    return;
-  }
-  if (!output_queue_) {
-    LOG(ERROR) << "[Khronos Active Window] Cannot start: Output queue not set.";
-    return;
-  }
-  should_shutdown_ = false;
-  spin_thread_ = std::make_unique<std::thread>(&ActiveWindow::spin, this);
-  CLOG(1) << "[Khronos Active Window] Started.";
-}
-
-void ActiveWindow::stop() {
-  if (!spin_thread_) {
-    LOG(ERROR) << "[Khronos Active Window] Cannot stop: Not running.";
-    return;
-  }
-  should_shutdown_ = true;
-  spin_thread_->join();
-  spin_thread_.reset();
-  CLOG(1) << "[Khronos Active Window] Stopped.";
-}
-
-void ActiveWindow::spin() {
-  bool should_shutdown = false;
-  while (!should_shutdown) {
-    bool has_data = input_queue_->poll();
-    if (hydra::GlobalInfo::instance().force_shutdown() || !has_data) {
-      // Realize shutdown request if all data is processed or forced shutdown.
-      should_shutdown = should_shutdown_;
-    }
-    if (!has_data) {
-      continue;
-    }
-    spinCallback(*input_queue_->pop());
+  if (!map_.config.with_tracking) {
+    LOG(WARNING) << "[Khronos Active Window] Tracking layer disabled for volumetric map! Tracking "
+                    "layer is strongly recommended as block archival and motion detection may not work as intended!";
   }
 }
 
@@ -149,7 +110,7 @@ void ActiveWindow::addSink(const Sink::Ptr& sink) {
   }
 }
 
-void ActiveWindow::spinCallback(const hydra::InputPacket& input) {
+hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& input) {
   std::lock_guard<std::mutex> lock(mutex_);
   latest_stamp_ = input.timestamp_ns;
   Timer timer("active_window/all", latest_stamp_);
@@ -190,12 +151,23 @@ void ActiveWindow::spinCallback(const hydra::InputPacket& input) {
   // TODO(lschmid): Double check this does what's intended. Check whether we can move mesh
   // extraction here and whether it makes sense to move launching object threads before this.
   if (last_full_upated_ + fromSeconds(config.min_output_separation) > latest_stamp_) {
-    return;
+    return nullptr;
   }
 
   // Extract the resulting output and push to frontend queue.
   CLOG(5) << "[Khronos Active Window] Extracting output data.";
-  extractOutputData(*data, config.detach_object_extraction);
+  auto output = extractOutputData(*data, config.detach_object_extraction);
+  spatial_hash::BlockIndices to_archive;
+  for (const auto& block : *map_.getTrackingLayer()) {
+    if (!block.has_active_data) {
+      to_archive.push_back(block.index);
+    }
+  }
+
+  map_.removeBlocks(to_archive);
+  CLOG(4) << "[Khronos Active Window] Archiving " << to_archive.size() << " blocks.";
+
+  return output;
 }
 
 void ActiveWindow::finishMapping() {
@@ -242,14 +214,16 @@ void ActiveWindow::updateMap(const FrameData& data) {
   tracking_integrator_.updateBlocks(data, map_);
 }
 
-void ActiveWindow::extractOutputData(const FrameData& data, bool threaded) {
+hydra::ActiveWindowOutput::Ptr ActiveWindow::extractOutputData(const FrameData& data,
+                                                               bool threaded) {
   // Extract background mesh and objects that leaves the active window.
   Timer timer("active_window/extract_output", latest_stamp_);
-  auto output = std::make_shared<OutputData>();
+  auto output = std::make_shared<hydra::ActiveWindowOutput>();
   output->timestamp_ns = data.input.timestamp_ns;
   output->world_t_body = data.input.world_T_body.translation();
   output->world_R_body = data.input.world_T_body.rotation();
-  extractInactiveBackgroundMesh(*output);
+  output->setMap(map_.cloneUpdated());
+
   extractInactiveObjects();
   if (!threaded) {
     joinObjectExtractionThreads();
@@ -257,24 +231,13 @@ void ActiveWindow::extractOutputData(const FrameData& data, bool threaded) {
 
   // Add all finished objects to the output.
   std::lock_guard<std::mutex> lock(output_objects_mutex_);
-  output->objects = std::move(output_objects_);
+  auto update = std::make_shared<hydra::LayerUpdate>(DsgLayers::OBJECTS);
+  output->graph_update[update->layer] = update;
+
+  std::move(output_objects_.begin(), output_objects_.end(), std::back_inserter(update->attributes));
   output_objects_.clear();
-  output_queue_->push(output);
-}
 
-void ActiveWindow::extractInactiveBackgroundMesh(OutputData& output) {
-  Timer timer("active_window/extract_mesh", latest_stamp_);
-
-  // Deallocate all blocks that don't contain active voxels.
-  for (const auto& block : *map_.getTrackingLayer()) {
-    if (!block.has_active_data) {
-      output.archived_blocks.push_back(block.index);
-    }
-  }
-
-  map_.removeBlocks(output.archived_blocks);
-  output.setMap(map_);
-  CLOG(4) << "[Khronos Active Window] Archiving " << output.archived_blocks.size() << " blocks.";
+  return output;
 }
 
 void ActiveWindow::extractInactiveObjects() {
@@ -304,10 +267,12 @@ void ActiveWindow::objectExtractionThreadFunction(const TimeStamp stamp,
   const auto start = std::chrono::high_resolution_clock::now();
   auto output_object = object_extractor_->extractObject(track, frame_data);
   const auto stop = std::chrono::high_resolution_clock::now();
+
   if (output_object) {
     std::lock_guard<std::mutex> lock(output_objects_mutex_);
     output_objects_.push_back(std::move(output_object));
   }
+
   hydra::timing::ElapsedTimeRecorder::instance().record(
       "active_window/extract_object", stamp, start - stop);
   output_objects_processing_--;
