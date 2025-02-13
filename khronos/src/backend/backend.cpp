@@ -39,13 +39,13 @@
 
 #include <config_utilities/types/path.h>
 #include <glog/logging.h>
-#include <hydra/backend/update_places_functor.h>
-#include <hydra/backend/update_rooms_buildings_functor.h>
+#include <hydra/backend/mst_factors.h>
 #include <hydra/common/global_info.h>
-#include <hydra/rooms/room_finder.h>
+#include <hydra/common/pipeline_queues.h>
 #include <hydra/utils/pgmo_mesh_traits.h>
-#include <khronos/backend/change_state.h>
-#include <khronos/common/common_types.h>
+
+#include "khronos/backend/change_state.h"
+#include "khronos/common/common_types.h"
 
 namespace khronos {
 
@@ -89,10 +89,11 @@ Backend::Backend(const Config& config,
     : hydra::BackendModule(config::checkValid(config), dsg, state),
       config(config),
       map_(config.spatio_temporal_map) {
-  setupKhronosFunctors();
   change_detector_ = std::make_unique<SequentialChangeDetector>(config.change_detection);
   change_detector_->setDsg(unmerged_graph_);
   reconciler_ = std::make_unique<Reconciler>(config.reconciler);
+  update_functors_.push_back(
+      std::make_shared<UpdateObjectsFunctor>(config.update_objects, new_proposed_merges_));
 }
 
 Backend::~Backend() {}
@@ -103,22 +104,27 @@ void Backend::spin() {
   should_shutdown_ = false;
   bool should_shutdown = false;
   while (!should_shutdown) {
-    bool has_data = state_->backend_queue.poll();
+    auto& queue = hydra::PipelineQueues::instance().backend_queue;
+    bool has_data = queue.poll();
     if (hydra::GlobalInfo::instance().force_shutdown() || !has_data) {
       // copy over shutdown request
       should_shutdown = should_shutdown_;
     }
 
-    if (has_data) {
-      spinCallback(*state_->backend_queue.pop());
+    if (!has_data) {
+      continue;
     }
+
+    spinCallback(*queue.pop());
   }
 }
 
 void Backend::spinCallback(const hydra::BackendInput& input) {
   status_.reset();
   std::lock_guard<std::mutex> lock(mutex_);
-  last_timestamp_received_ = state_->backend_queue.back()->timestamp_ns;
+  const uint64_t timestamp_ns = input.timestamp_ns;
+  last_timestamp_received_ = timestamp_ns;
+  last_sequence_number_ = input.sequence_number;
   if (config.run_change_detection_every_n_frames > 0) {
     num_frames_since_last_change_detection_++;
   }
@@ -130,15 +136,13 @@ void Backend::spinCallback(const hydra::BackendInput& input) {
     // measurement to a node aXXX not previously seen before"
     // fixInputPoses(input);
   }
-  if (!config.use_mesh_subscribers) {
-    copyMeshDelta(input);
-  }
+  copyMeshDelta(input);
   updateFromLcdQueue();
   status_.total_loop_closures = num_loop_closures_;
 
   // TODO(lschmid): Update the hydra logic to not just drop packages in the counting.
-  if (!updatePrivateDsg(input.timestamp_ns, false)) {
-    CLOG(5) << "[Backend] skipping input @" << input.timestamp_ns << ".";
+  if (!updatePrivateDsg(timestamp_ns, false)) {
+    CLOG(5) << "[Backend] skipping input @" << timestamp_ns << ".";
     // we only read from the frontend dsg if we've processed all the
     // factor graph update packets (as long as force_update is false)
     // we still log the status for each received frontend packet
@@ -154,10 +158,10 @@ void Backend::spinCallback(const hydra::BackendInput& input) {
   if ((config.optimize_on_lc && have_new_loopclosures_) ||
       (config.optimize_on_new_merge && !new_proposed_merges_.empty()) ||
       force_check_merge_proposals) {
-    optimize(last_timestamp_received_, force_check_merge_proposals);
+    optimize(timestamp_ns, force_check_merge_proposals);
   } else {
-    updateDsgMesh(last_timestamp_received_);
-    callUpdateFunctions(last_timestamp_received_);
+    updateDsgMesh(timestamp_ns);
+    callUpdateFunctions(timestamp_ns);
   }
 
   CLOG(3) << "Proposed " << new_proposed_merges_.size() << " node merges.";
@@ -176,7 +180,7 @@ void Backend::spinCallback(const hydra::BackendInput& input) {
   }
 
   timer.reset("backend/sinks");
-  Sink::callAll(sinks_, last_timestamp_received_, *private_dsg_->graph, *deformation_graph_);
+  Sink::callAll(sinks_, timestamp_ns, *private_dsg_->graph, *deformation_graph_);
   have_new_loopclosures_ = false;
 }
 
@@ -219,7 +223,13 @@ void Backend::finishProcessing() {
 
 void Backend::optimize(size_t timestamp_ns, bool force_find_merge_proposals) {
   if (config.add_places_to_deformation_graph) {
-    addPlacesToDeformationGraph(timestamp_ns);
+    const auto vertex_key = hydra::GlobalInfo::instance().getRobotPrefix().vertex_key;
+    hydra::addPlacesToDeformationGraph(*unmerged_graph_,
+                                       timestamp_ns,
+                                       *deformation_graph_,
+                                       config.pgmo.place_edge_variance,
+                                       config.pgmo.place_mesh_variance,
+                                       [vertex_key](auto) { return vertex_key; });
   }
 
   addObjectsToDeformationGraph(timestamp_ns);
@@ -230,6 +240,7 @@ void Backend::optimize(size_t timestamp_ns, bool force_find_merge_proposals) {
   timer.stop();
 
   extractProposedMergeResults(timestamp_ns);
+
   updateDsgMesh(timestamp_ns, true);
 
   const bool process_loopclosures = have_new_loopclosures_ || force_find_merge_proposals;
@@ -271,7 +282,7 @@ void Backend::addProposedMergeToDeformationGraph(size_t timestamp_ns) {
   }
 
   CLOG(4) << "Adding " << merge_edges.edges.size() << " object merges to deformation graph.";
-  deformation_graph_->addNewTempEdges(merge_edges, config.object_merge_covariance, false);
+  deformation_graph_->processNewTempEdges(merge_edges, config.object_merge_covariance);
 }
 
 void Backend::addObjectsToDeformationGraph(size_t timestamp_ns) {
@@ -300,8 +311,6 @@ void Backend::addObjectsToDeformationGraph(size_t timestamp_ns) {
     // Implicit assumption that graph builder output only has a single observed time segment
     size_t first_obs_idx = findClosestNode(attrs.first_observed_ns.at(0));
     gtsam::Point3 first_t_obj = attrs.position - trajectory_.at(first_obs_idx).translation();
-
-    deformation_graph_->addNewNode(id_node_pair.first, obj_pose, false);
     objects_added_.insert(id_node_pair.first);
 
     // TODO(Yun): For now both pose-object edges are added as inliers with a consistency check
@@ -309,12 +318,11 @@ void Backend::addObjectsToDeformationGraph(size_t timestamp_ns) {
     // decide this, but temporarily cannot resolve numerical issues with no having rotation on
     // objects.
     const auto& prefix = hydra::GlobalInfo::instance().getRobotPrefix();
-    deformation_graph_->addNodeValenceEdge(gtsam::Symbol(prefix.key, first_obs_idx),
-                                           id_node_pair.first,
-                                           trajectory_.at(first_obs_idx),
-                                           attrs.position,
-                                           config.pose_object_covariance);
-
+    deformation_graph_->processPointMeasurement(gtsam::Symbol(prefix.key, first_obs_idx),
+                                                id_node_pair.first,
+                                                trajectory_.at(first_obs_idx),
+                                                attrs.position,
+                                                config.pose_object_covariance);
     size_t last_obs_idx = findClosestNode(attrs.last_observed_ns.at(0));
     gtsam::Point3 last_t_obj = attrs.position - trajectory_.at(last_obs_idx).translation();
 
@@ -328,12 +336,11 @@ void Backend::addObjectsToDeformationGraph(size_t timestamp_ns) {
         continue;
       }
     }
-
-    deformation_graph_->addNodeValenceEdge(gtsam::Symbol(prefix.key, last_obs_idx),
-                                           id_node_pair.first,
-                                           trajectory_.at(last_obs_idx),
-                                           attrs.position,
-                                           config.pose_object_covariance);
+    deformation_graph_->processPointMeasurement(gtsam::Symbol(prefix.key, last_obs_idx),
+                                                id_node_pair.first,
+                                                trajectory_.at(last_obs_idx),
+                                                attrs.position,
+                                                config.pose_object_covariance);
   }
 }
 
@@ -361,34 +368,6 @@ void Backend::extractProposedMergeResults(size_t timestamp_ns) {
   // Clear the proposed merges
   deformation_graph_->clearTemporaryStructures();
   new_proposed_merges_.clear();
-}
-
-void Backend::setupKhronosFunctors() {
-  using namespace hydra;
-  // The object functor will write proposed merges to new_proposed_mergs_. Factor this out more
-  // elegantly in the future.
-  layer_functors_[DsgLayers::OBJECTS] =
-      std::make_shared<UpdateObjectsFunctor>(config.update_objects, new_proposed_merges_);
-
-  if (hydra::GlobalInfo::instance().getConfig().enable_places) {
-    layer_functors_[DsgLayers::PLACES] = std::make_shared<UpdatePlacesFunctor>(
-        config.places_merge_pos_threshold_m, config.places_merge_distance_tolerance_m);
-  }
-
-  if (config.enable_rooms) {
-    auto room_functor = std::make_shared<UpdateRoomsFunctor>(config.room_finder);
-    if (logs_) {
-      const auto log_path = logs_->getLogDir("backend/room_filtrations");
-      room_functor->room_finder->enableLogging(log_path);
-    }
-
-    layer_functors_[DsgLayers::ROOMS] = room_functor;
-  }
-
-  if (config.enable_buildings) {
-    layer_functors_[DsgLayers::BUILDINGS] = std::make_shared<UpdateBuildingsFunctor>(
-        config.building_color, config.building_semantic_label);
-  }
 }
 
 void Backend::copyMeshDelta(const hydra::BackendInput& input) {
@@ -463,9 +442,9 @@ void Backend::save(const hydra::LogSetup& log_setup) {
 void Backend::fixInputPoses(const hydra::BackendInput& input) {
   std::vector<std::pair<gtsam::Key, gtsam::Pose3>> prior_measurements;
   for (const auto& msg : input.agent_updates.pose_graphs) {
-    status_.new_factors += msg->edges.size();
+    status_.new_factors += msg.edges.size();
 
-    for (const auto& node : msg->nodes) {
+    for (const auto& node : msg.nodes) {
       if (node.key == 0) {
         continue;  // This should already be set by 'add_initial_prior'
       }
@@ -475,7 +454,7 @@ void Backend::fixInputPoses(const hydra::BackendInput& input) {
            gtsam::Pose3(node.pose.matrix())});
     }
   }
-  deformation_graph_->addNodeMeasurements(prior_measurements, config.fix_input_pose_variance);
+  deformation_graph_->processNodeMeasurements(prior_measurements, config.fix_input_pose_variance);
 }
 
 }  // namespace khronos

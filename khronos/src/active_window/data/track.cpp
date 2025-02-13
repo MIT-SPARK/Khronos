@@ -35,29 +35,38 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#pragma once
-
-#include <memory>
-#include <vector>
-
-#include <hydra/reconstruction/reconstruction_output.h>
-
-#include "khronos/common/common_types.h"
+#include "khronos/active_window/data/track.h"
 
 namespace khronos {
 
-/**
- * @brief Data structure that collects the output of the active window to then be
- * integrated into the global optimization.
- */
-struct OutputData : public hydra::ReconstructionOutput {
-  using Ptr = std::shared_ptr<OutputData>;
-  using ConstPtr = std::shared_ptr<const OutputData>;
+void Track::updateSemantics(const std::optional<SemanticClusterInfo>& other) {
+  if (!other) {
+    return;
+  }
 
-  // All objects that left the active window during this frame.
-  std::vector<std::shared_ptr<KhronosObjectAttributes>> objects;
+  if (!semantics) {
+    semantics = other;
+    return;
+  }
 
-  void updateFrom(const ReconstructionOutput& msg, bool clone_map) override;
-};
+  const bool other_has_feature = other->feature.size() != 1;
+  const bool has_feature = semantics->feature.size() != 1;
+  if (has_feature && !other_has_feature) {
+    return;  // prefer to keep feature
+  }
+
+  if (other_has_feature && !has_feature) {
+    semantics->feature = other->feature;
+    ++num_features;
+    return;
+  }
+
+  // incremental mean
+  const auto total_features = static_cast<float>(num_features + 1);
+  const auto prev_weight = static_cast<float>(num_features) / total_features;
+  const auto new_weight = 1.0f / total_features;
+  semantics->feature = prev_weight * semantics->feature + new_weight * other->feature;
+  ++num_features;
+}
 
 }  // namespace khronos

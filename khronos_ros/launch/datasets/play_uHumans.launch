@@ -3,14 +3,13 @@
   <!-- FrameData -->
   <arg name="bag_file" default="$(env HOME)/datasets/uHumans/khronos_office_2.bag"/>
   <arg name="semantic_color_mapping" default="$(find hydra_ros)/config/color/uhumans2_apartment.csv"/>
+  <arg name="use_gt_semantics" default="true"/>
+  <arg name="use_openset_semantics" default="false"/>
   <arg name="play_rate" default="1"/>
   <arg name="sim_time_required" default="true"/>
   <arg name="use_gt_frame" default="true"/>
-  <arg name="use_prerecorded_objects" default="false"/>
-  <arg name="use_oneformer" default="false"/>
-  <arg name="semantic_image_topic" default="/tesse/seg_cam/rgb/image_raw" unless="$(arg use_oneformer)"/>
-  <arg name="semantic_image_topic" default="semantic_color/image_raw" if="$(arg use_oneformer)"/>
   <arg name="paused" default="false"/>
+  <arg name="segmenter_config" default="$(find khronos_ros)/config/openset/sam_clip.yaml"/>
 
   <!-- ============ Run ============ -->
   <!-- Auto generated args -->
@@ -25,11 +24,18 @@
     <remap unless="$(arg use_gt_frame)" from="/tf" to="/tf_null"/>
   </node>
 
-  <include if="$(arg use_oneformer)" file="$(find semantic_recolor)/launch/semantic_recolor.launch" pass_all_args="true">
-    <arg name="prerecorded_topic" value="/tesse/oneformer/labels/image_raw"/>
-    <arg name="labelspace_name" value="ade20k_mp3d"/>
-    <arg name="use_prerecorded_semantics" value="true"/>
-  </include>
+  <group unless="$(arg use_gt_semantics)">
+    <remap from="semantic_inference/color/image_raw" to="/tesse/left_cam/rgb/image_raw"/>
+    <!-- Closed Set Semantics -->
+    <include unless="$(arg use_openset_semantics)" file="$(find semantic_inference_ros)/launch/semantic_inference.launch">
+      <arg name="labelspace_name" value="ade20k_indoor"/>
+    </include>
+    
+    <!-- Open Set Semantics -->
+    <include if="$(arg use_openset_semantics)" file="$(find semantic_inference_ros)/launch/openset_segmentation.launch">
+      <arg name="config_path" value="$(arg segmenter_config)"/>
+    </include>
+  </group>
 
   <!-- Static TF transforms. -->
   <include file="$(find hydra_ros)/launch/static_tfs/uhumans2_static_tfs.xml"/>

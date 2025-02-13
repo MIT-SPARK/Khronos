@@ -1,0 +1,33 @@
+%YAML:1.0
+# Type of odometry sensor:
+
+
+# Extra parameters
+
+# Yun said these are from west point. I think the camera was tilted 
+# differently then. This has ~70 degrees, now it's 90 (?). Probably need
+# to update
+T_BS:
+  cols: 4
+  rows: 4
+  #data: [0.1971501, -0.5626401,  0.8028499, 0.0,
+  #       0.5626401, -0.6056999, -0.5626401, 0.0,
+  #       0.8028499,  0.5626401,  0.1971501, 0.0,
+  #       0.0,  0.0,  0.0, 1.0]
+  #data: [-0.001,  -0.1, 0.995, 0.0,
+  #       -1.,  0.001, -.001, 0.0,
+  #       -.001,  -1., -0.10, 0.0,
+  #       0.00,  0.00,  0.00, 1.0]
+  #       
+  data: [0.0, -1.0, 0.0, -0.15,
+         0.0, 0.0, -1.0, -0.02,
+         1.0, 0.0, 0.0, -0.1,
+         0.0, 0.0, 0.0, 1.0]
+
+rate_hz: 10
+
+# odometry sensor noise model parameters (static)
+odomPositionPrecision: 1.0e+01
+odomRotationPrecision: 1.0
+odomVelPrecision: 0
+odomTimeShift: 0.0

@@ -46,7 +46,6 @@
 #include <vector>
 
 #include <hydra/backend/backend_module.h>
-#include <hydra/common/common.h>
 #include <hydra/common/shared_module_state.h>
 
 #include "khronos/backend/change_detection/sequential_change_detector.h"
@@ -134,8 +133,6 @@ class Backend : public hydra::BackendModule {
   void addProposedMergeToDeformationGraph(size_t timestamp_ns);
 
   void extractProposedMergeResults(size_t timestamp_ns);
-
-  void setupKhronosFunctors();
 
   void runChangeDetection();
 

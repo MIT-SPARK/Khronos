@@ -47,7 +47,6 @@
 #include <geometry_msgs/Vector3.h>
 #include <hydra/common/global_info.h>
 #include <khronos/active_window/data/frame_data.h>
-#include <khronos/active_window/data/output_data.h>
 #include <khronos/active_window/data/reconstruction_types.h>
 #include <khronos/active_window/data/track.h>
 #include <ros/node_handle.h>

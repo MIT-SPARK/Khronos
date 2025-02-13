@@ -1,0 +1,12 @@
+segmentation:
+  type: fastsam
+  confidence: 0.55
+  iou: 0.85
+  output_size: 640
+refinement:
+  dilate_masks: true
+clip_model:
+  type: clip
+  model_name: ViT-L/14  # ViT-L/14, ViT-B/32
+  # controls pixel-aligned features
+  use_dense: false

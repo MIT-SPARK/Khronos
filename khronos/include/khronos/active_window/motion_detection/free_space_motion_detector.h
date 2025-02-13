@@ -136,11 +136,11 @@ class FreeSpaceMotionDetector : public MotionDetector {
                          int u_start,
                          int u_stop) const;
 
-  DynamicClusters clusterDynamicVoxels(const BlockToPointsMap& point_map,
-                                       const GlobalIndexSet& voxel_seeds,
-                                       const size_t voxels_per_side) const;
+  MeasurementClusters clusterDynamicVoxels(const BlockToPointsMap& point_map,
+                                           const GlobalIndexSet& voxel_seeds,
+                                           const size_t voxels_per_side) const;
 
-  void mergeClusters(DynamicClusters& clusters) const;
+  void mergeClusters(MeasurementClusters& clusters) const;
 
   /**
    * @brief Check if two clusters overlap by checking if any of their voxels are within
@@ -149,7 +149,8 @@ class FreeSpaceMotionDetector : public MotionDetector {
    * @param cluster2 Second cluster.
    * @return true If the clusters overlap.
    */
-  bool checkClusterOverlap(const DynamicCluster& cluster1, const DynamicCluster& cluster2) const;
+  bool checkClusterOverlap(const MeasurementCluster& cluster1,
+                           const MeasurementCluster& cluster2) const;
 
   /**
    * @brief Merge two clusters by adding the points and voxels of the first cluster to
@@ -157,7 +158,7 @@ class FreeSpaceMotionDetector : public MotionDetector {
    * @param cluster1 Cluster to be merged.
    * @param cluster2 Cluster to be merged into.
    */
-  void mergeClusters(const DynamicCluster& cluster1, DynamicCluster& cluster2) const;
+  void mergeClusters(const MeasurementCluster& cluster1, MeasurementCluster& cluster2) const;
 
   /**
    * @brief Get all yet unmerged connected clusters from a matrix of overlap between
@@ -179,11 +180,11 @@ class FreeSpaceMotionDetector : public MotionDetector {
    * large.
    * @param candidates Clusters to be filtered.
    */
-  void applyClusterLevelFilters(DynamicClusters& candidates) const;
+  void applyClusterLevelFilters(MeasurementClusters& candidates) const;
 
-  bool filterCluster(const DynamicCluster& cluster) const;
+  bool filterCluster(const MeasurementCluster& cluster) const;
 
-  void writeClustersToData(const DynamicClusters& clusters, FrameData& data) const;
+  void writeClustersToData(const MeasurementClusters& clusters, FrameData& data) const;
 
  private:
   inline static const auto registration_ =

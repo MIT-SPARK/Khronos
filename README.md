@@ -12,7 +12,7 @@ Khronos is a unified approach that can reason about short-term dynamics and long
 * [Video](#Video)
 
 **Setup**
-* [Installation](#Installation)
+* [Installation](#setup)
 * [Dataset](#download-datasets)
 
 **Examples**
@@ -58,7 +58,7 @@ mkdir -p ~/catkin_ws/src
 cd ~/catkin_ws
 catkin init
 catkin config --extend /opt/ros/$ROS_DISTRO
-catkin config --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DGTSAM_TANGENT_PREINTEGRATION=OFF -DGTSAM_BUILD_WITH_MARCH_NATIVE=OFF -DOPENGV_BUILD_WITH_MARCH_NATIVE=OFF
+catkin config --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKIMERA_VERIFY_GTSAM_CONFIG=OFF -DOPENGV_BUILD_WITH_MARCH_NATIVE=OFF
 catkin config --merge-devel
 ```
 
@@ -79,6 +79,14 @@ Build:
 ```bash
 catkin build khronos_ros
 ```
+
+## Semantic Inference (Optional)
+
+By default, Khronos will use ground-truth semantic labels for simulated datasets or pre-recorded segmentation topics for real datasets. To run Khronos with `semantic_inference` for closed-set or open-set online segmentation, use [semantic_inference](https://github.com/MIT-SPARK/semantic_inference), which is included in the rosinstall files. Follow the instructions in the [README](https://github.com/MIT-SPARK/semantic_inference/blob/main/README.md) to build the package without TensorRT if necessary. Note that if you do not have TensorRT, you can only use open-set segmentation.
+
+Make sure to source the virtual environment for `semantic_inference` before running Khronos with the open-set segmentation.
+
+Note that the first time you run `semantic_inference`, it will download the pre-trained model weights. This may take a while.
 
 ## Download datasets
 
@@ -118,6 +126,8 @@ rosservice call /khronos_node/experiment/finish_mapping_and_save
 You can now terminate Khronos.
 
 To run Khronos with the apartment dataset, change the `dataset` from `tesse_cd_office` to `tesse_cd_apartment` and change the rosbag path accordingly. You can then run the launch file as before.
+
+To run Khronos with semantic_inference, change the `use_gt_semantics` parameter in the launch file from `true` to `false`. Set `use_openset_semantics` to `true` for open-set segmentation.
 
 ## Visualize 4D map
 

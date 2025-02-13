@@ -44,7 +44,6 @@
 #include <config_utilities/config_utilities.h>
 #include <gtsam/nonlinear/Values.h>
 #include <hydra/backend/update_functions.h>
-#include <hydra/common/common.h>
 #include <khronos/common/common_types.h>
 
 namespace khronos {
@@ -71,9 +70,9 @@ struct UpdateObjectsFunctor : public hydra::UpdateFunctor {
 
   // Implement Hydra interfaces.
   Hooks hooks() const override;
-  hydra::MergeList call(const DynamicSceneGraph& unmerged,
-                        SharedDsgInfo& dsg,
-                        const UpdateInfo::ConstPtr& info) const override;
+  void call(const DynamicSceneGraph& unmerged,
+            SharedDsgInfo& dsg,
+            const UpdateInfo::ConstPtr& info) const override;
 
   // Functionality.
   void updateObject(const gtsam::Values& objects_values,

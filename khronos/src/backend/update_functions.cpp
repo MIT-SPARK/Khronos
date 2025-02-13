@@ -60,20 +60,21 @@ UpdateObjectsFunctor::Hooks UpdateObjectsFunctor::hooks() const {
   return my_hooks;
 }
 
-MergeList UpdateObjectsFunctor::call(const DynamicSceneGraph& /* unmerged */,
-                                     SharedDsgInfo& dsg,
-                                     const UpdateInfo::ConstPtr& info) const {
+void UpdateObjectsFunctor::call(const DynamicSceneGraph& /* unmerged */,
+                                SharedDsgInfo& dsg,
+                                const UpdateInfo::ConstPtr& info) const {
   Timer spin_timer("backend/update_objects", info->timestamp_ns);
   // NOTE(lschmid): This flag is high-jacked and indicates whether the graph is ready to
   // propose merges or not.
   if (!info->loop_closure_detected) {
-    return {};
+    return;
   }
+
   std::unique_lock<std::mutex> lock(dsg.mutex);
   const auto& graph = *dsg.graph;
   // TODO(Yun): Refactor
   if (!graph.hasLayer(DsgLayers::OBJECTS) || !info->pgmo_values) {
-    return {};
+    return;
   }
 
   const auto& layer = graph.getLayer(DsgLayers::OBJECTS);
@@ -111,15 +112,13 @@ MergeList UpdateObjectsFunctor::call(const DynamicSceneGraph& /* unmerged */,
     }
   }
 
-  for (const auto& [from, to] : nodes_to_merge) {
-    new_proposed_merges_.push_back({from, to});
-  }
-
   // The goal of this functor is to compute candidate merges and store them in
   // 'new_proposed_merges_'. Don't return anything so the candidate objects don't get merged.
   // TODO(lschmid): This can also be cleaned up once the new hydra unmerged graph architecture is
   // in.
-  return {};
+  for (const auto& [from, to] : nodes_to_merge) {
+    new_proposed_merges_.push_back({from, to});
+  }
 }
 
 void UpdateObjectsFunctor::updateObject(const gtsam::Values& objects_values,

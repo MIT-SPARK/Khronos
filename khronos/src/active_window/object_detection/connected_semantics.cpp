@@ -48,6 +48,7 @@ void declare_config(ConnectedSemantics::Config& config) {
   field(config.verbosity, "verbosity");
   field(config.use_full_connectivity, "use_full_connectivity");
   field(config.min_cluster_size, "min_cluster_size");
+  field(config.max_cluster_size, "max_cluster_size");
   field(config.max_range, "max_range", "m");
   field(config.use_3d, "use_3d");
 }
@@ -79,7 +80,7 @@ void ConnectedSemantics::semanticClustering3D(FrameData& data, const float grid_
 
     // Cluster the voxels.
     while (!voxel_to_pixels.empty()) {
-      SemanticCluster cluster;
+      MeasurementCluster cluster;
       GlobalIndices stack;
       auto item = voxel_to_pixels.begin();
       stack.emplace_back(item->first);
@@ -101,12 +102,14 @@ void ConnectedSemantics::semanticClustering3D(FrameData& data, const float grid_
         }
       }
 
-      // Add the cluster if it is large enough.
-      if (static_cast<int>(cluster.pixels.size()) < config.min_cluster_size) {
+      // Add the cluster if it is inside the bounds
+      const auto curr_cluster_size = static_cast<int>(cluster.pixels.size());
+      if (curr_cluster_size < config.min_cluster_size ||
+          (config.max_cluster_size > 0 && curr_cluster_size > config.max_cluster_size)) {
         continue;
       }
       cluster.id = data.semantic_clusters.size() + 1;
-      cluster.semantic_id = semantic_id;
+      cluster.semantics = SemanticClusterInfo(semantic_id);
       for (const Pixel& pixel : cluster.pixels) {
         data.object_image.at<FrameData::ObjectImageType>(pixel.v, pixel.u) = cluster.id;
       }
@@ -161,10 +164,10 @@ void ConnectedSemantics::semanticClustering2D(FrameData& data) {
 
 void ConnectedSemantics::growCluster2D(const int u, const int v, FrameData& data) const {
   Pixels stack{{u, v}};
-  SemanticCluster cluster = data.semantic_clusters.emplace_back();
+  auto& cluster = data.semantic_clusters.emplace_back();
   cluster.id = data.semantic_clusters.size();
   const int semantic_id = data.input.label_image.at<InputData::LabelType>(v, u);
-  cluster.semantic_id = semantic_id;
+  cluster.semantics = SemanticClusterInfo(semantic_id);
 
   // Add the pixel to the cluster.
   cluster.pixels.emplace_back(u, v);

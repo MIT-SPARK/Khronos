@@ -39,7 +39,7 @@
 
 namespace khronos {
 
-ProjectiveIntegrator::ProjectiveIntegrator(const hydra::ProjectiveIntegratorConfig& config)
+ProjectiveIntegrator::ProjectiveIntegrator(const hydra::ProjectiveIntegrator::Config& config)
     : hydra::ProjectiveIntegrator(config) {}
 
 void ProjectiveIntegrator::updateBackgroundMap(const FrameData& data, VolumetricMap& map) const {
@@ -57,16 +57,20 @@ void ProjectiveIntegrator::updateObjectMap(const FrameData& data,
   current_data_ = &data;
   // NOTE(lschmid): We abuse 'canIntegrate' which is not used in hydra.
   semantic_integrator_->canIntegrate(object_id);
-  hydra::ProjectiveIntegrator::updateMap(data.input, map, false);
+
+  // NOTE(nathan) we side-step finding "in-view" blocks and just integrate all of the allocated
+  // blocks
+  const auto indices = map.getTsdfLayer().allocatedBlockIndices();
+  hydra::ProjectiveIntegrator::updateBlocks(indices, data.input, map);
 }
 
-bool ProjectiveIntegrator::computeLabel(const InputData& /* data */,
-                                        const float truncation_distance,
+bool ProjectiveIntegrator::computeLabel(const VolumetricMap::Config& map_config,
+                                        const InputData& /* data */,
                                         VoxelMeasurement& measurement) const {
   // Don't integrate surface voxels of dynamic measurements.
   const bool is_dynamic = interpolator_->interpolateID(current_data_->dynamic_image,
                                                        measurement.interpolation_weights) != 0u;
-  if (is_dynamic && measurement.sdf < truncation_distance) {
+  if (is_dynamic && measurement.sdf < map_config.truncation_distance) {
     return false;
   }
 

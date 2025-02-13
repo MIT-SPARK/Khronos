@@ -90,7 +90,7 @@ class MeshObjectExtractor : public ObjectExtractor {
     // for debugging.
     bool visualize_classification = false;
 
-    hydra::ProjectiveIntegratorConfig projective_integrator;
+    hydra::ProjectiveIntegrator::Config projective_integrator;
     hydra::MeshIntegratorConfig mesh_integrator;
   } const config;
 

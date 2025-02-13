@@ -64,8 +64,17 @@ class MaxIoUTracker : public Tracker {
   struct Config {
     int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
 
+    // Semantic association method
+    enum class SemanticAssociation {
+      kAssignCluster,
+      kAssignTrack
+    } semantic_association = SemanticAssociation::kAssignCluster;
+
     // Minimum IoU to consider two semantic detections a match.
     float min_semantic_iou = 0.5f;
+
+    // Minimum cosine similarity of the semantic features
+    float min_cosine_sim = 0.0f;
 
     // Minimum IoU to consider a semantic and a dynamic detections a match.
     float min_cross_iou = 0.5f;
@@ -87,40 +96,44 @@ class MaxIoUTracker : public Tracker {
   } const config;
 
   // Construction.
-  explicit MaxIoUTracker(const Config &config);
+  explicit MaxIoUTracker(const Config& config);
   virtual ~MaxIoUTracker() = default;
 
   // Inputs.
-  void processInput(FrameData &data) override;
+  void processInput(FrameData& data) override;
 
   // Processing.
   void setup();
-  void setupTrackMeasurements(FrameData &data) const;
-  void associateTracks(const FrameData &data);
-  void associateSemanticTracks(const FrameData &data);
-  void associateDynamicTracks(const FrameData &data);
+  void setupTrackMeasurements(FrameData& data) const;
+  void associateTracks(const FrameData& data);
+  void associateSemanticTracks(const FrameData& data);
+  void associateDynamicTracks(const FrameData& data);
+  void assignStaticTracksToCluster(const FrameData& data,
+                                   std::unordered_set<int>& associated_objects);
+  void assignClustersToStaticTrack(const FrameData& data,
+                                   std::unordered_set<int>& associated_objects);
   void updateTrackingDuration();
-  void updateTrack(const FrameData &data,
-                   const MeasurementCluster &observation,
-                   Track &track,
-                   int semantic_cluster_id = -1,
-                   int dynamic_cluster_id = -1) const;
+  Track& addNewTrack(const FrameData& data, const MeasurementCluster& observation, bool is_dynamic);
+  void updateTrack(const FrameData& data,
+                   const MeasurementCluster& observation,
+                   Track& track,
+                   bool is_observation_dynamic) const;
 
   // Track by type specific functions.
   // Function pointers that call the right function for the track by mode.
-  std::function<void(const FrameData &, MeasurementCluster &)> setupTrackMeasurement;
-  std::function<float(const FrameData &, const MeasurementCluster &, const Track &)> computeIoU;
-  void setupTrackMeasurementVoxels(const FrameData &data, MeasurementCluster &cluster) const;
-  float computeIoUVoxels(const FrameData &data,
-                         const MeasurementCluster &cluster,
-                         const Track &track) const;
-  float computeIoUPixels(const FrameData &data,
-                         const MeasurementCluster &cluster,
-                         const Track &track) const;
-  float computeIoUBoundingBox(const FrameData &data,
-                              const MeasurementCluster &cluster,
-                              const Track &track) const;
-  Point computeCentroid(const FrameData &data, const MeasurementCluster &cluster) const;
+  std::function<void(const FrameData&, MeasurementCluster&)> setupTrackMeasurement;
+  std::function<float(const FrameData&, const MeasurementCluster&, const Track&)> computeIoU;
+  void setupTrackMeasurementVoxels(const FrameData& data, MeasurementCluster& cluster) const;
+  float computeIoUVoxels(const FrameData& data,
+                         const MeasurementCluster& cluster,
+                         const Track& track) const;
+  float computeIoUPixels(const FrameData& data,
+                         const MeasurementCluster& cluster,
+                         const Track& track) const;
+  float computeIoUBoundingBox(const FrameData& data,
+                              const MeasurementCluster& cluster,
+                              const Track& track) const;
+  Point computeCentroid(const FrameData& data, const MeasurementCluster& cluster) const;
 
  private:
   inline static const auto registration_ =
@@ -135,6 +148,6 @@ class MaxIoUTracker : public Tracker {
   int current_track_id_ = 0;  // TODO(lschmid): at some point reuse IDs.
 };
 
-void declare_config(MaxIoUTracker::Config &config);
+void declare_config(MaxIoUTracker::Config& config);
 
 }  // namespace khronos

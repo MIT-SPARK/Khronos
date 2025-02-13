@@ -51,7 +51,7 @@ namespace khronos {
 class ProjectiveIntegrator : protected hydra::ProjectiveIntegrator {
  public:
   // Construction.
-  explicit ProjectiveIntegrator(const hydra::ProjectiveIntegratorConfig& config);
+  explicit ProjectiveIntegrator(const hydra::ProjectiveIntegrator::Config& config);
   ~ProjectiveIntegrator() = default;
 
   // Interfaces to perform integration of a frame.
@@ -73,8 +73,8 @@ class ProjectiveIntegrator : protected hydra::ProjectiveIntegrator {
   void updateObjectMap(const FrameData& data, VolumetricMap& map, int object_id) const;
 
  private:
-  bool computeLabel(const InputData& data,
-                    const float truncation_distance,
+  bool computeLabel(const VolumetricMap::Config& map_config,
+                    const InputData& data,
                     VoxelMeasurement& measurement) const override;
 
   mutable const FrameData* current_data_ = nullptr;

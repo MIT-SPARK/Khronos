@@ -44,7 +44,10 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
+#include <config_utilities/virtual_config.h>
 #include <hydra/common/global_info.h>
+#include <hydra/openset/embedding_distances.h>
+#include <hydra/openset/embedding_group.h>
 #include <hydra/reconstruction/volumetric_map.h>
 #include <spatial_hash/neighbor_utils.h>
 
@@ -64,6 +67,25 @@ class InstanceForwarding : public ObjectDetector {
     int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
     // Maximum depth values to consider for object extraction in meters. Use 0 for infinity.
     float max_range = 0.f;
+
+    // Discard clusters with fewer pixels than this.
+    int min_cluster_size = 0;
+
+    // Discard clusters with more pixels than this (<= 0 disables).
+    int max_cluster_size = -1;
+
+    // Discard clusters with less volume than this
+    double min_object_volume = 0.0;
+
+    // Discard clusters with more volume than this (if enabled)
+    double max_object_volume = -1.0;
+
+    // Discard clusters that is overly similary to background
+    double max_background_score = 0.2;
+
+    // Background is specified by the following embedding group (prompts)
+    config::VirtualConfig<hydra::EmbeddingGroup> background;
+    config::VirtualConfig<hydra::EmbeddingDistance> metric{hydra::CosineDistance::Config()};
   } const config;
 
   // Construction.
@@ -93,7 +115,12 @@ class InstanceForwarding : public ObjectDetector {
                                      InstanceForwarding,
                                      InstanceForwarding::Config>("InstanceForwarding");
 
-  // Variables.
+  const bool filter_by_volume_;
+
+  // Filter out background.
+  hydra::EmbeddingGroup::Ptr background_;
+  std::unique_ptr<hydra::EmbeddingDistance> metric_;
+
   TimeStamp processing_stamp_;
 };
 

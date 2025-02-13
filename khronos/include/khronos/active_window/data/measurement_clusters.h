@@ -37,11 +37,23 @@
 
 #pragma once
 
+#include <optional>
 #include <vector>
 
 #include "khronos/common/common_types.h"
 
 namespace khronos {
+
+//! Semantic attributes associated with a cluster
+struct SemanticClusterInfo {
+  //! Semantic category ID of this cluster.
+  int category_id = -1;
+  //! Feature vector (used for open-set)
+  FeatureVector feature = FeatureVector::Zero(1, 1);
+
+  explicit SemanticClusterInfo(int category_id) : category_id(category_id) {}
+  explicit SemanticClusterInfo(const FeatureVector& feature) : feature(feature) {}
+};
 
 /**
  * @brief Common data structurefor all detected measurement clusters.
@@ -58,27 +70,12 @@ struct MeasurementCluster {
 
   // ID of this cluster (=value of pixels in the corresponding image).
   int id;
-};
 
-/**
- * @brief Data structure that collects all detected semantic clusters.
- */
-struct SemanticCluster : public MeasurementCluster {
-  // ID of this cluster refers to value of pixels in the object image. A value of 0
-  // indicates background points.
+  //! Semantic information associated with the cluster
+  std::optional<SemanticClusterInfo> semantics;
 
-  // Semantic class ID of this cluster.
-  int semantic_id;
+  // NOTE(nathan) someone might want to consider a dynamic info struct here
 };
-using SemanticClusters = std::vector<SemanticCluster>;
-
-/**
- * @brief Data structure that collects all detected dynamic clusters.
- */
-struct DynamicCluster : public MeasurementCluster {
-  // ID of this cluster corresponds to value of pixels in the dynamic_image. A value of
-  // 0 indicates static points.
-};
-using DynamicClusters = std::vector<DynamicCluster>;
+using MeasurementClusters = std::vector<MeasurementCluster>;
 
 }  // namespace khronos

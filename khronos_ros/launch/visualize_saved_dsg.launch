@@ -1,22 +1,23 @@
 <launch>
 
     <!-- Args  -->
-    <arg name="visualiziation_config" default="saved_dsg_visualizer.yaml"/>
-    <arg name="dsg_file" default="/mnt/c/Users/DerFu/Desktop/khronos_ICRA40/00043_reconciled_dsg.json"/>
+    <arg name="scene_graph" default="/data/datasets/khronos/tesse_cd/office/ground_truth/gt_dsg_with_mesh.json"/>
 
+    <arg name="visualizer_config_path" default="$(find khronos_ros)/config/visualization/visualizer_config.yaml"/>
+    <arg name="visualizer_plugins_path" default="$(find khronos_ros)/config/visualization/visualizer_plugins.yaml"/>
 
     <arg name="world_frame" default="world"/>
-    <arg name="rviz_file" default="uhumans2.rviz"/>
+    <arg name="start_rviz" default="true"/>
+    <arg name="rviz_file" default="uHumans2.rviz"/>
+    <arg name="rviz_dir" default="$(find khronos_ros)/config/rviz"/>
+    <arg name="rviz_path" default="$(arg rviz_dir)/$(arg rviz_file)"/>
 
-    <!-- Visualize -->
-    <include file="$(find khronos_ros)/launch/dsg_visualizer.launch" pass_all_args="true">
-        <arg name="dsg_topic" value="khronos_node/dsg"/>
-        <arg name="visualizer_config" value="$(find khronos_ros)/config/visualization/$(arg visualiziation_config)"/>
-        <arg name="dsg_mesh_topic" value="khronos_node/dsg_mesh"/>
-        <arg name="load_dsg_path" value="$(arg dsg_file)"/>
-        <arg name="start_rviz" default="true"/>
-        <arg name="rviz_dir" default="$(find khronos_ros)/config/rviz"/>
-        <arg name="rviz_file" default="uhumans2.rviz"/>
+    <include file="$(find hydra_visualizer)/launch/hydra_visualizer.launch"
+             pass_all_args="true">
+        <arg name="visualizer_ns" value="hydra_dsg_visualizer"/>
+        <arg name="visualizer_frame" value="$(arg world_frame)"/>
+        <arg name="start_rviz" value="$(arg start_rviz)"/>
+        <arg name="rviz_path" value="$(arg rviz_path)"/>
     </include>
 
     <include file="$(find pose_graph_tools_ros)/launch/posegraph_view.launch">

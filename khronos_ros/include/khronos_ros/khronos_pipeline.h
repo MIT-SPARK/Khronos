@@ -44,7 +44,7 @@
 #include <unordered_map>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/common/input_queue.h>
+#include <hydra/common/message_queue.h>
 #include <hydra/common/shared_module_state.h>
 #include <hydra/loop_closure/loop_closure_module.h>
 #include <hydra_ros/backend/ros_backend_publisher.h>
@@ -52,8 +52,6 @@
 #include <hydra_ros/input/ros_input_module.h>
 #include <hydra_ros/utils/bow_subscriber.h>
 #include <khronos/active_window/active_window.h>
-#include <khronos/active_window/data/output_data.h>
-#include <khronos/active_window/graph_builder.h>
 #include <khronos/backend/backend.h>
 #include <khronos/common/common_types.h>
 #include <ros/node_handle.h>
@@ -66,6 +64,7 @@ namespace khronos {
 
 using hydra::BackendInput;
 using hydra::BowSubscriber;
+using hydra::GraphBuilder;
 using hydra::LoopClosureModule;
 using hydra::RosBackendPublisher;
 using hydra::RosInputModule;
@@ -93,8 +92,6 @@ class KhronosPipeline {
   } const config;
 
   // Types.
-  using InputQueue = ActiveWindow::InputQueue;
-  using FrontendQueue = ActiveWindow::OutputQueue;
   using ActiveWindowEvaluationCallback =
       std::function<void(const VolumetricMap&, const FrameData&, const Tracks&)>;
   using BackendEvaluationCallback = std::function<
@@ -165,15 +162,11 @@ class KhronosPipeline {
   // Members.
   // Processing.
   hydra::RosInputModule::Ptr input_module_;
-  ActiveWindow::Ptr active_window_;
-  GraphBuilder::Ptr frontend_;
+  std::shared_ptr<ActiveWindow> active_window_;
+  std::shared_ptr<GraphBuilder> frontend_;
   std::shared_ptr<Backend> backend_;
   std::shared_ptr<LoopClosureModule> lcd_;
   std::unique_ptr<BowSubscriber> bow_subscriber_;
-
-  // Active window data queues.
-  InputQueue::Ptr input_queue_;        // From inputs to active window.
-  FrontendQueue::Ptr frontend_queue_;  // From active window to graph builder.
 
   // Scene Graph.
   SharedDsgInfo::Ptr frontend_dsg_;  // DSG the frontend does work on.

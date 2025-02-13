@@ -41,6 +41,7 @@
 #include <numeric>
 
 #include <config_utilities/config.h>
+#include <config_utilities/validation.h>
 #include <spark_dsg/serialization/binary_serialization.h>
 #include <spark_dsg/serialization/graph_binary_serialization.h>
 #include <spark_dsg/serialization/versioning.h>
@@ -319,7 +320,7 @@ void SpatioTemporalMap::moveObjectsBackward() {
   std::unordered_set<NodeId> nodes_to_remove;
   for (auto& [id, node] : current_dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
     auto& attrs = node->attributes<KhronosObjectAttributes>();
-    if (attrs.details["AW_time"].front() > current_time_) {
+    if (!attrs.details["AW_time"].empty() && attrs.details["AW_time"].front() > current_time_) {
       nodes_to_remove.insert(id);
     }
   }

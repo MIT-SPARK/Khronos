@@ -40,6 +40,8 @@
 #include <string>
 #include <vector>
 
+#include "khronos/utils/geometry_utils.h"
+
 namespace khronos {
 
 void declare_config(InstanceForwarding::Config& config) {
@@ -47,9 +49,26 @@ void declare_config(InstanceForwarding::Config& config) {
   name("InstanceForwarding");
   field(config.verbosity, "verbosity");
   field(config.max_range, "max_range", "m");
+  field(config.min_cluster_size, "min_cluster_size");
+  field(config.max_cluster_size, "max_cluster_size");
+  field(config.min_object_volume, "min_object_volume", "m");
+  field(config.max_object_volume, "max_object_volume", "m");
+  field(config.max_background_score, "max_background_score");
+  config.background.setOptional();
+  field(config.background, "background");
+  config.metric.setOptional();
+  field(config.metric, "metric");
 }
 
-InstanceForwarding::InstanceForwarding(const Config& config) : config(config::checkValid(config)) {}
+InstanceForwarding::InstanceForwarding(const Config& config)
+    : config(config::checkValid(config)),
+      filter_by_volume_(config.min_object_volume > 0.0 || config.max_object_volume > 0.0),
+      background_(config.background.create()),
+      metric_(config.metric.create()) {
+  if (background_) {
+    CHECK(metric_) << "Specify the metric if background is set.";
+  }
+}
 
 void InstanceForwarding::processInput(const VolumetricMap& /* map */, FrameData& data) {
   processing_stamp_ = data.input.timestamp_ns;
@@ -72,6 +91,18 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
         continue;
       }
 
+      // Filter background based on given prompt
+      if (background_) {
+        const auto feature = data.input.label_features.find(id);
+        if (feature == data.input.label_features.end()) {
+          continue;
+        }
+        auto score = background_->getBestScore(*metric_, feature->second);
+        if (score.score > config.max_background_score) {
+          continue;
+        }
+      }
+
       if (config.max_range > 0.f) {
         const float range = data.input.range_image.at<InputData::RangeType>(v, u);
         if (range > config.max_range) {
@@ -83,12 +114,32 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
     }
   }
 
-  for (const auto& id_pixels : clusters) {
-    SemanticCluster cluster;
-    cluster.pixels.insert(cluster.pixels.end(), id_pixels.second.begin(), id_pixels.second.end());
-    cluster.id = id_pixels.first;
+  for (const auto& [id, pixels] : clusters) {
+    const auto curr_num_pixels = static_cast<int>(pixels.size());
+    if (curr_num_pixels < config.min_cluster_size ||
+        (config.max_cluster_size > 0 && curr_num_pixels > config.max_cluster_size)) {
+      continue;
+    }
+
+    MeasurementCluster cluster;
+    cluster.pixels.insert(cluster.pixels.end(), pixels.begin(), pixels.end());
+    cluster.id = id;
+
+    if (filter_by_volume_) {
+      const auto bbox = BoundingBox(utils::VertexMapAdaptor(cluster.pixels, data.input.vertex_map));
+      const auto volume = bbox.volume();
+      if (volume < config.min_object_volume ||
+          (config.max_object_volume > 0.0 && volume > config.max_object_volume)) {
+        continue;
+      }
+    }
+
     // TODO(Yun) For now all semantic id is the same (so all label checks are invalid)
-    cluster.semantic_id = 100;
+    const auto feature = data.input.label_features.find(id);
+    if (feature != data.input.label_features.end()) {
+      cluster.semantics = SemanticClusterInfo(feature->second);
+    }
+
     data.semantic_clusters.emplace_back(std::move(cluster));
   }
 }

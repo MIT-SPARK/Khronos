@@ -40,6 +40,7 @@
 #include <map>
 #include <vector>
 
+#include "khronos/active_window/data/measurement_clusters.h"
 #include "khronos/common/common_types.h"
 
 namespace khronos {
@@ -93,8 +94,9 @@ struct Track {
   // Centroid of the observation, used for dynamic tracking.
   Point last_centroid;
 
-  // Semantic class of the tracked object.
-  int semantic_id;
+  //! Semantic information associated with the track
+  std::optional<SemanticClusterInfo> semantics;
+  size_t num_features = 0;
 
   // Whether this object is dynamic.
   bool is_dynamic = false;
@@ -104,6 +106,8 @@ struct Track {
 
   // Whether this object is still active.
   bool is_active = true;
+
+  void updateSemantics(const std::optional<SemanticClusterInfo>& other_semantics);
 };
 using Tracks = std::vector<Track>;
 

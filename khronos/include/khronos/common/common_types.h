@@ -42,10 +42,13 @@
 
 #include <glog/logging.h>
 #include <hydra/common/common_types.h>
+#include <hydra/openset/openset_types.h>
 #include <hydra/reconstruction/voxel_types.h>
 #include <hydra/utils/timing_utilities.h>
 #include <opencv2/core/mat.hpp>
 #include <spark_dsg/dynamic_scene_graph.h>
+#include <spark_dsg/node_attributes.h>
+#include <spark_dsg/node_symbol.h>
 
 #include "khronos/common/pixel.h"
 
@@ -57,7 +60,7 @@ namespace khronos {
 
 // Images.
 using Image = cv::Mat;
-using hydra::Color;
+using spark_dsg::Color;
 
 // Time.
 using hydra::fromSeconds;
@@ -68,6 +71,10 @@ using hydra::toSeconds;
 using hydra::Point;
 using Points = std::vector<Point>;
 using Transform = Eigen::Isometry3d;
+
+// Semantics.
+using hydra::FeatureMap;
+using hydra::FeatureVector;
 
 // Index types.
 using hydra::BlockIndex;

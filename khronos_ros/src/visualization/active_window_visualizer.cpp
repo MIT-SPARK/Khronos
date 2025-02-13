@@ -41,11 +41,14 @@
 #include <config_utilities/parsing/ros.h>
 #include <cv_bridge/cv_bridge.h>
 #include <khronos/utils/geometry_utils.h>
+#include <spark_dsg/colormaps.h>
 
 #include "khronos_ros/utils/ros_conversions.h"
 #include "khronos_ros/visualization/visualization_utils.h"
 
 namespace khronos {
+
+namespace colormaps = spark_dsg::colormaps;
 
 void declare_config(ActiveWindowVisualizer::Config& config) {
   using namespace config;
@@ -188,7 +191,7 @@ void ActiveWindowVisualizer::visualizeTrackBoundingBoxes(const Tracks& tracks) {
     }
 
     auto& marker = msg.markers.emplace_back(setBoundingBox(
-        bbox, Color::quality(track.confidence), header, config.bounding_box_line_width));
+        bbox, colormaps::quality(track.confidence), header, config.bounding_box_line_width));
     marker.id = id++;
   }
   deletePreviousMarkers(msg, num_previous_bbox_tracks_);
@@ -219,7 +222,7 @@ void ActiveWindowVisualizer::visualizeTrackVoxels(const Tracks& tracks) {
     marker.header = header;
     marker.type = visualization_msgs::Marker::CUBE_LIST;
     marker.scale = setScale(track.last_voxel_size);
-    marker.color = setColor(Color::quality(track.confidence));
+    marker.color = setColor(colormaps::quality(track.confidence));
     marker.points.reserve(track.last_voxels.size());
     marker.pose.orientation.w = 1.f;
     for (const auto& voxel : track.last_voxels) {
@@ -255,7 +258,7 @@ void ActiveWindowVisualizer::visualizeTrackPixels(const Tracks& tracks) {
     marker.header = header;
     marker.type = visualization_msgs::Marker::POINTS;
     marker.scale = setScale(config.dynamic_point_scale);
-    marker.color = setColor(Color::quality(track.confidence));
+    marker.color = setColor(colormaps::quality(track.confidence));
     marker.points.reserve(track.last_points.size());
     for (const auto& point : track.last_points) {
       marker.points.emplace_back(setPoint(point));
@@ -288,7 +291,7 @@ void ActiveWindowVisualizer::visualizeTrackingImage(const Tracks& tracks,
         reprojected_pixels.emplace(u, v);
       }
     }
-    const Color color = Color::quality(track.confidence);
+    const Color color = colormaps::quality(track.confidence);
     for (const auto& pixel : reprojected_pixels) {
       applyColor(
           color, msg.image.at<cv::Vec3b>(pixel.v, pixel.u), config.detection_visualization_alpha);
@@ -311,11 +314,11 @@ void ActiveWindowVisualizer::visualizeObjectBoundingBoxes(const FrameData& data)
   std_msgs::Header header;
   header.frame_id = config.global_frame_name;
   header.stamp = getStamp();
-  for (const SemanticCluster& cluster : data.semantic_clusters) {
+  for (const auto& cluster : data.semantic_clusters) {
     if (cluster.bounding_box.isValid()) {
       auto& marker = msg.markers.emplace_back(
           setBoundingBox(cluster.bounding_box,
-                         Color::rainbowId(cluster.id, config.id_color_revolutions),
+                         colormaps::rainbowId(cluster.id, config.id_color_revolutions),
                          header,
                          config.bounding_box_line_width));
       marker.id = id++;
@@ -439,7 +442,7 @@ void ActiveWindowVisualizer::visualizeTrackingSlice(const VolumetricMap& map) co
           if (age > max_age) {
             msg.colors.emplace_back(setColor(Color::black()));
           } else {
-            msg.colors.emplace_back(setColor(Color::ironbow(1.0f - age / max_age)));
+            msg.colors.emplace_back(setColor(colormaps::ironbow(1.0f - age / max_age)));
           }
         }
       }
@@ -492,7 +495,7 @@ void ActiveWindowVisualizer::visualizeTsdfSlice(const VolumetricMap& map) const 
           msg.colors.emplace_back(setColor(Color::gray()));
         } else {
           const float value = 0.5 + 0.5 * voxel.distance / map.config.truncation_distance;
-          msg.colors.emplace_back(setColor(Color::quality(value)));
+          msg.colors.emplace_back(setColor(colormaps::quality(value)));
         }
       }
     }
@@ -516,7 +519,7 @@ void ActiveWindowVisualizer::visualizeDynamicPoints(const FrameData& data) const
   msg.type = visualization_msgs::Marker::POINTS;
 
   // Get all cluster points.
-  for (const DynamicCluster& cluster : data.dynamic_clusters) {
+  for (const auto& cluster : data.dynamic_clusters) {
     for (const Pixel& p : cluster.pixels) {
       const auto& point = data.input.vertex_map.at<InputData::VertexType>(p.v, p.u);
       const Point p_W(point[0], point[1], point[2]);
@@ -544,7 +547,7 @@ void ActiveWindowVisualizer::visualizeDynamicImage(const FrameData& data) const 
     for (int v = 0; v < msg.image.rows; ++v) {
       const int id = data.dynamic_image.at<FrameData::DynamicImageType>(v, u);
       if (id != 0) {
-        applyColor(Color::rainbowId(id, config.id_color_revolutions),
+        applyColor(colormaps::rainbowId(id, config.id_color_revolutions),
                    msg.image.at<cv::Vec3b>(v, u),
                    config.detection_visualization_alpha);
       }
@@ -568,7 +571,7 @@ void ActiveWindowVisualizer::visualizeObjectImage(const FrameData& data) const {
       const int id = data.object_image.at<FrameData::ObjectImageType>(v, u);
       ids.emplace(id);
       if (id != 0) {
-        applyColor(Color::rainbowId(id, config.id_color_revolutions),
+        applyColor(colormaps::rainbowId(id, config.id_color_revolutions),
                    msg.image.at<cv::Vec3b>(v, u),
                    config.detection_visualization_alpha);
       }
@@ -590,7 +593,7 @@ void ActiveWindowVisualizer::visualizeSemanticImage(const FrameData& data) const
     for (int v = 0; v < msg.image.rows; ++v) {
       const int id = data.input.label_image.at<InputData::LabelType>(v, u);
       if (id != 0) {
-        applyColor(Color::rainbowId(id, config.id_color_revolutions),
+        applyColor(colormaps::rainbowId(id, config.id_color_revolutions),
                    msg.image.at<cv::Vec3b>(v, u),
                    config.detection_visualization_alpha);
       }

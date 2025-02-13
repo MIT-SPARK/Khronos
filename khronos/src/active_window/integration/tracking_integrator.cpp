@@ -75,8 +75,9 @@ void TrackingIntegrator::updateBlocks(const FrameData& data, VolumetricMap& map)
   const BlockIndices all_blocks = map.getTsdfLayer().allocatedBlockIndices();
   const BlockIndices updated_blocks =
       map.getTsdfLayer().blockIndicesWithCondition(TsdfBlock::trackingUpdated);
-  CLOG(4) << "[Tracking Integrator] Updating " << all_blocks.size() << " total blocks and "
-          << updated_blocks.size() << " ever-free blocks.";
+  LOG_IF(INFO, config.verbosity >= 4) << "[Tracking Integrator] Updating " << all_blocks.size()
+                                        << " total blocks and " << updated_blocks.size()
+                                        << " ever-free blocks.";
 
   // Update tracking information and occupancy counter in parallel by block.
   BlockIndexGetter all_indices(all_blocks);

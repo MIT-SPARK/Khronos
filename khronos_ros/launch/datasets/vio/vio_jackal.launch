@@ -1,0 +1,55 @@
+<launch>
+
+  <arg name="robot_ns" default="sparkal1"/>
+
+  <arg name="base_link_frame_id" default="$(arg robot_ns)/base"/>
+  <arg name="map_frame_id"       default="$(arg robot_ns)/map"/>
+  <arg name="left_cam_frame_id"  default="$(arg robot_ns)/left_cam"/>
+  <arg name="right_cam_frame_id" default="$(arg robot_ns)/right_cam"/>
+  <arg name="odom_frame_id"      default="$(arg robot_ns)/odom"/>
+
+  <arg name="camera_ns" default="/$(arg robot_ns)/forward"/>
+  <arg name="depth_ns" default="depth"/>
+  <arg name="color_ns" default="color"/>
+  <arg name="color_image" default="image_raw"/>
+  <arg name="depth_image" default="image_rect_raw"/>
+
+  <arg name="online" default="true"/>
+  <arg name="debug" default="false"/>
+
+  <arg name="use_lcd" default="true"/>
+  <arg name="lcd_no_optimize" default="true"/>
+  <arg name="lcd_no_detection" default="false"/>
+  <arg name="use_external_odom" default="true"/>
+  <arg name="external_odom_topic" default="/$(arg robot_ns)/jackal_velocity_controller/odom"/>
+
+  <arg name="left_cam_topic" default="$(arg camera_ns)/$(arg color_ns)/$(arg color_image)"/>
+  <arg name="depth_cam_topic" default="$(arg camera_ns)/$(arg depth_ns)/$(arg depth_image)"/>
+
+  <arg name="bow_batch_size"          default="10" />
+  <arg name="bow_skip_num"            default="1" />
+  <arg name="publish_vlc_frames"      default="true"/>
+
+  <include file="$(find kimera_vio_ros)/launch/kimera_vio_ros.launch" pass_all_args="true">
+    <arg name="include_pipeline_flags" value="true"/>
+    <arg name="viz_type" value="1"/>
+    <!-- diable stereo depth checks for LCD feature matching -->
+    <arg name="lcd_disable_stereo_match_depth_check" default="true"/>
+    <!-- diable backend using incremental pose -->
+    <arg name="no_incremental_pose" default="true"/>
+    <arg name="left_cam_topic" value="$(arg left_cam_topic)"/>
+    <arg name="depth_cam_topic" value="$(arg depth_cam_topic)"/>
+    <arg name="imu_topic" value="$(arg camera_ns)/imu"/>
+    <!-- default pipeline params -->
+    <arg name="params_folder" value="$(find khronos_ros)/config/vio/jackal/"/>
+    <!-- robot specific calibration -->
+    <arg name="sensor_folder" value="$(find khronos_ros)/config/vio/jackal/"/>
+
+    <arg name="online" value="$(arg online)"/>
+    <arg name="debug" value="$(arg debug)"/>
+    <arg name="use_external_odom" value="$(arg use_external_odom)"/>
+    <arg name="external_odom_topic" value="$(arg external_odom_topic)"/>
+    <arg name="rgb_image_transport" value="compressed"/>
+  </include>
+
+</launch>

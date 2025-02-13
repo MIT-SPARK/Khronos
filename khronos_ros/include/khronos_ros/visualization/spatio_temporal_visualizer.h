@@ -45,7 +45,8 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/robot_prefix_config.h>
-#include <hydra_ros/visualizer/dynamic_scene_graph_visualizer.h>
+#include <hydra_visualizer/scene_graph_renderer.h>
+#include <hydra_visualizer/utils/config_wrapper.h>
 #include <khronos/common/common_types.h>
 #include <khronos/spatio_temporal_map/spatio_temporal_map.h>
 #include <khronos_msgs/KhronosSpatioTemporalVisConfig.h>
@@ -66,7 +67,8 @@ namespace khronos {
 class SpatioTemporalVisualizer {
  public:
   using Coloring = std::optional<KhronosMeshVisualizer::Coloring>;
-  using DynamicConfig = hydra::ConfigWrapper<khronos_msgs::KhronosSpatioTemporalVisConfig>;
+  using DynamicConfig =
+      hydra::visualizer::ConfigWrapper<khronos_msgs::KhronosSpatioTemporalVisConfig>;
 
   // Config.
   struct Config {
@@ -142,7 +144,6 @@ class SpatioTemporalVisualizer {
   // Visualizer state.
   size_t robot_time_;  // Timestamp of the current robot time.
   size_t query_time_;  // Timestamp of the current query time.
-  size_t map_idx_;     // Index of the current dsgbased on robot time.
   Config::TimeMode time_mode_;
 
   // Visualizer state tracking for incremental updates.
@@ -157,7 +158,7 @@ class SpatioTemporalVisualizer {
 
   // Members.
   KhronosMeshVisualizer mesh_visualizer_;
-  hydra::DynamicSceneGraphVisualizer dsg_visualizer_;
+  hydra::SceneGraphRenderer dsg_renderer_;
 
   // Loaded data.
   SpatioTemporalMap map_;

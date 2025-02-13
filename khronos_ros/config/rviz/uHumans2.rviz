@@ -1,0 +1,487 @@
+Panels:
+  - Class: rviz/Displays
+    Help Height: 0
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Global Options1
+        - /Scene Graph1
+        - /Scene Graph1/Scene Graph1/Status1
+        - /Active Window1
+        - /Active Window1/Voluetric Map1
+        - /Active Window1/Object Detection1
+        - /Active Window1/Motion Detection1
+        - /Active Window1/Tracking1
+        - /Backend1
+      Splitter Ratio: 0.8911764621734619
+    Tree Height: 735
+  - Class: rviz/Selection
+    Name: Selection
+  - Class: rviz/Tool Properties
+    Expanded:
+      - /2D Pose Estimate1
+      - /2D Nav Goal1
+      - /Publish Point1
+    Name: Tool Properties
+    Splitter Ratio: 0.5886790156364441
+  - Class: rviz/Views
+    Expanded:
+      - /Current View1
+    Name: Views
+    Splitter Ratio: 0.5
+  - Class: rviz/Time
+    Name: Time
+    SyncMode: 0
+    SyncSource: Dynamic Image
+Preferences:
+  PromptSaveOnExit: true
+Toolbars:
+  toolButtonStyle: 2
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.5
+      Cell Size: 0.5
+      Class: rviz/Grid
+      Color: 160; 160; 164
+      Enabled: false
+      Line Style:
+        Line Width: 0.029999999329447746
+        Value: Lines
+      Name: Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Plane: XY
+      Plane Cell Count: 1000
+      Reference Frame: <Fixed Frame>
+      Value: false
+    - Class: rviz/Group
+      Displays:
+        - Class: rviz/MarkerArray
+          Enabled: true
+          Marker Topic: /hydra_dsg_visualizer/dsg_markers
+          Name: Scene Graph
+          Namespaces:
+            "dynamic_edges_\x00": true
+            "dynamic_label_\x00": true
+            "dynamic_nodes_\x00": true
+            layer_bounding_boxes_2: true
+            layer_labels_2: true
+            layer_nodes_2: true
+          Queue Size: 100
+          Value: true
+        - Class: kimera_pgmo_rviz/MeshDisplay
+          Cull Backfaces: true
+          Enable Lighting: false
+          Enabled: true
+          Name: Background Mesh
+          Queue Size: 10
+          Toggle Visibility All: true
+          Topic: /hydra_dsg_visualizer/dsg_mesh
+          Unreliable: false
+          Value: true
+          Visible:
+            Value: true
+            robot0:
+              Value: true
+              dsg_mesh: true
+        - Class: rviz/MarkerArray
+          Enabled: true
+          Marker Topic: /hydra_dsg_visualizer/khronos_objects/dynamic_objects
+          Name: Object Trajectories
+          Namespaces:
+            trajectory: true
+          Queue Size: 100
+          Value: true
+        - Class: kimera_pgmo_rviz/MeshDisplay
+          Cull Backfaces: true
+          Enable Lighting: false
+          Enabled: true
+          Name: Object Meshes
+          Queue Size: 10
+          Toggle Visibility All: true
+          Topic: /hydra_dsg_visualizer/khronos_objects/static_objects
+          Unreliable: false
+          Value: true
+          Visible:
+            5692549928996306991: true
+            5692549928996306992: true
+            5692549928996306995: true
+            5692549928996306996: true
+            5692549928996306997: true
+            5692549928996306998: true
+            5692549928996306999: true
+            5692549928996307000: true
+            5692549928996307001: true
+            5692549928996307002: true
+            5692549928996307003: true
+            5692549928996307004: true
+            5692549928996307005: true
+            5692549928996307006: true
+            5692549928996307009: true
+            5692549928996307010: true
+            5692549928996307011: true
+            5692549928996307012: true
+            5692549928996307013: true
+            5692549928996307014: true
+            5692549928996307015: true
+            5692549928996307016: true
+            5692549928996307017: true
+            5692549928996307018: true
+            5692549928996307019: true
+            5692549928996307020: true
+            5692549928996307021: true
+            5692549928996307022: true
+            5692549928996307024: true
+            5692549928996307034: true
+            5692549928996307035: true
+            5692549928996307036: true
+            5692549928996307037: true
+            5692549928996307038: true
+            5692549928996307039: true
+            5692549928996307040: true
+            5692549928996307041: true
+            5692549928996307042: true
+            5692549928996307057: true
+            5692549928996307059: true
+            5692549928996307060: true
+            5692549928996307061: true
+            5692549928996307062: true
+            5692549928996307063: true
+            5692549928996307064: true
+            5692549928996307065: true
+            5692549928996307066: true
+            5692549928996307067: true
+            5692549928996307068: true
+            5692549928996307069: true
+            5692549928996307070: true
+            5692549928996307071: true
+            5692549928996307072: true
+            Value: true
+      Enabled: true
+      Name: Scene Graph
+    - Class: rviz/Group
+      Displays:
+        - Class: rviz/Image
+          Enabled: true
+          Image Topic: /khronos_node/input/depth_image
+          Max Value: 1
+          Median window: 300
+          Min Value: 0
+          Name: Depth
+          Normalize Range: true
+          Queue Size: 2
+          Transport Hint: raw
+          Unreliable: false
+          Value: true
+        - Class: rviz/Image
+          Enabled: true
+          Image Topic: /tesse/seg_cam/rgb/image_raw
+          Max Value: 1
+          Median window: 5
+          Min Value: 0
+          Name: Semantics
+          Normalize Range: true
+          Queue Size: 2
+          Transport Hint: raw
+          Unreliable: false
+          Value: true
+        - Class: rviz/Image
+          Enabled: true
+          Image Topic: /khronos_node/semantic_converter/semantic_failures
+          Max Value: 1
+          Median window: 5
+          Min Value: 0
+          Name: Semantic Failures
+          Normalize Range: true
+          Queue Size: 2
+          Transport Hint: raw
+          Unreliable: false
+          Value: true
+        - Class: rviz/Image
+          Enabled: true
+          Image Topic: /khronos_node/input/color_image
+          Max Value: 1
+          Median window: 5
+          Min Value: 0
+          Name: RGB
+          Normalize Range: true
+          Queue Size: 2
+          Transport Hint: raw
+          Unreliable: false
+          Value: true
+      Enabled: false
+      Name: Input
+    - Class: rviz/Group
+      Displays:
+        - Class: rviz/Marker
+          Enabled: true
+          Marker Topic: /khronos_node/pgmo/deformation_graph_mesh_mesh
+          Name: Mesh Edges
+          Namespaces:
+            {}
+          Queue Size: 100
+          Value: true
+        - Class: rviz/Marker
+          Enabled: true
+          Marker Topic: /khronos_node/pgmo/deformation_graph_pose_mesh
+          Name: Pose-Mesh Edges
+          Namespaces:
+            {}
+          Queue Size: 100
+          Value: true
+        - Class: rviz/Marker
+          Enabled: true
+          Marker Topic: /khronos_node/pgmo/posegraph_viewer/odometry_edges
+          Name: Odometry
+          Namespaces:
+            {}
+          Queue Size: 100
+          Value: true
+        - Class: rviz/Marker
+          Enabled: true
+          Marker Topic: /khronos_node/pgmo/posegraph_viewer/loop_edges
+          Name: Loop Closures
+          Namespaces:
+            {}
+          Queue Size: 100
+          Value: true
+      Enabled: false
+      Name: Factor Graph
+    - Class: rviz/Group
+      Displays:
+        - Class: rviz/Group
+          Displays:
+            - Class: rviz/Marker
+              Enabled: false
+              Marker Topic: /khronos_node/visualization/ever_free_slice
+              Name: Ever Free Slice
+              Namespaces:
+                {}
+              Queue Size: 100
+              Value: false
+            - Class: rviz/Marker
+              Enabled: false
+              Marker Topic: /khronos_node/visualization/tsdf_slice
+              Name: TSDF Slice
+              Namespaces:
+                {}
+              Queue Size: 100
+              Value: false
+            - Class: rviz/Marker
+              Enabled: true
+              Marker Topic: /khronos_node/visualization/tracking_slice
+              Name: Tracking Slics
+              Namespaces:
+                {}
+              Queue Size: 100
+              Value: true
+          Enabled: false
+          Name: Voluetric Map
+        - Class: rviz/Group
+          Displays:
+            - Class: rviz/Image
+              Enabled: true
+              Image Topic: /khronos_node/visualization/semantic_image
+              Max Value: 1
+              Median window: 5
+              Min Value: 0
+              Name: Semantic Image
+              Normalize Range: true
+              Queue Size: 2
+              Transport Hint: raw
+              Unreliable: false
+              Value: true
+            - Class: rviz/Image
+              Enabled: true
+              Image Topic: /khronos_node/visualization/object_image
+              Max Value: 1
+              Median window: 5
+              Min Value: 0
+              Name: Object Image
+              Normalize Range: true
+              Queue Size: 2
+              Transport Hint: raw
+              Unreliable: false
+              Value: true
+            - Class: rviz/MarkerArray
+              Enabled: false
+              Marker Topic: /khronos_node/visualization/object_bounding_boxes
+              Name: Object Bounding Boxes
+              Namespaces:
+                {}
+              Queue Size: 100
+              Value: false
+          Enabled: false
+          Name: Object Detection
+        - Class: rviz/Group
+          Displays:
+            - Class: rviz/Marker
+              Enabled: true
+              Marker Topic: /khronos_node/visualization/dynamic_points
+              Name: DynamicPoints
+              Namespaces:
+                "": true
+              Queue Size: 100
+              Value: true
+            - Class: rviz/Image
+              Enabled: true
+              Image Topic: /khronos_node/visualization/dynamic_image
+              Max Value: 1
+              Median window: 5
+              Min Value: 0
+              Name: Dynamic Image
+              Normalize Range: true
+              Queue Size: 2
+              Transport Hint: raw
+              Unreliable: false
+              Value: true
+          Enabled: true
+          Name: Motion Detection
+        - Class: rviz/Group
+          Displays:
+            - Class: rviz/MarkerArray
+              Enabled: true
+              Marker Topic: /khronos_node/visualization/tracking/bounding_box
+              Name: Bounding Boxes
+              Namespaces:
+                "": true
+              Queue Size: 100
+              Value: true
+            - Class: rviz/MarkerArray
+              Enabled: false
+              Marker Topic: /khronos_node/visualization/tracking/voxels
+              Name: Voxels
+              Namespaces:
+                {}
+              Queue Size: 100
+              Value: false
+            - Class: rviz/MarkerArray
+              Enabled: false
+              Marker Topic: /khronos_node/visualization/tracking/pixels
+              Name: Pixels
+              Namespaces:
+                {}
+              Queue Size: 100
+              Value: false
+            - Class: rviz/Image
+              Enabled: false
+              Image Topic: /khronos_node/visualization/tracking/image
+              Max Value: 1
+              Median window: 5
+              Min Value: 0
+              Name: Tracking Image
+              Normalize Range: true
+              Queue Size: 2
+              Transport Hint: raw
+              Unreliable: false
+              Value: false
+          Enabled: true
+          Name: Tracking
+      Enabled: true
+      Name: Active Window
+    - Class: rviz/Group
+      Displays:
+        - Class: rviz/Marker
+          Enabled: true
+          Marker Topic: /khronos_node/backend/deformation_graph_mesh_mesh
+          Name: MeshMesh
+          Namespaces:
+            {}
+          Queue Size: 100
+          Value: true
+        - Class: rviz/Marker
+          Enabled: true
+          Marker Topic: /khronos_node/backend/deformation_graph_pose_mesh
+          Name: PoseMesh
+          Namespaces:
+            {}
+          Queue Size: 100
+          Value: true
+      Enabled: false
+      Name: Backend
+  Enabled: true
+  Global Options:
+    Background Color: 255; 255; 255
+    Default Light: true
+    Fixed Frame: world
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+      Hide Inactive Objects: true
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/FocusCamera
+    - Class: rviz/Measure
+    - Class: rviz/SetInitialPose
+      Theta std deviation: 0.2617993950843811
+      Topic: /initialpose
+      X std deviation: 0.5
+      Y std deviation: 0.5
+    - Class: rviz/SetGoal
+      Topic: /move_base_simple/goal
+    - Class: rviz/PublishPoint
+      Single click: true
+      Topic: /clicked_point
+  Value: true
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 47.40489196777344
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.05999999865889549
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Field of View: 0.7853981852531433
+      Focal Point:
+        X: -2.6427202224731445
+        Y: 18.477733612060547
+        Z: 0.9915362596511841
+      Focal Shape Fixed Size: false
+      Focal Shape Size: 0.05000000074505806
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.009999999776482582
+      Pitch: 0.8397952318191528
+      Target Frame: <Fixed Frame>
+      Yaw: 3.1104135513305664
+    Saved: ~
+Window Geometry:
+  Depth:
+    collapsed: false
+  Displays:
+    collapsed: false
+  Dynamic Image:
+    collapsed: false
+  Height: 1136
+  Hide Left Dock: false
+  Hide Right Dock: true
+  Object Image:
+    collapsed: false
+  QMainWindow State: 000000ff00000000fd000000040000000000000156000003b4fc0200000017fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730200000780000001df00000185000000b0fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003b0000031a000000c700fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb0000000a0044006500700074006800000002b1000000b00000001600fffffffb0000001200530065006d0061006e00740069006300730000000367000000a80000001600fffffffb000000060052004700420000000415000000b90000001600fffffffb0000001c00530065006d0061006e00740069006300200049006d0061006700650000000312000000d70000001600fffffffb00000018004f0062006a00650063007400200049006d00610067006500000003ef000000df0000001600fffffffb0000001a00440079006e0061006d0069006300200049006d006100670065010000035b000000940000001600fffffffb0000002200530065006d0061006e0074006900630020004600610069006c00750072006500730000000329000000cb0000001600fffffffb0000001a00440079006e0061006d0069006300200049006d00610067006501000002f8000000e70000000000000000fb00000018004f0062006a00650063007400200049006d00610067006501000003e5000000e90000000000000000fb0000001c00530065006d0061006e00740069006300200049006d00610067006502000000200000002000000156000000c0fb0000000a004400650070007400680000000000ffffffff0000000000000000fb0000001200530065006d0061006e00740069006300730000000000ffffffff0000000000000000fb0000002200530065006d0061006e0074006900630020004600610069006c007500720065007303000000200000002000000156000000a4fb000000060052004700420000000000ffffffff0000000000000000fb0000001c0054007200610063006b0069006e006700200049006d00610067006500000003f9000000d50000001600ffffff000000010000010f000003b5fc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000003d000003b5000000a000fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e100000197000000030000078000000060fc0100000002fb0000000800540069006d00650100000000000007800000030700fffffffb0000000800540069006d0065010000000000000450000000000000000000000624000003b400000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  RGB:
+    collapsed: false
+  Selection:
+    collapsed: false
+  Semantic Failures:
+    collapsed: false
+  Semantic Image:
+    collapsed: false
+  Semantics:
+    collapsed: false
+  Time:
+    collapsed: false
+  Tool Properties:
+    collapsed: false
+  Tracking Image:
+    collapsed: false
+  Views:
+    collapsed: true
+  Width: 1920
+  X: 210
+  Y: 17

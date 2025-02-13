@@ -1,178 +1,103 @@
 <launch>
-    <arg name="robot_id"/>
-    <arg name="hydra_config_dir"/>
-    <arg name="labelspace_dir" default="$(find hydra)/config/label_spaces"/>
-    <arg name="labelspace_config"/>
-    <arg name="semantic_label_remap_filepath"/>
-    <arg name="semantic_map_dir"/>
-    <arg name="semantic_map_file"/>
-    <arg name="robot_frame"/>
-    <arg name="odom_frame"/>
-    <arg name="map_frame"/>
-    <arg name="world_frame" default="world"/>
-    <arg name="use_gt_frame" default="true"/>
-
+    <!-- ========== Arguments ==========-->
 
     <!-- Configs -->
-    <arg name="input_config" default="uHumans2.yaml"/>
-    <arg name="mapper_config" default="uHumans2.yaml"/>
-    <arg name="visualiziation_config" default="devel_dsg_visualizer.yaml"/>
+    <arg name="input_config"  default="$(find khronos_ros)/config/datasets/uHumans2.yaml"/>
+    <arg name="mapper_config" default="$(find khronos_ros)/config/mapper/uHumans2.yaml"/>
+    <arg name="rviz_path"     default="$(find khronos_ros)/config/rviz/uHumans2.rviz"/>
+    <arg name="labelspace_config"/>
+    <arg name="label_remap_config" default=""/>
+    <arg name="semantic_colormap_config" default=""/>
+
+    <!-- System Args -->
     <arg name="use_prerecorded_objects" default="false"/>
+    <arg name="sensor_min_range" default="0.1"/>
+    <arg name="sensor_max_range" default="5.0"/>
 
-    <!-- Experiments -->
+    <!-- Experiment -->
     <arg name="evaluate" default="false"/>
-    <arg name="output_dir" default=""/>
+    <arg name="output_dir" default="$(find khronos)/../output/"/>
+    <arg name="use_gt_frame" default="true"/>
 
-    <!-- Imported from hydra  -->
-    <arg name="input_config_path" default="$(find khronos_ros)/config/datasets/$(arg input_config)"/>
-
-    <arg name="dsg_output_dir" default="$(find khronos)/../output/"/>
-    <arg name="dsg_output_prefix" default="default"/>
-
-    <arg name="use_oriented_bounding_boxes" default="false"/>
-    <arg name="exit_mode" default="NORMAL"/>
+    <!-- Launch -->
     <arg name="start_visualizer" default="true"/>
-    <arg name="start_logger" default="false"/>
-    <arg name="optimize_on_lc" default="true"/>
-    <arg name="enable_merge_undos" default="false"/>
-    <arg name="visualize_reconstruction" default="false"/>
-    <arg name="enable_frontend_output" default="true"/>
-    <arg name="enable_lcd_viz" default="false"/>
-
-    <arg name="param_overrides_file" default="$(find hydra_ros)/config/overrides.yaml"/>
-    <arg name="ros_params_file" default="$(find hydra_ros)/config/ros_params.yaml"/>
-
-    <arg name="use_zmq_interface" default="false"/>
-    <arg name="zmq_send_url" default="tcp://127.0.0.1:8001"/>
-    <arg name="zmq_recv_url" default="tcp://127.0.0.1:8002"/>
-
-    <arg name="labelspace_path" default="$(arg labelspace_dir)/$(arg labelspace_config)"/>
-
-    <arg name="use_kimera_extrinsics" default="false"/>
-
-    <arg name="lcd_use_bow_vectors" default="true"/>
-    <arg name="enable_dsg_lcd" default="false"/>
-    <arg name="use_gnn_descriptors" default="false"/>
-    <arg name="lcd_gnn_object_model" default="$(find hydra)/models/lcd/object_gnn.onnx"/>
-    <arg name="lcd_gnn_places_model" default="$(find hydra)/models/lcd/place_gnn.onnx"/>
-    <arg name="lcd_gnn_label_embeddings" default="" if="$(arg use_gnn_descriptors)"/>
-
-    <!-- Imported from hydra -->
-    <!-- sensor configuration -->
-    <arg name="sensor_min_range" default="0.1" doc="minimum sensor range in meters"/>
-    <arg name="sensor_max_range" default="5.0" doc="maximum sensor range in meters"/>
-    <!-- topic arguments for the InputModule-->
-    <arg name="pointcloud_topic" default="pointcloud"/>
-    <arg name="rgb_info_topic" default="rgb/camera_info"/>
-    <arg name="rgb_topic" default="rgb/image_raw"/>
-    <arg name="depth_topic" default="depth_registered/image_rect"/>
-    <arg name="label_topic" default="semantic/image_raw"/>
-    <arg name="rgb_image_transport" default="raw"/>
 
     <!-- Debug -->
     <arg name="debug" default="false"/>
-    <arg name="launch_prefix" value="gdb -ex run --args" if="$(arg debug)"/>
-    <arg name="launch_prefix" value="" unless="$(arg debug)"/>
-
     <arg name="min_glog_level" default="0"/>
     <arg name="verbosity" default="0"/>
     <arg name="glog_to_file" default="false"/>
     <arg name="glog_dir" if="$(arg glog_to_file)"/>
+    <arg name="rviz_verbose" default="false"/>
+
+    <!-- Robot Frames-->
+    <arg name="robot_id" default="0"/>
+    <arg name="robot_frame" default="robot_$(arg robot_id)"/>
+    <arg name="odom_frame" default="odom"/>
+    <arg name="map_frame" default="map"/>
+    <arg name="world_frame" default="world"/>
+
+    <!-- Input Topics -->
+    <arg name="rgb_topic" default="/tesse/left_cam/rgb/image_raw"/>
+    <arg name="rgb_info_topic" default="/tesse/left_cam/camera_info"/>
+    <arg name="depth_topic" default="/tesse/depth_cam/mono/image_raw"/>
+    <arg name="label_topic" default="/tesse/seg_cam/converted/image_raw"/>
+
+    <!-- ========== Autogenerated Args ========== -->
+    <arg name="launch_prefix" value="gdb -ex run --args" if="$(arg debug)"/>
+    <arg name="launch_prefix" value="" unless="$(arg debug)"/>
     <arg name="glog_file_args" value="--logtostderr=0 --log_dir=$(arg glog_dir)" if="$(arg glog_to_file)"/>
     <arg name="glog_file_args" value="" unless="$(arg glog_to_file)"/>
-
-    <arg name="dsg_should_log" default="true" />
-    <arg name="pgmo_should_log" default="true"/>
-    <arg name="log_registration" default="false"/>
-    <arg name="log_timing_incrementally" default="false"/>
-    <arg name="show_topology_stats" default="false"/>
-    <arg name="dsg_path" default="$(arg dsg_output_dir)/$(arg dsg_output_prefix)"/>
-    <arg name="pgmo_log_path" value="$(arg dsg_path)/pgmo"/>
     <arg name="ros_output" value="screen" unless="$(arg glog_to_file)"/>
     <arg name="ros_output" value="log" if="$(arg glog_to_file)"/>
 
+    <!-- ========== Launch ========== -->
 
     <!-- Khronos -->
     <node pkg="khronos_ros" type="khronos_node" name="khronos_node" launch-prefix="$(arg launch_prefix)" args="--minloglevel=$(arg min_glog_level) -v=$(arg verbosity) $(arg glog_file_args)" required="true" output="$(arg ros_output)">
-        <env name="OMP_NUM_THREADS" value="12"/>
         <env name="TERM" value="xterm-256color"/>
 
+        <!-- Robot configuration -->
+        <param name="robot_id" value="$(arg robot_id)"/>
+        <param name="odom_frame" value="$(arg odom_frame)"/>
+        <param name="robot_frame" value="$(arg robot_frame)"/>
+        <param name="map_frame" value="$(arg map_frame)"/>
+
         <!-- khronos configs -->
-        <rosparam file="$(arg input_config_path)" ns="input" subst_value="true"/>
-        <rosparam file="$(find khronos_ros)/config/mapper/$(arg mapper_config)" subst_value="true"/>
+        <rosparam file="$(arg input_config)" ns="input" subst_value="true"/>
+        <rosparam file="$(arg mapper_config)" subst_value="true"/>
+        <rosparam file="$(arg labelspace_config)"/>
+
+        <!-- Argument dependent params -->
         <param name="experiment/output_dir" value="$(arg output_dir)" if="$(arg evaluate)"/>
         <param name="frontend/pose_graph_tracker/type" value="$(eval 'PoseGraphFromOdom' if arg('use_gt_frame') else 'RosPoseGraphs')"/>
         <param name="backend/fix_input_poses" value="$(arg use_gt_frame)"/>
-
-        <!-- Override object detector type is openset -->
         <param if="$(arg use_prerecorded_objects)" name="active_window/object_detector/type" value="InstanceForwarding"/>
+        <param name="semantic_label_remap_filepath" value="$(arg label_remap_config)"/>
+        <param name="semantic_colormap_file" value="$(arg semantic_colormap_config)"/>
+        <param name="input/left_cam/rgb/image_transport" value="compressed" if="$(arg compressed_rgb)"/>
 
-        <!-- Imported Configs from Hydra (TODO: Check and clean this) -->
-        <rosparam file="$(arg labelspace_path)"/>
-        <rosparam file="$(arg ros_params_file)"/>
+        <!-- Input Topics -->
+        <remap from="~input/left_cam/depth_registered/image_rect" to="$(arg depth_topic)"/>
+        <remap from="~input/left_cam/rgb/image_raw" to="$(arg rgb_topic)"/>
+        <remap from="~input/left_cam/rgb/image_raw/compressed" to="$(arg rgb_topic)/compressed"/>
+        <remap from="~input/left_cam/rgb/camera_info" to="$(arg rgb_info_topic)"/>
+        <remap from="~input/left_cam/semantic/image_raw" to="$(arg label_topic)"/>
 
-        <param name="semantic_label_remap_filepath" value="$(arg semantic_label_remap_filepath)"/>
-        <param name="make_pose_graph" value="$(arg use_gt_frame)"/>
-        <param name="enable_frontend_output" value="$(arg enable_frontend_output)"/>
-        <param name="exit_mode" value="$(arg exit_mode)"/>
-        <param name="should_log" value="$(arg dsg_should_log)"/>
-        <param name="log_path" value="$(arg dsg_path)"/>
-        <param name="log_timing_incrementally" value="$(arg log_timing_incrementally)"/>
-        <param name="visualize_dsg_lcd" value="$(arg enable_lcd_viz)"/>
-        <param name="semantic_colormap_file" value="$(arg semantic_map_dir)/$(arg semantic_map_file)"/>
-        <param name="robot_id" value="$(arg robot_id)"/>
-        <param name="world_frame" value="$(arg world_frame)"/>
-        <param name="robot_frame" value="$(arg robot_frame)"/>
-        <param name="map_frame" value="$(arg map_frame)"/>
-        <param name="odom_frame" value="$(arg odom_frame)"/>
-        <param name="show_stats" value="$(arg show_topology_stats)"/>
-
-        <param name="dsg/use_zmq_interface" value="$(arg use_zmq_interface)"/>
-        <param name="dsg/zmq_send_url" value="$(arg zmq_send_url)"/>
-        <param name="dsg/zmq_recv_url" value="$(arg zmq_recv_url)"/>
-        <param name="pgmo/log_path" value="$(arg pgmo_log_path)"/>
-        <param name="pgmo/should_log" value="$(arg pgmo_should_log)"/>
-        <param name="objects/bounding_box_type" value="RAABB" if="$(arg use_oriented_bounding_boxes)"/>
-        <param name="objects/bounding_box_type" value="AABB" unless="$(arg use_oriented_bounding_boxes)"/>
-        <param name="pgmo/robot_id" value="$(arg robot_id)"/>
-
-        <param name="enable_lcd" value="$(arg enable_dsg_lcd)"/>
-        <param name="lcd_use_bow_vectors" value="$(arg lcd_use_bow_vectors)"/>
-        <param name="dsg/optimize_on_lc" value="$(arg optimize_on_lc)"/>
-        <param name="dsg/enable_merge_undos" value="$(arg enable_merge_undos)"/>
-        <param name="lcd/log_registration_problem" value="$(arg log_registration)"/>
-        <param name="lcd/use_gnn_descriptors" value="$(arg use_gnn_descriptors)"/>
-        <param name="lcd/gnn_lcd/object_model_path" value="$(arg lcd_gnn_object_model)"/>
-        <param name="lcd/gnn_lcd/places_model_path" value="$(arg lcd_gnn_places_model)"/>
-        <param name="lcd/gnn_lcd/label_embeddings_file" value="$(arg lcd_gnn_label_embeddings)" if="$(arg use_gnn_descriptors)"/>
-
-        <remap from="~pose_graph" to="kimera_vio_ros/pose_graph_incremental" unless="$(arg use_gt_frame)"/>
-        <remap from="~/bow_vectors" to="kimera_vio_ros/bow_query"/>
-        <remap from="frame_registration" to="kimera_vio_ros/kimera_vio_ros_node/register_lcd_frames"/>
-
-        <!-- sensor topic remappings -->
-        <remap from="~pointcloud" to="$(arg pointcloud_topic)"/>
-        <remap from="~rgb/image_raw" to="$(arg rgb_topic)"/>
-        <remap from="~rgb/image_raw/compressed" to="$(arg rgb_topic)/compressed"/>
-        <remap from="~rgb/camera_info" to="$(arg rgb_info_topic)"/>
-        <remap from="~depth_registered/image_rect" to="$(arg depth_topic)"/>
-        <remap from="~semantic/image_raw" to="$(arg label_topic)"/>
-        <!-- image transport -->
-        <param name="rgb/image_transport" value="$(arg rgb_image_transport)"/>
-
-        <!-- goes last to make sure params actually override -->
-        <rosparam file="$(arg param_overrides_file)"/>
-
-        <remap from="~pose_graph" to="pose_graph"/>
+        <!-- Kimera topics -->
+        <remap from="~pose_graph" to="/kimera_vio_ros/pose_graph_incremental" unless="$(arg use_gt_frame)"/>
+        <remap from="~bow_vectors" to="/kimera_vio_ros/bow_query"/>
+        <remap from="frame_registration" to="/kimera_vio_ros/kimera_vio_ros_node/register_lcd_frames"/>
     </node>
-
 
     <!-- Visualization -->
     <group if="$(arg start_visualizer)">
-        <include file="$(find khronos_ros)/launch/dsg_visualizer.launch" pass_all_args="true">
-            <arg name="dsg_topic" value="khronos_node/backend/dsg"/>
-            <arg name="visualizer_config" value="$(find khronos_ros)/config/visualization/$(arg visualiziation_config)"/>
-            <arg name="dsg_mesh_topic" value="khronos_node/dsg_mesh"/>
+        <remap from="hydra_dsg_visualizer/dsg" to="khronos_node/backend/dsg"/>
+        <remap from="hydra_dsg_visualizer/feature" to="khronos_node/input/left_cam/feature"/>
+        <include file="$(find hydra_visualizer)/launch/hydra_streaming_visualizer.launch" pass_all_args="true">
+            <arg name="color_mesh_by_label" default="true"/>
+            <arg name="visualizer_config_path" default="$(find khronos_ros)/config/visualization/visualizer_config.yaml"/>
+            <arg name="visualizer_plugins_path" default="$(find khronos_ros)/config/visualization/visualizer_plugins.yaml"/>
         </include>
 
         <include file="$(find pose_graph_tools_ros)/launch/posegraph_view.launch">

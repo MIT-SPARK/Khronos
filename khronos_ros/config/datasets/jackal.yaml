@@ -1,0 +1,18 @@
+
+# uHumans2 dataset intrinsics.
+type: RosInput
+tf_verbosity: 1
+clear_queue_on_fail: true
+inputs:
+  left_cam:
+    receiver:
+      # TODO(marcus): overwrite in launch file or use a separate config file for each
+      type: ClosedSetImageReceiver
+      input_separation_s: 0.099 # Limit Input rate to max 10 Hz
+    sensor:
+      type: camera_info
+      min_range: $(arg sensor_min_range)
+      max_range: $(arg sensor_max_range)
+      extrinsics:
+        type: ros
+        sensor_frame: $(arg sensor_frame)

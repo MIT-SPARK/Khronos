@@ -54,9 +54,10 @@ int main(int argc, char** argv) {
   google::InstallFailureSignalHandler();
 
   // Global config settings.
-  config::Settings().print_indent = 40;
-  config::Settings().print_width = 100;
-  config::Settings().subconfig_indent = 2;
+  auto& settings = config::Settings();
+  settings.print_indent = 40;
+  settings.print_width = 100;
+  settings.subconfig_indent = 2;
 
   // Setup node.
   ros::NodeHandle nh("~");

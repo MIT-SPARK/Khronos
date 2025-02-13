@@ -1,0 +1,43 @@
+%YAML:1.0
+
+################################################################################
+# Created by: Nathan Hughes                                                    #
+# Created on: 2022-07-26                                                       #
+################################################################################
+
+# General sensor definitions
+camera_id: left_cam
+
+# TODO(nathan): Weirdly similar to T265 extrinsics...
+T_BS:
+  cols: 4
+  rows: 4
+  data:  [0.99985945, -0.01443721,  0.00852319, -0.02647408,
+          0.01453776,  0.99982404, -0.01185494,  0.00914898,
+         -0.00835054,  0.01197718,  0.99989340,  0.02575617,
+          0.00000000,  0.00000000,  0.00000000,  1.00000000]
+
+# Camera specific definitions
+rate_hz: 30
+resolution: [640, 480]  # [width, height]
+camera_model: pinhole
+# TODO(nathan) also might need to check this
+intrinsics: [372.4634094238281, 371.5072021484375, 315.9902073557914, 254.59437002701452]
+distortion_model: radtan
+# TODO(nathan) might need to check this / the focal length
+distortion_coefficients: [0.0, 0.0, 0.0, 0.0]  # model dependent
+
+# Depth camera Params
+virtual_baseline: 0.3
+min_depth: 0.2
+depth_to_meters: 1.0e-3
+max_depth: 10.0
+is_registered: 0
+T_color_depth:
+    cols: 4
+    rows: 4
+    data: [0.99999025,  0.00008891,  0.00441397, -0.05927819,
+          -0.00008709,  0.99999991, -0.00041419, -0.00003395,
+          -0.00441401,  0.0004138,   0.99999017,  0.00054264,
+           0.0,         0.0,         0.0,         1.0]
+depth_intrinsics: [381.2355042, 381.2355042, 321.2549438, 237.6025390]

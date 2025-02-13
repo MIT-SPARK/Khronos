@@ -65,6 +65,7 @@ active_window:
 
   # Object association and tracking. The tracker is optional, by not setting the 'type' param no tracking will be performed.
   tracker:
+    verbosity: 0
     type: "MaxIouTracker" # 'MaxIouTracker'
     track_by: "voxels" # 'pixels', 'voxels', 'bounding_box'
     min_semantic_iou: 0.25
@@ -101,6 +102,8 @@ active_window:
 # =============================== Frontend ===============================
 frontend:
   verbosity: 1
+  enable_mesh_objects: false
+
   pgmo:
     time_horizon: 15.0
     d_graph_resolution: 2.5

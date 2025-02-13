@@ -62,3 +62,9 @@
     local-name: pangolin
     uri: https://github.com/stevenlovegrove/Pangolin.git
     version: master
+
+# For inference
+- git:
+    local-name: semantic_inference
+    uri: https://github.com/MIT-SPARK/semantic_inference.git
+    version: main
