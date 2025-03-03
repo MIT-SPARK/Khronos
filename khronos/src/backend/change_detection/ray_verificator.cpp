@@ -151,7 +151,7 @@ void RayVerificator::setDsg(std::shared_ptr<const DynamicSceneGraph> dsg) {
   block_seen_by_rays_.clear();
   vertices_in_block_.clear();
   objects_in_block_.clear();
-  previous_node_index_ = 0;
+  previous_node_id_ = 0;
   previous_vertex_index_ = 0;
   previous_object_index_ = 0;
   addPoseNodes();
@@ -180,19 +180,28 @@ void RayVerificator::updateDsg() {
 }
 
 void RayVerificator::addPoseNodes() {
-  if (!dsg_ || !dsg_->hasLayer(DsgLayers::AGENTS, config.prefix.key)) {
+  if (!dsg_) {
+    return;
+  }
+
+  const auto agents = dsg_->findLayer(dsg_->getLayerKey(DsgLayers::AGENTS)->layer, config.prefix.key);
+  if (!agents) {
     return;
   }
 
   // Add all new sensor poses to the possible timestamps.
-  const auto& nodes = dsg_->getLayer(DsgLayers::AGENTS, config.prefix.key).nodes();
-  for (size_t i = previous_node_index_; i < nodes.size(); ++i) {
-    const auto& node = *nodes[i];
+  const auto& nodes = agents->nodes();
+  for (const auto& [node_id, node] : nodes) {
+    if (node_id < previous_node_id_) {
+      continue;
+    }
+
     // NOTE(lschmid): These should be ordered already so timestamps should be sorted by
     // construction.
-    if (node.timestamp) timestamps_.emplace_back(static_cast<uint64_t>(node.timestamp->count()));
+    previous_node_id_ = node_id;
+    timestamps_.emplace_back(static_cast<uint64_t>(
+        node->attributes<spark_dsg::AgentNodeAttributes>().timestamp.count()));
   }
-  previous_node_index_ = nodes.size();
 }
 
 BlockIndexSet RayVerificator::addVertices() {

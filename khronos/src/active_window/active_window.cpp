@@ -240,7 +240,8 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::extractOutputData(const FrameData& 
 
   // Add all finished objects to the output.
   std::lock_guard<std::mutex> lock(output_objects_mutex_);
-  auto update = std::make_shared<hydra::LayerUpdate>(DsgLayers::OBJECTS);
+  // TODO(nathan) fix the layer update to not use LayerId
+  auto update = std::make_shared<hydra::LayerUpdate>(2);
   output->graph_update[update->layer] = update;
 
   std::move(output_objects_.begin(), output_objects_.end(), std::back_inserter(update->attributes));

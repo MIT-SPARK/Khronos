@@ -90,16 +90,12 @@ void declare_config(SpatioTemporalVisualizer::Config& config) {
   checkInRange(config.initial_robot_time, 0.f, 1.f, "initial_robot_time");
 }
 
+// TODO(nathan) fix layer IDs
 SpatioTemporalVisualizer::SpatioTemporalVisualizer(const ros::NodeHandle& nh)
     : config(config::checkValid(config::fromRos<Config>(nh))),
       dynamic_config_(nh, ""),
       nh_(nh),
-      layer_ids_({
-          DsgLayers::OBJECTS,
-          DsgLayers::PLACES,
-          DsgLayers::ROOMS,
-          DsgLayers::BUILDINGS,
-      }),
+      layer_ids_({2, 3, 4, 5}),
       min_time_delta_(config.max_frame_rate > 0 ? 1.0 / config.max_frame_rate : 0),
       mesh_visualizer_(config.mesh_visualizer, nh),
       dsg_renderer_(nh),
@@ -219,7 +215,6 @@ void SpatioTemporalVisualizer::updateDsgTime() {
 void SpatioTemporalVisualizer::reset() {
   // Create a new empty scene graph.
   current_dsg_.reset(new DynamicSceneGraph(layer_ids_));
-  current_dsg_->createDynamicLayer(DsgLayers::AGENTS, config.robot_prefix.key);
 
   std_msgs::Header header;
   header.stamp = ros::Time::now();
@@ -235,11 +230,10 @@ void SpatioTemporalVisualizer::reset() {
 
 void SpatioTemporalVisualizer::drawAgent() {
   // Draw all trajectory nodes from the query to the robot time.
-  if (!current_dsg_->hasLayer(DsgLayers::AGENTS, config.robot_prefix.key)) {
+  const auto layer = current_dsg_->findLayer(current_dsg_->getLayerKey(DsgLayers::AGENTS)->layer, config.robot_prefix.key);
+  if (!layer) {
     return;
   }
-
-  const auto& layer = current_dsg_->getLayer(DsgLayers::AGENTS, config.robot_prefix.key);
 
   // TODO(lschmid): make this params.
   const float future_alpha = 0.4;
@@ -271,12 +265,9 @@ void SpatioTemporalVisualizer::drawAgent() {
   past_msg.scale.y = past_scale;
   past_msg.scale.z = past_scale;
 
-  for (const auto& node : layer.nodes()) {
-    if (!node) {
-      continue;
-    }
+  for (const auto& [node_id, node] : layer->nodes()) {
     const auto& attrs = node->attributes<spark_dsg::AgentNodeAttributes>();
-    if (static_cast<size_t>(node->timestamp->count()) > query_time_) {
+    if (static_cast<size_t>(attrs.timestamp.count()) > query_time_) {
       msg.points.emplace_back(setPoint(attrs.position.cast<float>()));
     } else {
       past_msg.points.emplace_back(setPoint(attrs.position.cast<float>()));

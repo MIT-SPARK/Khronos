@@ -195,22 +195,24 @@ void SpatioTemporalMap::moveMeshForward() {
 }
 
 void SpatioTemporalMap::moveAgentForward() {
-  if (!current_dsg_->hasLayer(DsgLayers::AGENTS, robot_prefix_.key)) {
+  // Add nodes starting from the current one.
+  const auto src_layer = dsgs_[current_dsg_idx_]->findLayer(
+      dsgs_[current_dsg_idx_]->getLayerKey(DsgLayers::AGENTS)->layer, robot_prefix_.key);
+  if (!src_layer) {
     return;
   }
 
-  // Add nodes starting from the current one.
-  const auto& src_layer = dsgs_[current_dsg_idx_]->getLayer(DsgLayers::AGENTS, robot_prefix_.key);
-  const size_t num_current_nodes =
-      current_dsg_->getLayer(DsgLayers::AGENTS, robot_prefix_.key).numNodes();
-  for (auto it = src_layer.nodes().begin() + num_current_nodes; it != src_layer.nodes().end();
-       ++it) {
-    const auto& node = **it;
-    if (static_cast<size_t>(node.timestamp->count()) > current_time_) {
+  for (const auto& [node_id, node] : src_layer->nodes()) {
+    if (current_dsg_->hasNode(node_id)) {
+      continue;
+    }
+
+    const auto& attrs = node->attributes<spark_dsg::AgentNodeAttributes>();
+    if (static_cast<size_t>(attrs.timestamp.count()) > current_time_) {
       return;
     }
-    current_dsg_->emplacePrevDynamicNode(
-        src_layer.id, node.id, node.timestamp.value(), node.attributes().clone());
+
+    current_dsg_->emplaceNode(node->layer, node_id, attrs.clone());
   }
 }
 
@@ -234,7 +236,7 @@ void SpatioTemporalMap::moveObjectsForward() {
     new_khronos_attrs.trajectory_timestamps.clear();
     new_khronos_attrs.trajectory_positions.clear();
     new_khronos_attrs.dynamic_object_points.clear();
-    current_dsg_->emplaceNode(src_layer.id, id, std::move(new_attrs));
+    current_dsg_->emplaceNode(src_layer.id.layer, id, std::move(new_attrs));
   }
 }
 
@@ -287,25 +289,24 @@ void SpatioTemporalMap::moveMeshBackward() {
 }
 
 void SpatioTemporalMap::moveAgentBackward() {
-  if (!current_dsg_->hasLayer(DsgLayers::AGENTS, robot_prefix_.key)) {
+  const auto agent_layer = current_dsg_->findLayer(
+      current_dsg_->getLayerKey(DsgLayers::AGENTS)->layer, robot_prefix_.key);
+  if (!agent_layer) {
     return;
   }
 
   // Remove all nodes that are newer than the robot time.
   std::unordered_set<NodeId> nodes_to_remove;
-  auto& agent_layer = current_dsg_->getLayer(DsgLayers::AGENTS, robot_prefix_.key);
-  for (auto it = agent_layer.nodes().rbegin(); it != agent_layer.nodes().rend(); ++it) {
-    const auto& node = *it;
-    if (!node) {
-      continue;
-    }
-    if (static_cast<size_t>(node->timestamp->count()) > current_time_) {
-      nodes_to_remove.insert(node->id);
+  for (const auto& [node_id, node] : agent_layer->nodes()) {
+    if (static_cast<size_t>(node->attributes<spark_dsg::AgentNodeAttributes>().timestamp.count()) >
+        current_time_) {
+      nodes_to_remove.insert(node_id);
     } else {
       // NOTE(lschmid): The agent nodes are ordered by timestamp.
       break;
     }
   }
+
   for (const auto& node_id : nodes_to_remove) {
     current_dsg_->removeNode(node_id);
   }

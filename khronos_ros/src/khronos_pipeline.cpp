@@ -181,26 +181,22 @@ void KhronosPipeline::finishMapping() {
 
 void KhronosPipeline::setupDsgs() {
   // Populate the scene graphs and shared state.
-  const std::map<LayerId, char> layer_id_map{{DsgLayers::OBJECTS, 'o'},
-                                             {DsgLayers::PLACES, 'p'},
-                                             {DsgLayers::ROOMS, 'r'},
-                                             {DsgLayers::BUILDINGS, 'b'}};
+  SharedDsgInfo::Config layer_config{{{DsgLayers::OBJECTS, 2},
+                                      {DsgLayers::PLACES, 3},
+                                      {DsgLayers::ROOMS, 4},
+                                      {DsgLayers::BUILDINGS, 5}}};
   // Frontend scene graph.
-  frontend_dsg_ = std::make_shared<SharedDsgInfo>(layer_id_map);
-  frontend_dsg_->graph->createDynamicLayer(DsgLayers::AGENTS,
-                                           hydra::GlobalInfo::instance().getRobotPrefix().key);
+  frontend_dsg_ = std::make_shared<SharedDsgInfo>(layer_config);
   frontend_dsg_->graph->setMesh(std::make_shared<spark_dsg::Mesh>(true, true, false, true));
 
   // Bacend scene graph.
-  backend_dsg_ = std::make_shared<SharedDsgInfo>(layer_id_map);
-  backend_dsg_->graph->createDynamicLayer(DsgLayers::AGENTS,
-                                          hydra::GlobalInfo::instance().getRobotPrefix().key);
+  backend_dsg_ = std::make_shared<SharedDsgInfo>(layer_config);
   backend_dsg_->graph->setMesh(std::make_shared<spark_dsg::Mesh>(true, true, false, true));
 
   // Shared state.
   shared_state_.reset(new SharedModuleState());
-  shared_state_->lcd_graph = std::make_shared<SharedDsgInfo>(layer_id_map);
-  shared_state_->backend_graph = std::make_shared<SharedDsgInfo>(layer_id_map);
+  shared_state_->lcd_graph = std::make_shared<SharedDsgInfo>(layer_config);
+  shared_state_->backend_graph = std::make_shared<SharedDsgInfo>(layer_config);
 }
 
 void KhronosPipeline::setupMembers() {

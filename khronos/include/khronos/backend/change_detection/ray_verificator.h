@@ -208,7 +208,7 @@ class RayVerificator {
 
   // Variables.
   // The index of the last incrementally added measurement to add all new indices.
-  size_t previous_node_index_ = 0;
+  size_t previous_node_id_ = 0;
   size_t previous_vertex_index_ = 0;
   size_t previous_object_index_ = 0;
 
@@ -237,7 +237,7 @@ class RayVerificator {
   struct RayLookup {
     RayLookup(const DynamicSceneGraph& dsg, const Config& config)
         : vertices_(dsg.mesh()->points),
-          nodes_(dsg.getLayer(DsgLayers::AGENTS, config.prefix.key).nodes()) {}
+          nodes_(dsg.getLayer(dsg.getLayerKey(DsgLayers::AGENTS)->layer, config.prefix.key).nodes()) {}
 
     Point getSource(const Ray& ray) const {
       return nodes_.at(ray.source_index)
@@ -249,7 +249,7 @@ class RayVerificator {
 
    private:
     const std::vector<spark_dsg::Mesh::Pos>& vertices_;
-    const spark_dsg::DynamicSceneGraphLayer::Nodes& nodes_;
+    const spark_dsg::SceneGraphLayer::Nodes& nodes_;
   };
 };
 

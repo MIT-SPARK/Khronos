@@ -92,7 +92,8 @@ Backend::Backend(const Config& config,
   change_detector_ = std::make_unique<SequentialChangeDetector>(config.change_detection);
   change_detector_->setDsg(unmerged_graph_);
   reconciler_ = std::make_unique<Reconciler>(config.reconciler);
-  update_functors_.push_back(
+  update_functors_.emplace(
+      "khronos_objects",
       std::make_shared<UpdateObjectsFunctor>(config.update_objects, new_proposed_merges_));
 }
 
@@ -236,7 +237,7 @@ void Backend::optimize(size_t timestamp_ns, bool force_find_merge_proposals) {
   addProposedMergeToDeformationGraph(timestamp_ns);
 
   Timer timer("backend/optimization", timestamp_ns, true, 0, false);
-  deformation_graph_->optimize();
+  KimeraPgmoInterface::optimize();
   timer.stop();
 
   extractProposedMergeResults(timestamp_ns);
@@ -245,8 +246,8 @@ void Backend::optimize(size_t timestamp_ns, bool force_find_merge_proposals) {
 
   const bool process_loopclosures = have_new_loopclosures_ || force_find_merge_proposals;
   callUpdateFunctions(timestamp_ns,
-                      deformation_graph_->getGtsamTempValues(),
-                      deformation_graph_->getGtsamValues(),
+                      *deformation_graph_->getTempValues(),
+                      *deformation_graph_->getValues(),
                       process_loopclosures);
   if (process_loopclosures) {
     last_merge_proposal_t_ = timestamp_ns;
@@ -348,7 +349,7 @@ void Backend::extractProposedMergeResults(size_t timestamp_ns) {
   Timer timer("backend/extract_merge_results", timestamp_ns);
   gtsam::Vector gnc_weights = Eigen::VectorXd::Zero(new_proposed_merges_.size());
   if (config.add_merge_factor) {
-    auto new_weights = deformation_graph_->getTempFactorGncWeights();
+    auto new_weights = deformation_graph_->getTempInlierWeights();
     if (static_cast<size_t>(new_weights.size()) == new_proposed_merges_.size()) {
       gnc_weights = new_weights;
     } else {
