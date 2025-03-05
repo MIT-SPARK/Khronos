@@ -146,30 +146,24 @@ frontend:
 
 # =============================== Backend ===============================
 backend:
+  add_places_to_deformation_graph: false
+  optimize_on_lc: true
+  enable_node_merging: true # Propose node merges
   verbosity: 2
+  max_dt_merge_proposal: 3.0 # max time between looking for node merge
   add_merge_factor: true
   optimize_on_new_merge: true
-  max_dt_merge_proposal: 3.0 # max time between looking for node merge
+  add_merge_factor: true
   pose_object_covariance: 1.0e-01
   object_merge_covariance: 10.0 # very permissive for now
   pose_object_consistency_threshold: 0.2 # meters / node # 0.2
   fix_input_pose_variance: 1.0e-02 # if fix input poses, covariance on priors
+  fix_input_poses: true
   update_objects:
     # Params that govern which objects can be proposed to be merged.
     merge_require_same_label: true
     merge_require_no_co_visibility: true
     merge_min_iou: 0.00001 # 0.25
-  dsg:
-    add_places_to_deformation_graph: false
-    optimize_on_lc: true
-    enable_node_merging: true # Propose node merges
-    use_active_flag_for_updates: false
-    num_neighbors_to_find_for_merge: 1
-    places_merge_pos_threshold_m: 0.0 # Effectively disable
-    places_merge_distance_tolerance_m: 0.0 # Effectively disable
-    merge_update_dynamic: true
-    merge_update_map:
-      { BUILDINGS: false, ROOMS: false, PLACES: true, OBJECTS: false }
 
   # =============================== Change Detection ===============================
   change_detection:
@@ -199,42 +193,36 @@ backend:
 
 # =============================== Optimization Params ===============================
   pgmo:
-    run_mode: FULL # kimera_pgmo run mode FULL is required
-    use_msg_time: true
+    run_mode: FULL  # kimera_pgmo run mode FULL is required
     embed_trajectory_delta_t: 5.0
     num_interp_pts: 3
     interp_horizon: 10.0
-    enable_sparsify: true
+    enable_sparsify: false
     trans_node_dist: 1.0
-    rot_node_dist: 0.5
-    rpgo:
-      odom_trans_threshold: 0.2
-      odom_rot_threshold: 0.1
-      pcm_trans_threshold: -1
-      pcm_rot_threshold: -1
-      lm_diagonal_damping: true
-      gnc_alpha: 0.7
-      gnc_max_iterations: 100
-      gnc_mu_step: 1.6
-      gnc_cost_tolerance: 1.0e-02
-      gnc_weight_tolerance: 1.0e-01
-      gnc_fix_prev_inliers: false # since also have node merges
-      verbosity: UPDATE
+    rot_node_dist: 1.2
+    optimizer:
+      type: KimeraRpgoOptimizer
       solver: LM
+      gnc:
+        inlier_probability: 0.9
+        mu_step: 1.6
+        max_iterations: 100
     add_initial_prior: true
     covariance:
-      odom: 1.0e-01
+      odom: 1.0e-02
       loop_close: 5.0e-02
       sg_loop_close: 1.0e-01
       prior: 1.0e-02
-      mesh_mesh: 10.0
-      pose_mesh: 10.0
-      place_mesh: 10.0
+      mesh_mesh: 1.0e-02
+      pose_mesh: 1.0e-02
+      place_mesh: 1.0e-02
       place_edge: 10.0
+      place_merge: 10.0
+      object_merge: 10.0
   building_semantic_label: 22
   building_color: [169, 8, 194]
   visualize_place_factors: false
-  enable_rooms: false
+  enable_rooms: true
   room_finder:
     min_dilation_m: 0.5
     max_dilation_m: 1.2
