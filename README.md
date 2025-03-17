@@ -131,6 +131,9 @@ To run Khronos with semantic_inference, change the `use_gt_semantics` parameter 
 
 ## Visualize 4D map
 
+> **⚠️ NOTE**<br> 
+> We are aware of a bug currently impacting change-detection performance. Objects will appear/disappear at incorrect times. We expect this to be resolved soon. To reproduce behavior from the paper, please use the [release commit](https://github.com/MIT-SPARK/Khronos/tree/e1108b9a92bfdffb5732b42ff11fa8af76083447). Note that you will have to rollback Hydra and other dependencies as well.
+
 To visualize the spatio-temporal map of the scene after running Khronos, run the following in commandline:
 
 ```bash
