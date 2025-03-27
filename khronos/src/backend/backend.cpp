@@ -380,7 +380,7 @@ void Backend::extractProposedMergeResults(size_t timestamp_ns) {
 
 bool Backend::saveProposedMerges(const hydra::LogSetup& log_setup) {
   const auto backend_path = log_setup.getLogDir("backend");
-  const std::string output_csv = backend_path + "/proposed_merge.csv";
+  const std::string output_csv = backend_path / "proposed_merge.csv";
   std::lock_guard<std::mutex> lock(proposed_merges_mutex_);
   return proposed_merges_.save(output_csv);
 }
@@ -396,7 +396,7 @@ bool Backend::save4DMap(const std::string& path) {
 
 void Backend::save(const hydra::LogSetup& log_setup) {
   const auto backend_path = log_setup.getLogDir("backend");
-  private_dsg_->graph->save(backend_path + "/dsg_with_mesh", true);
+  private_dsg_->graph->save(backend_path / "dsg_with_mesh", true);
 
   // Save the proposed merges.
   saveProposedMerges(log_setup);
@@ -404,11 +404,11 @@ void Backend::save(const hydra::LogSetup& log_setup) {
   // Save the detected changes.
   const Changes& changes = change_detector_->getChanges();
   if (!changes.object_changes.empty()) {
-    const std::string save_file = backend_path + "/object_changes.csv";
+    const std::string save_file = backend_path / "object_changes.csv";
     changes.object_changes.save(save_file);
   }
   if (!changes.background_changes.empty()) {
-    const std::string save_file = backend_path + "/background_changes.csv";
+    const std::string save_file = backend_path / "background_changes.csv";
     changes.background_changes.save(save_file);
   }
 
