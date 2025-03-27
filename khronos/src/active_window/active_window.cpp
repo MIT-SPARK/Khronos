@@ -40,6 +40,7 @@
 #include <hydra/common/global_info.h>
 #include <hydra/input/input_conversion.h>
 #include <hydra/input/sensor_utilities.h>
+#include <hydra/reconstruction/integration_masking.h>
 
 #include "khronos/utils/geometry_utils.h"
 #include "khronos/utils/khronos_attribute_utils.h"
@@ -204,7 +205,10 @@ void ActiveWindow::updateMap(const FrameData& data) {
   Timer timer("active_window/update_map", latest_stamp_);
 
   // Perform projective TSDF integration for all potentially visible blocks.
-  integrator_.updateBackgroundMap(data, map_);
+  // TODO(nathan) also add semantic masking
+  cv::Mat integration_mask;
+  hydra::maskNonZero(data.dynamic_image, integration_mask);
+  integrator_.updateMap(data.input, map_, true, integration_mask);
 
   // Update the tracking information for all touched blocks. This resets
   // deactivated voxels so needs to come after meshing.

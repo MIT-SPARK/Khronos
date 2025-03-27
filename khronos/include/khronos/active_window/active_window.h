@@ -50,11 +50,11 @@
 #include <hydra/common/global_info.h>
 #include <hydra/common/output_sink.h>
 #include <hydra/reconstruction/mesh_integrator.h>
+#include <hydra/reconstruction/projective_integrator.h>
 
 #include "khronos/active_window/data/frame_data.h"
 #include "khronos/active_window/data/frame_data_buffer.h"
 #include "khronos/active_window/data/reconstruction_types.h"
-#include "khronos/active_window/integration/projective_integrator.h"
 #include "khronos/active_window/integration/tracking_integrator.h"
 #include "khronos/active_window/motion_detection/motion_detector.h"
 #include "khronos/active_window/object_detection/object_detector.h"
@@ -170,7 +170,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
 
  protected:
   // Members.
-  ProjectiveIntegrator integrator_;
+  hydra::ProjectiveIntegrator integrator_;
   TrackingIntegrator tracking_integrator_;
   hydra::MeshIntegrator mesh_integrator_;
   std::unique_ptr<MotionDetector> motion_detector_;

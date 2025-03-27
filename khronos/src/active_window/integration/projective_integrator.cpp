@@ -43,11 +43,6 @@ ProjectiveIntegrator::ProjectiveIntegrator(const hydra::ProjectiveIntegrator::Co
                                            SemanticIntegratorPtr&& semantics)
     : hydra::ProjectiveIntegrator(config, std::move(semantics)) {}
 
-void ProjectiveIntegrator::updateBackgroundMap(const FrameData& data, VolumetricMap& map) const {
-  current_data_ = &data;
-  hydra::ProjectiveIntegrator::updateMap(data.input, map, true);
-}
-
 void ProjectiveIntegrator::updateObjectMap(const FrameData& data, VolumetricMap& map) const {
   if (!semantic_integrator_) {
     LOG(WARNING) << "Can not perform object reconstruction without semantic integrator.";
@@ -59,11 +54,12 @@ void ProjectiveIntegrator::updateObjectMap(const FrameData& data, VolumetricMap&
   // NOTE(nathan) we side-step finding "in-view" blocks and just integrate all of the allocated
   // blocks
   const auto indices = map.getTsdfLayer().allocatedBlockIndices();
-  hydra::ProjectiveIntegrator::updateBlocks(indices, data.input, map);
+  hydra::ProjectiveIntegrator::updateBlocks(indices, data.input, cv::Mat(), map);
 }
 
 bool ProjectiveIntegrator::computeLabel(const VolumetricMap::Config& map_config,
                                         const InputData& /* data */,
+                                        const cv::Mat& /* integration_mask */,
                                         VoxelMeasurement& measurement) const {
   // Don't integrate surface voxels of dynamic measurements.
   const bool is_dynamic = interpolator_->interpolateID(current_data_->dynamic_image,

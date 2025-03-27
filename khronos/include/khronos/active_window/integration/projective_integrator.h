@@ -55,15 +55,6 @@ class ProjectiveIntegrator : protected hydra::ProjectiveIntegrator {
                                 SemanticIntegratorPtr&& semantic_integrator = nullptr);
   ~ProjectiveIntegrator() = default;
 
-  // Interfaces to perform integration of a frame.
-  /**
-   * @brief Update all blocks in the background map with the given data in
-   * parallel.
-   * @param data Input data to use for the update.
-   * @param map Map to update.
-   */
-  void updateBackgroundMap(const FrameData& data, VolumetricMap& map) const;
-
   /**
    * @brief Update all blocks in the object map with the given data in parallel.
    * @param data Input data to use for the update.
@@ -75,6 +66,7 @@ class ProjectiveIntegrator : protected hydra::ProjectiveIntegrator {
  private:
   bool computeLabel(const VolumetricMap::Config& map_config,
                     const InputData& data,
+                    const cv::Mat& integration_mask,
                     VoxelMeasurement& measurement) const override;
 
   mutable const FrameData* current_data_ = nullptr;
