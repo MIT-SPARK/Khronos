@@ -114,14 +114,6 @@ class KhronosPipeline {
    */
   bool save(const hydra::LogSetup& log_setup, bool save_full_state = true);
 
-  // TODO(lschmid): Unify this with the above save call. These currently store much too much stuff
-  // anyways.
-  /**
-   * @brief Save the the current spatio-temporal map to the given path.
-   * @param path The path to save the map to.
-   */
-  bool save4DMap(const std::string& path) { return backend_->save4DMap(path); }
-
   /**
    * @brief Extracts all data currently in the active window and adds it to the
    * DSG.

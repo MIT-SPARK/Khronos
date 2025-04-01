@@ -65,7 +65,7 @@
 
     <group unless="$(arg use_gt_frame)">
         <include file="$(find hydra_vio_configs)/launch/uh2_vio.launch" pass_all_args="true">
-            <arg name="odom_frame_id" default="world"/>
+            <arg name="odom_frame_id" default="odom"/>
             <arg name="map_frame_id" default="map"/>
             <arg name="should_use_sim_time" value="$(arg sim_time_required)"/>
             <arg name="glog_to_dir" value="true"/>

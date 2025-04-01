@@ -49,7 +49,7 @@ add_library(${PROJECT_NAME}
         src/backend/reconciliation/mesh/mesh_merger.cpp
         src/backend/reconciliation/mesh/overwrite_mesh.cpp
         src/backend/reconciliation/reconciler.cpp
-        src/backend/update_functions.cpp
+        src/backend/update_khronos_objects_functor.cpp
         src/spatio_temporal_map/spatio_temporal_map.cpp
         src/spatio_temporal_map/incremental_mesh.cpp
         src/utils/data_directory.cpp

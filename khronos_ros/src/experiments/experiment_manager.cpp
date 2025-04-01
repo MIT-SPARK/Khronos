@@ -224,12 +224,15 @@ void ExperimentManager::logData() {
     hydra::LogConfig log_config;
     log_config.log_dir = data_dir_.getPath() + "/timing";
     log_config.log_raw_timers_to_single_dir = true;
-    hydra::timing::ElapsedTimeRecorder::instance().logStats(log_config.log_dir + "/stats.csv");
+    hydra::timing::ElapsedTimeRecorder::instance().logStats(log_config.log_dir / "stats.csv");
     if (config.log_timing_details) {
       hydra::timing::ElapsedTimeRecorder::instance().logAllElapsed(hydra::LogSetup(log_config));
     }
   }
   if (evaluationIsOn()) {
+    // TODO(Yun): someone figure out how they want these logs organized
+    hydra::LogConfig log_config;
+    log_config.log_dir = data_dir_.getPath();
     if (config.save_every_n_frames > 0) {
       // Save the final map if periodically saving.
       saveMap(last_backend_time_stamp_);
@@ -240,7 +243,7 @@ void ExperimentManager::logData() {
     }
 
     // Save the resulting spatio-temporal map.
-    khronos_->save4DMap(data_dir_.getPath() + "/final.4dmap");
+    khronos_->save(hydra::LogSetup(log_config));
     logger_->log("Saved final spatio-temporal map to '" + data_dir_.getPath() + "'.");
     logger_->setFlag("Experiment Finished Cleanly");
   }

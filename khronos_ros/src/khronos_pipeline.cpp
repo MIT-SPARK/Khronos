@@ -165,7 +165,7 @@ bool KhronosPipeline::save(const hydra::LogSetup& log_setup, bool save_full_stat
                      object_symbol,
                      std::make_unique<KhronosObjectAttributes>(std::move(*object)));
   }
-  dsg->save(backend_path + "/dsg_with_mesh", true);
+  dsg->save(backend_path / "dsg_with_mesh", true);
 
   CLOG(2) << "[Khronos Pipeline] Saved " << (save_full_state ? "full state" : "evaluation DSG")
           << " to '" << log_setup.getLogDir() << "'.";
@@ -181,7 +181,8 @@ void KhronosPipeline::finishMapping() {
 
 void KhronosPipeline::setupDsgs() {
   // Populate the scene graphs and shared state.
-  SharedDsgInfo::Config layer_config{{{DsgLayers::OBJECTS, 2},
+  SharedDsgInfo::Config layer_config{{{DsgLayers::AGENTS, 2},
+                                      {DsgLayers::OBJECTS, 2},
                                       {DsgLayers::PLACES, 3},
                                       {DsgLayers::ROOMS, 4},
                                       {DsgLayers::BUILDINGS, 5}}};

@@ -77,6 +77,7 @@
         <param name="semantic_label_remap_filepath" value="$(arg label_remap_config)"/>
         <param name="semantic_colormap_file" value="$(arg semantic_colormap_config)"/>
         <param name="input/left_cam/rgb/image_transport" value="compressed" if="$(arg compressed_rgb)"/>
+        <param name="backend/pgmo/output_prefix" value="$(arg output_dir)"/>
 
         <!-- Input Topics -->
         <remap from="~input/left_cam/depth_registered/image_rect" to="$(arg depth_topic)"/>
@@ -104,7 +105,7 @@
         <include file="$(find pose_graph_tools_ros)/launch/posegraph_view.launch">
             <arg name="frame_id" value="$(arg world_frame)" />
             <arg name="graph_topic" value="pose_graph" />
-            <arg name="ns" value="khronos_node/pgmo"/>
+            <arg name="ns" value="khronos_node/backend"/>
         </include>
     </group>
 
