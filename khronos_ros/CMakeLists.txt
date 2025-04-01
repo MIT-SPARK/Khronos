@@ -8,47 +8,83 @@ add_compile_options(-Wall -Wextra)
 
 option(BUILD_SHARED_LIBS "Build shared libs" ON)
 
-find_package(catkin_simple REQUIRED)
+find_package(
+  catkin REQUIRED
+  COMPONENTS hydra_ros
+             hydra_visualizer
+             pose_graph_tools_ros
+             kimera_pgmo_ros
+             khronos_msgs
+             kimera_pgmo_msgs
+             pose_graph_tools_msgs
+             sensor_msgs)
 find_package(GTSAM REQUIRED)
 find_package(hydra REQUIRED)
 find_package(spark_dsg REQUIRED)
 find_package(khronos REQUIRED)
 find_package(gflags REQUIRED)
-catkin_simple(ALL_DEPS_REQUIRED)
 
-#############
+catkin_package(
+  CATKIN_DEPENDS
+  hydra_ros
+  hydra_visualizer
+  pose_graph_tools_ros
+  kimera_pgmo_ros
+  khronos_msgs
+  kimera_pgmo_msgs
+  pose_graph_tools_msgs
+  sensor_msgs
+  DEPENDS
+  hydra
+  khronos
+  INCLUDE_DIRS
+  include
+  LIBRARIES
+  ${PROJECT_NAME})
+
+# ##############################################################################
 # Libraries #
-#############
+# ##############################################################################
 
-cs_add_library(${PROJECT_NAME}
-        src/utils/ros_conversions.cpp
-        src/experiments/experiment_logger.cpp
-        src/experiments/experiment_manager.cpp
-        src/experiments/experiment_directory.cpp
-        src/input/openset_subscriber.cpp
-        src/khronos_pipeline.cpp
-        src/visualization/active_window_visualizer.cpp
-        src/visualization/khronos_mesh_visualizer.cpp
-        src/visualization/visualization_utils.cpp
-        src/visualization/spatio_temporal_visualizer.cpp
-        )
-target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} gtsam hydra::hydra spark_dsg::spark_dsg khronos::khronos)
-add_dependencies(${PROJECT_NAME} ${catkin_EXPORTED_TARGETS} ${${PROJECT_NAME}_EXPORTED_TARGETS})
+add_library(
+  ${PROJECT_NAME}
+  src/utils/ros_conversions.cpp
+  src/experiments/experiment_logger.cpp
+  src/experiments/experiment_manager.cpp
+  src/experiments/experiment_directory.cpp
+  src/input/openset_subscriber.cpp
+  src/khronos_pipeline.cpp
+  src/visualization/active_window_visualizer.cpp
+  src/visualization/khronos_mesh_visualizer.cpp
+  src/visualization/visualization_utils.cpp
+  src/visualization/spatio_temporal_visualizer.cpp)
+target_link_libraries(
+  ${PROJECT_NAME} PUBLIC ${catkin_LIBRARIES} gtsam hydra::hydra
+                         spark_dsg::spark_dsg khronos::khronos)
+target_include_directories(${PROJECT_NAME} PUBLIC include ${catkin_INCLUDE_DIRS})
 
-
-###############
+# ##############################################################################
 # Executables #
-###############
+# ##############################################################################
 
 add_executable(khronos_node app/khronos_node.cpp)
 target_link_libraries(khronos_node ${PROJECT_NAME} ${gflags_LIBRARIES})
 
-add_executable(spatio_temporal_visualizer_node app/spatio_temporal_visualizer_node.cpp)
-target_link_libraries(spatio_temporal_visualizer_node ${PROJECT_NAME} ${gflags_LIBRARIES})
+add_executable(spatio_temporal_visualizer_node
+               app/spatio_temporal_visualizer_node.cpp)
+target_link_libraries(spatio_temporal_visualizer_node ${PROJECT_NAME}
+                      ${gflags_LIBRARIES})
 
-##########
+# ##############################################################################
 # Export #
-##########
+# ##############################################################################
 
-cs_install()
-cs_export()
+install(
+  TARGETS ${PROJECT_NAME} khronos_node spatio_temporal_visualizer_node
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION})
+install(DIRECTORY include/${PROJECT_NAME}/
+        DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
+install(DIRECTORY launch/
+        DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch)

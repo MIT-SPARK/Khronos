@@ -57,14 +57,13 @@ int main(int argc, char** argv) {
     const auto& hydra_vertices = hydra_dsg->mesh()->points;
 
     // Setup DSG.
-    DynamicSceneGraph::LayerIds layer_ids;
-    for (const auto& layer :
-         {DsgLayers::OBJECTS, DsgLayers::PLACES, DsgLayers::ROOMS, DsgLayers::BUILDINGS}) {
-      layer_ids.push_back(layer);
-    }
-    khronos::DynamicSceneGraph output_dsg(layer_ids);
-    output_dsg.setMesh(std::make_unique<spark_dsg::Mesh>());
-    auto& bg_mesh = *output_dsg.mesh();
+    const std::map<std::string, spark_dsg::LayerKey> layers{{DsgLayers::OBJECTS, 2},
+                                                            {DsgLayers::PLACES, 3},
+                                                            {DsgLayers::ROOMS, 4},
+                                                            {DsgLayers::BUILDINGS, 5}};
+    auto output_dsg = khronos::DynamicSceneGraph::fromNames(layers);
+    output_dsg->setMesh(std::make_unique<spark_dsg::Mesh>());
+    auto& bg_mesh = *output_dsg->mesh();
 
     // Parse all objects in hydra dsg.
     size_t num_objects = 0;
@@ -98,7 +97,7 @@ int main(int argc, char** argv) {
 
       attrs->bounding_box = spark_dsg::BoundingBox(min, max);
       attrs->position = ((min + max) / 2).cast<double>();
-      output_dsg.emplaceNode(DsgLayers::OBJECTS, object_symbol, std::move(attrs));
+      output_dsg->emplaceNode(DsgLayers::OBJECTS, object_symbol, std::move(attrs));
     }
 
     // Parse the background.
@@ -115,7 +114,7 @@ int main(int argc, char** argv) {
     const std::string output_dir = std::string(argv[1]) + "/pipeline/Hydra/Hydra";
     const std::string output_file_name = output_dir + "/" + map_name + "_reconciled_dsg";
     std::filesystem::create_directories(output_dir);
-    output_dsg.save(output_file_name, true);
+    output_dsg->save(output_file_name, true);
     std::cout << "Saved '" << output_file_name << "'." << std::endl;
   }
 

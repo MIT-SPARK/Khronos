@@ -1,7 +1,7 @@
 #include "khronos_eval/object_evaluator.h"
 
-#include <filesystem>
 #include <cmath>
+#include <filesystem>
 
 #include <hydra/utils/csv_reader.h>
 #include <khronos/backend/change_state.h>
@@ -117,7 +117,7 @@ void ObjectEvaluator::setGroundTruthDSG(DynamicSceneGraph::Ptr dsg) {
   const auto& nodes = gt_dsg_.dsg->getLayer(DsgLayers::OBJECTS).nodes();
   for (const auto& [id, node] : nodes) {
     // Check if the object was marked absent for some reason.
-    auto attrs = dynamic_cast<KhronosObjectAttributes*>(node->getAttributesPtr());
+    auto attrs = node->tryAttributes<KhronosObjectAttributes>();
     if (!attrs) {
       gt_dsg_.num_objects_invalid++;
       continue;
@@ -139,7 +139,7 @@ void ObjectEvaluator::setEvalDSG(DynamicSceneGraph::Ptr dsg) {
 
   const auto& nodes = eval_dsg_.dsg->getLayer(DsgLayers::OBJECTS).nodes();
   for (const auto& [id, node] : nodes) {
-    auto attrs = dynamic_cast<KhronosObjectAttributes*>(node->getAttributesPtr());
+    auto attrs = node->tryAttributes<KhronosObjectAttributes>();
     if (!attrs) {
       eval_dsg_.num_objects_invalid++;
       continue;
@@ -218,7 +218,8 @@ ObjectEvaluator::RawMetrics ObjectEvaluator::computeAssociationsCentroid(const D
   std::unordered_map<int, std::pair<Points, std::vector<NodeId>>> to_points_by_class;
   for (const auto& [id, attrs] : to.objects) {
     const int label = config.match_require_semantics ? attrs.semantic_label : 0;
-    to_points_by_class[label].first.emplace_back(attrs.bounding_box.pointToWorldFrame(computeSurfaceCentroid(attrs)));
+    to_points_by_class[label].first.emplace_back(
+        attrs.bounding_box.pointToWorldFrame(computeSurfaceCentroid(attrs)));
     to_points_by_class[label].second.emplace_back(id);
   }
 
@@ -229,7 +230,9 @@ ObjectEvaluator::RawMetrics ObjectEvaluator::computeAssociationsCentroid(const D
     hydra::PointNeighborSearch search(to_points_by_class[label].first);
     float distance_squared;
     size_t index;
-    if (!search.search(attrs.bounding_box.pointToWorldFrame(computeSurfaceCentroid(attrs)), distance_squared, index) ||
+    if (!search.search(attrs.bounding_box.pointToWorldFrame(computeSurfaceCentroid(attrs)),
+                       distance_squared,
+                       index) ||
         distance_squared > max_distance_sq) {
       CLOG(4) << NodeSymbol(id) << ": no candidates found.";
       continue;

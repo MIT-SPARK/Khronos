@@ -140,10 +140,10 @@ void RealDynamicObjectGroundTruthBuilder::processRosbag() {
 
         // Add object to output DSG
         NodeSymbol symbol('O', num_objects_);
-        object->name = symbol.getLabel();
+        object->name = symbol.str();
         dsg_->addOrUpdateNode(DsgLayers::OBJECTS, symbol, std::move(object));
         num_objects_++;
-        std::cout << "Added object: " << symbol.getLabel() << " to dsg." << std::endl;
+        std::cout << "Added object: " << symbol.str() << " to dsg." << std::endl;
 
         current_points_.clear();
       }
@@ -156,10 +156,10 @@ void RealDynamicObjectGroundTruthBuilder::processRosbag() {
     KhronosObjectAttributes::Ptr object = getKhronosAttributesFromPoints();
     // Add all object to the output DSG
     NodeSymbol symbol('O', num_objects_);
-    object->name = symbol.getLabel();
+    object->name = symbol.str();
     dsg_->addOrUpdateNode(DsgLayers::OBJECTS, symbol, std::move(object));
     num_objects_++;
-    std::cout << "Added object: " << symbol.getLabel() << " to dsg." << std::endl;
+    std::cout << "Added object: " << symbol.str() << " to dsg." << std::endl;
 
     current_points_.clear();
   }
@@ -247,10 +247,8 @@ KhronosObjectAttributes::Ptr RealDynamicObjectGroundTruthBuilder::getKhronosAttr
 
 void RealDynamicObjectGroundTruthBuilder::setupDsg() {
   // TODO(marcus): may need something like mesh_layer_id here
-  const DynamicSceneGraph::LayerIds layer_ids = {
-      DsgLayers::OBJECTS,
-  };
-  dsg_ = std::make_shared<DynamicSceneGraph>(layer_ids);
+  const std::map<std::string, spark_dsg::LayerKey> layers = {{DsgLayers::OBJECTS, 2}};
+  dsg_ = DynamicSceneGraph::fromNames(layers);
 }
 
 void RealDynamicObjectGroundTruthBuilder::extractImagesFromBag(
@@ -288,14 +286,15 @@ void RealDynamicObjectGroundTruthBuilder::extractPosesFromDsg(const std::string&
   // Get each pose from the agent layer
   DynamicSceneGraph::Ptr eval_dsg = DynamicSceneGraph::load(dsg_file);
   const hydra::RobotPrefixConfig config;  // needed for proper indexing
-  const auto& layer = eval_dsg->getLayer(DsgLayers::AGENTS, config.key);
-  for (const auto& node : layer.nodes()) {
+  const auto& layer = eval_dsg->getLayer(eval_dsg->getLayerKey(DsgLayers::AGENTS).value().layer, config.key);
+  for (const auto& [node_id, node] : layer.nodes()) {
     // for (size_t i = 0; i < nodes.size(); i++) {
     // const auto& node = *nodes[i];
     // auto dynamic_node = dynamic_cast<const spark_dsg::DynamicSceneGraphNode*>(node.get());
-    TimeStamp timestamp(static_cast<uint64_t>(node->timestamp->count()));
-    const auto& position = node->attributes<spark_dsg::AgentNodeAttributes>().position;
-    const auto& world_R_body = node->attributes<spark_dsg::AgentNodeAttributes>().world_R_body;
+    const auto& attrs = node->attributes<spark_dsg::AgentNodeAttributes>();
+    TimeStamp timestamp(static_cast<uint64_t>(attrs.timestamp.count()));
+    const auto& position = attrs.position;
+    const auto& world_R_body = attrs.world_R_body;
 
     // Update a transform and fake it into the buffer for easy use later
     geometry_msgs::TransformStamped transform;

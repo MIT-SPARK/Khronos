@@ -122,8 +122,8 @@ void Reconciler::reconcileObjects(const Changes& changes,
         final_unmerged_nodes.insert(change.node_id);
       }
     } else {
-      logging_info << NodeSymbol(change.node_id).getLabel() << " -> "
-                   << NodeSymbol(change.merged_id).getLabel() << "\n";
+      logging_info << NodeSymbol(change.node_id).str() << " -> "
+                   << NodeSymbol(change.merged_id).str() << "\n";
       final_merged_nodes.insert(change.merged_id);
       final_merged_nodes.erase(change.node_id);
       merged_away_nodes.insert(change.node_id);
@@ -136,15 +136,15 @@ void Reconciler::reconcileObjects(const Changes& changes,
   if (config.verbosity >= 4) {
     logging_info << "Final merged nodes:\n";
     for (const NodeId node_id : final_merged_nodes) {
-      logging_info << NodeSymbol(node_id).getLabel() << "\n";
+      logging_info << NodeSymbol(node_id).str() << "\n";
     }
     logging_info << "Final unmerged nodes:\n";
     for (const NodeId node_id : final_unmerged_nodes) {
-      logging_info << NodeSymbol(node_id).getLabel() << "\n";
+      logging_info << NodeSymbol(node_id).str() << "\n";
     }
     logging_info << "Merged away nodes:\n";
     for (const NodeId node_id : merged_away_nodes) {
-      logging_info << NodeSymbol(node_id).getLabel() << "\n";
+      logging_info << NodeSymbol(node_id).str() << "\n";
     }
     logging_info << "Num nodes: merged_away: " << merged_away_nodes.size()
                  << ", final_merged: " << final_merged_nodes.size()

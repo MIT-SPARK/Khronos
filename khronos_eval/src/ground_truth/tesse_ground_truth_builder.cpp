@@ -160,9 +160,10 @@ void TesseGroundTruthBuilder::pruneUnobservedAreas() {
 void TesseGroundTruthBuilder::extractTrajectory() {
   return;
   const hydra::RobotPrefixConfig config;
-  const auto& layer = observed_dsg_->getLayer(DsgLayers::AGENTS, config.key);
+  const auto& layer = observed_dsg_->getLayer(
+      observed_dsg_->getLayerKey(DsgLayers::AGENTS).value().layer, config.key);
   size_t num_poses = 0;
-  for (const auto& node : layer.nodes()) {
+  for (const auto& [node_id, node] : layer.nodes()) {
     // TODO(lschmid): This does not quite end up in the right place of the DSG. Skip for now.
     dsg_->emplaceNode(layer.id, node->id, node->attributes().clone());
     num_poses++;
@@ -268,7 +269,7 @@ void TesseGroundTruthBuilder::addDsgObject(const Points& vertices, const Label l
   num_objects_++;
   KhronosObjectAttributes attrs;
 
-  attrs.name = symbol.getLabel();
+  attrs.name = symbol.str();
   attrs.semantic_label = label;
 
   attrs.color = color_map_.getColorFromLabel(label);
@@ -400,9 +401,11 @@ bool TesseGroundTruthBuilder::loadPoints(Points& vertices, Labels& labels, Label
 }
 
 void TesseGroundTruthBuilder::setupDsg() {
-  const DynamicSceneGraph::LayerIds layer_ids = {
-      DsgLayers::OBJECTS, DsgLayers::PLACES, DsgLayers::ROOMS, DsgLayers::BUILDINGS};
-  dsg_ = std::make_shared<DynamicSceneGraph>(layer_ids);
+  const std::map<std::string, spark_dsg::LayerKey> layers = {{DsgLayers::OBJECTS, 2},
+                                                             {DsgLayers::PLACES, 3},
+                                                             {DsgLayers::ROOMS, 4},
+                                                             {DsgLayers::BUILDINGS, 5}};
+  dsg_ = DynamicSceneGraph::fromNames(layers);
 }
 
 TesseGroundTruthBuilder::Labels TesseGroundTruthBuilder::colorsToLabels(

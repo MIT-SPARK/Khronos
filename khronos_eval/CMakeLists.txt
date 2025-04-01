@@ -2,19 +2,33 @@ cmake_minimum_required(VERSION 3.0.2)
 project(khronos_eval)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 add_definitions(-Wall)
-find_package(catkin_simple REQUIRED)
+
 find_package(GTSAM REQUIRED)
 find_package(OpenCV REQUIRED)
 set(PCL_FIND_QUIETLY TRUE)
 find_package(PCL REQUIRED COMPONENTS io kdtree common search)
-catkin_simple(ALL_DEPS_REQUIRED)
+find_package(catkin REQUIRED COMPONENTS khronos_ros roscpp)
+find_package(gflags REQUIRED)
 
-#############
+catkin_package(
+  CATKIN_DEPENDS
+  khronos_ros
+  roscpp
+  DEPENDS
+  PCL
+  INCLUDE_DIRS
+  include
+  LIBRARIES
+  ${PROJECT_NAME})
+
+# ##############################################################################
 # Libraries #
-#############
+# ##############################################################################
 
-cs_add_library(${PROJECT_NAME}
+add_library(${PROJECT_NAME}
      src/mesh_evaluator.cpp
      src/eval_visualizer.cpp
      src/cd_visualizer.cpp
@@ -24,24 +38,46 @@ cs_add_library(${PROJECT_NAME}
      src/utils/io_utils.cpp
 )
 
-target_link_libraries(${PROJECT_NAME} gtsam ${PCL_LIBRARIES} ${OpenCV_LIBRARIES})
+target_include_directories(${PROJECT_NAME} PUBLIC include
+                                                  ${catkin_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} gtsam ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} ${catkin_LIBRARIES})
 
-###############
+# ##############################################################################
 # Executables #
-###############
+# ##############################################################################
 
-cs_add_executable(exp_pipeline app/exp_pipeline.cpp)
+add_executable(exp_pipeline app/exp_pipeline.cpp)
 target_link_libraries(exp_pipeline ${PROJECT_NAME})
 
-cs_add_executable(eval_visualizer_node app/eval_visualizer_node.cpp)
+add_executable(eval_visualizer_node app/eval_visualizer_node.cpp)
 target_link_libraries(eval_visualizer_node ${PROJECT_NAME})
 
-cs_add_executable(cd_visualizer_node app/cd_visualizer_node.cpp)
-target_link_libraries(cd_visualizer_node ${PROJECT_NAME})
+add_executable(cd_visualizer_node app/cd_visualizer_node.cpp)
+target_link_libraries(cd_visualizer_node ${PROJECT_NAME} ${gflags_LIBRARIES})
 
-##########
+# ##############################################################################
 # Export #
-##########
+# ##############################################################################
 
-cs_install()
-cs_export()
+install(
+  TARGETS ${PROJECT_NAME}
+          evaluate_mesh
+          evaluate_meshes
+          exp_evaluate_mesh
+          exp_reconcile
+          exp_change_detection
+          exp_pipeline
+          create_gt
+          create_dynamic_object_gt
+          create_dynamic_object_gt_real_data
+          consolidate_gt
+          eval_visualizer_node
+          cd_visualizer_node
+          hydra_converter
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION})
+install(DIRECTORY include/${PROJECT_NAME}/
+        DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
+install(DIRECTORY launch/
+        DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch)

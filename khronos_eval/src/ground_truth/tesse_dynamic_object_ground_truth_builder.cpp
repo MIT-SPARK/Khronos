@@ -64,7 +64,7 @@ void TesseDynamicObjectGroundTruthBuilder::run() {
   for (const auto& id : config.remove_object_ids) {
     NodeSymbol symbol('O', id);
     dsg_->removeNode(NodeId(symbol));
-    std::cout << "Removed object: " << symbol.getLabel() << " from dsg." << std::endl;
+    std::cout << "Removed object: " << symbol.str() << " from dsg." << std::endl;
   }
 
   // Save output
@@ -160,10 +160,10 @@ void TesseDynamicObjectGroundTruthBuilder::processRosbag() {
 
           // Add all object to the output DSG
           NodeSymbol symbol('O', num_objects_);
-          object->name = symbol.getLabel();
+          object->name = symbol.str();
           dsg_->addOrUpdateNode(DsgLayers::OBJECTS, symbol, std::move(object));
           num_objects_++;
-          std::cout << "Added object: " << symbol.getLabel() << " to dsg." << std::endl;
+          std::cout << "Added object: " << symbol.str() << " to dsg." << std::endl;
 
           // Clear out current color object tracker to begin tracking a new object
           new_object_map_color.clear();
@@ -183,10 +183,10 @@ void TesseDynamicObjectGroundTruthBuilder::processRosbag() {
       KhronosObjectAttributes::Ptr object = getKhronosAttributesFromObjectMap(new_object_map_color);
       // Add all object to the output DSG
       NodeSymbol symbol('O', num_objects_);
-      object->name = symbol.getLabel();
+      object->name = symbol.str();
       dsg_->addOrUpdateNode(DsgLayers::OBJECTS, symbol, std::move(object));
       num_objects_++;
-      std::cout << "Added object: " << symbol.getLabel() << " to dsg." << std::endl;
+      std::cout << "Added object: " << symbol.str() << " to dsg." << std::endl;
 
       new_object_map_color.clear();
     }
@@ -284,11 +284,8 @@ Point TesseDynamicObjectGroundTruthBuilder::getCentroidFromPoints(const Points& 
 }
 
 void TesseDynamicObjectGroundTruthBuilder::setupDsg() {
-  // TODO(marcus): may need something like mesh_layer_id here
-  const DynamicSceneGraph::LayerIds layer_ids = {
-      DsgLayers::OBJECTS,
-  };
-  dsg_ = std::make_shared<DynamicSceneGraph>(layer_ids);
+  const std::map<std::string, spark_dsg::LayerKey> layers = {{DsgLayers::OBJECTS, 2}};
+  dsg_ = DynamicSceneGraph::fromNames(layers);
 
   // Get the colors of dynamic objects
   for (const auto& color : config.dynamic_object_colors) {
