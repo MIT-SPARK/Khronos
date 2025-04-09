@@ -349,7 +349,14 @@ void Backend::extractProposedMergeResults(size_t timestamp_ns) {
   gtsam::Vector gnc_weights = Eigen::VectorXd::Zero(new_proposed_merges_.size());
   if (config.add_merge_factor) {
     auto new_weights = deformation_graph_->getTempFactorGncWeights();
-    CHECK_EQ(gnc_weights.size(), new_proposed_merges_.size());
+    if (static_cast<size_t>(new_weights.size()) == new_proposed_merges_.size()) {
+      gnc_weights = new_weights;
+    } else {
+      LOG(WARNING) << "Number of proposed merges and GNC weights do not match! gnc_weights.size(): "
+                   << gnc_weights.size()
+                   << " new_proposed_merges_.size(): " << new_proposed_merges_.size()
+                   << " new_weights.size(): " << new_weights.size();
+    }
   }
 
   {  // begin critical section
@@ -370,40 +377,6 @@ void Backend::extractProposedMergeResults(size_t timestamp_ns) {
   new_proposed_merges_.clear();
 }
 
-void Backend::copyMeshDelta(const hydra::BackendInput& input) {
-  Timer timer("backend/copy_mesh_delta", input.timestamp_ns);
-  if (!input.mesh_update) {
-    LOG(WARNING) << "[Backend] invalid mesh update!";
-    return;
-  }
-
-  // TODO(lschmid): Adds maintenance of khronos first_seen_stamps. This should
-  // definitively go into pgmo or similar, but I reallt couldn't force myself to read up
-  // on and change all pgmo interfaces...
-  auto& mesh = *private_dsg_->graph->mesh();
-  const std::vector<uint64_t> prev_dsg_first_seen_stamps = mesh.first_seen_stamps;
-  input.mesh_update->updateMesh(*private_dsg_->graph->mesh());
-  kimera_pgmo::StampedCloud<pcl::PointXYZ> cloud_out{*original_vertices_, vertex_stamps_};
-  input.mesh_update->updateVertices(cloud_out);
-  std::vector<uint64_t>& dsg_first_seen_stamps = mesh.first_seen_stamps;
-
-  // Fill new values.
-  dsg_first_seen_stamps.resize(mesh.points.size(), 0);
-  for (size_t i : input.mesh_update->new_indices) {
-    dsg_first_seen_stamps[i] = input.timestamp_ns;
-  }
-
-  // Adjust the stamps of the vertices that were updated.
-  for (const auto& [prev, curr] : input.mesh_update->prev_to_curr) {
-    dsg_first_seen_stamps[curr] = prev_dsg_first_seen_stamps[prev];
-  }
-
-  // we use this to make sure that deformation only happens for vertices that are
-  // still active
-  num_archived_vertices_ = input.mesh_update->getTotalArchivedVertices();
-  have_new_mesh_ = true;
-}
-
 bool Backend::saveProposedMerges(const hydra::LogSetup& log_setup) {
   const auto backend_path = log_setup.getLogDir("backend");
   const std::string output_csv = backend_path + "/proposed_merge.csv";
@@ -422,7 +395,7 @@ bool Backend::save4DMap(const std::string& path) {
 
 void Backend::save(const hydra::LogSetup& log_setup) {
   const auto backend_path = log_setup.getLogDir("backend");
-  private_dsg_->graph->save(backend_path + "/dsg_with_mesh");
+  private_dsg_->graph->save(backend_path + "/dsg_with_mesh", true);
 
   // Save the proposed merges.
   saveProposedMerges(log_setup);
@@ -436,6 +409,11 @@ void Backend::save(const hydra::LogSetup& log_setup) {
   if (!changes.background_changes.empty()) {
     const std::string save_file = backend_path + "/background_changes.csv";
     changes.background_changes.save(save_file);
+  }
+
+  // Save the 4D map.
+  if (config.run_change_detection_every_n_frames < 0) {
+    map_.update(private_dsg_->graph->clone(), last_timestamp_received_);
   }
 }
 

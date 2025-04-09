@@ -1,0 +1,11 @@
+# Input files.
+gt_dsg_with_mesh_file: /data/datasets/khronos/tesse_cd/office/ground_truth/gt_dsg_with_mesh.json
+gt_dynamic_dsg_file: /data/datasets/khronos/tesse_cd/office/ground_truth/gt_dynamic_objects_dsg.json
+gt_changes_file: /data/datasets/khronos/tesse_cd/office/ground_truth/gt_changes.csv
+
+# Output directory.
+output_dir: /data/datasets/khronos/tesse_cd/office/ground_truth
+
+# Parameters.
+save_dsg: true
+save_dsg_with_mesh: true

@@ -98,7 +98,7 @@ class TrackingIntegrator {
    * @brief Based on if tracking is active or in-active, reset TSDF and tracking voxel
    * @param map Map to search for blocks and update them.
    */
-  void resetInactive(VolumetricMap& map) const;
+  void resetInactive(VolumetricMap& map, spatial_hash::BlockIndices* removed = nullptr) const;
 
   /**
    * @brief Update the tracking information of the specified block single-threaded.

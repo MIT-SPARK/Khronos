@@ -1,0 +1,11 @@
+# General params.
+verbosity: 4
+
+# Ray verificator params.
+ray_verificator:
+  verbosity: 1
+  block_size: 0.2 # m
+  radial_tolerance: 0.08 # m
+  depth_tolerance: 0.5 # m
+  absence_confidence: 0.5 # [0,1]
+  presence_confidence: 0.5 # [0,1]

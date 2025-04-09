@@ -75,9 +75,9 @@ void TrackingIntegrator::updateBlocks(const FrameData& data, VolumetricMap& map)
   const BlockIndices all_blocks = map.getTsdfLayer().allocatedBlockIndices();
   const BlockIndices updated_blocks =
       map.getTsdfLayer().blockIndicesWithCondition(TsdfBlock::trackingUpdated);
-  LOG_IF(INFO, config.verbosity >= 4) << "[Tracking Integrator] Updating " << all_blocks.size()
-                                        << " total blocks and " << updated_blocks.size()
-                                        << " ever-free blocks.";
+  LOG_IF(INFO, config.verbosity >= 4)
+      << "[Tracking Integrator] Updating " << all_blocks.size() << " total blocks and "
+      << updated_blocks.size() << " ever-free blocks.";
 
   // Update tracking information and occupancy counter in parallel by block.
   BlockIndexGetter all_indices(all_blocks);
@@ -103,7 +103,8 @@ void TrackingIntegrator::updateBlocks(const FrameData& data, VolumetricMap& map)
   }
 }
 
-void TrackingIntegrator::resetInactive(VolumetricMap& map) const {
+void TrackingIntegrator::resetInactive(VolumetricMap& map,
+                                       spatial_hash::BlockIndices* removed) const {
   for (const auto& index : map.getTsdfLayer().allocatedBlockIndices()) {
     TrackingBlock::Ptr tracking_block = map.getTrackingLayer()->getBlockPtr(index);
     if (!tracking_block) {
@@ -119,7 +120,11 @@ void TrackingIntegrator::resetInactive(VolumetricMap& map) const {
       }
     }
 
-    if (remove_block) {
+    if (!tracking_block->has_active_data || remove_block) {
+      if (removed) {
+        removed->push_back(index);
+      }
+
       map.removeBlock(index);
     }
   }

@@ -1,0 +1,41 @@
+# General params.
+only_evaluate_final_map: false
+
+# Common data for all runs.
+common:
+  ray_verificator:
+    verbosity: 1
+    block_size: 0.2 # m
+    radial_tolerance: 0.08 # m
+    depth_tolerance: 0.5 # m
+    absence_confidence: 0.5 # [0,1]
+    presence_confidence: 0.5 # [0,1]
+  objects:
+    type: "RayObjectChangeDetector" # 'RayObjectChangeDetector'. Leave empty to not perform object change detection.
+    time_filtering_threshold: 3.0 # s
+    aggregation_policy: "Limit" # Limit, Mean, Median
+  background:
+    type: "RayBackgroundChangeDetector" # 'RayBackgroundChangeDetector'. Leave empty to not perform background change detection.
+    time_filtering_threshold: 3.0 # s
+
+# Experiments to run for change detection. These overwrite the common data.
+runs:
+  # - name: "Last"
+  #   ray_verificator:
+  #     ray_policy: Last # First, Last, FirstAndLast, Middle, All
+
+  # - name: "First"
+  #   ray_verificator:
+  #     ray_policy: First
+
+  # - name: "FirstAndLast"
+  #   ray_verificator:
+  #     ray_policy: FirstAndLast
+
+  - name: "Middle"
+    ray_verificator:
+      ray_policy: Middle
+
+  # - name: "All" # quite slow
+  #   ray_verificator:
+  #     ray_policy: All # First, Last, FirstAndLast

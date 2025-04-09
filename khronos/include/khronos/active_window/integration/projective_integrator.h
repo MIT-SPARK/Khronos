@@ -51,7 +51,8 @@ namespace khronos {
 class ProjectiveIntegrator : protected hydra::ProjectiveIntegrator {
  public:
   // Construction.
-  explicit ProjectiveIntegrator(const hydra::ProjectiveIntegrator::Config& config);
+  explicit ProjectiveIntegrator(const hydra::ProjectiveIntegrator::Config& config,
+                                SemanticIntegratorPtr&& semantic_integrator = nullptr);
   ~ProjectiveIntegrator() = default;
 
   // Interfaces to perform integration of a frame.
@@ -67,10 +68,9 @@ class ProjectiveIntegrator : protected hydra::ProjectiveIntegrator {
    * @brief Update all blocks in the object map with the given data in parallel.
    * @param data Input data to use for the update.
    * @param map Map to update.
-   * @param object_id ID of the object in the object image to perform confidence
    * estimation.
    */
-  void updateObjectMap(const FrameData& data, VolumetricMap& map, int object_id) const;
+  void updateObjectMap(const FrameData& data, VolumetricMap& map) const;
 
  private:
   bool computeLabel(const VolumetricMap::Config& map_config,

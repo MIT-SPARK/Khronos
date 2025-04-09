@@ -78,7 +78,7 @@ void UpdateObjectsFunctor::call(const DynamicSceneGraph& /* unmerged */,
   }
 
   const auto& layer = graph.getLayer(DsgLayers::OBJECTS);
-  const auto& objects_values = *info->pgmo_values;
+  const auto& objects_values = *info->pgmo_values; //NOTE(marcus): maybe use place_values instead??
 
   std::map<NodeId, NodeId> nodes_to_merge;
   std::set<NodeId> merge_targets;
@@ -88,10 +88,11 @@ void UpdateObjectsFunctor::call(const DynamicSceneGraph& /* unmerged */,
     // Update all objects with their new poses.
     // TODO(marcus): track down why this is now necessary
     if (!objects_values.exists(id)) {
-      LOG(WARNING) << "Failure to update object " << attrs.name << ": PGMO value not found.";
+      LOG(ERROR) << "Failure to update object " << NodeSymbol(id).getLabel() << ": PGMO value not found.";
       continue;
+    } else {
+      updateObject(objects_values, id, attrs);
     }
-    updateObject(objects_values, id, attrs);
 
     // Allow many to one merges but make sure each node is only merged once.
     if (merge_targets.count(id) || nodes_to_merge.count(id)) {
@@ -125,7 +126,8 @@ void UpdateObjectsFunctor::updateObject(const gtsam::Values& objects_values,
                                         NodeId node_id,
                                         KhronosObjectAttributes& attrs) const {
   if (!objects_values.exists(node_id)) {
-    throw std::runtime_error("object does not exist in deformation graph.");
+    throw std::runtime_error("object does not exist in deformation graph: " +
+                             NodeSymbol(node_id).getLabel());
   }
   // Move the object and its bbox to the new position.
   // NOTE(lschmid): Currently only translates AABB bounding boxes.

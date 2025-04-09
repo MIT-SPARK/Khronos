@@ -85,6 +85,22 @@ class Reconciler {
   explicit Reconciler(const Config& config);
   virtual ~Reconciler() = default;
 
+  // Additional information to be stored about object timings.
+  struct ObjectReconciliationDetail {
+    // All times when the object was observed. Always consecutive entires denote start and end
+    // stamp.
+    std::vector<uint64_t> observed_times;
+
+    // Like observed_times, but using the estimated presence times.
+    std::vector<uint64_t> estimated_times;
+
+    // Merge another detail into this one.
+    void merge(const ObjectReconciliationDetail& other);
+
+    // Serialize the timestamps.
+    std::string serializeTimestamps(const std::vector<uint64_t>& timestamps) const;
+  };
+
   // Processing.
   /**
    * @brief Reconcile temporal differences in an optimized DSG. The DSG will be updated in place.
@@ -93,11 +109,16 @@ class Reconciler {
    * @param stamp The current time stamp.
    * @returns The merged changes for each object.
    */
-  void reconcile(DynamicSceneGraph& dsg, const Changes& changes, TimeStamp stamp);
+  void reconcile(DynamicSceneGraph& dsg,
+                 const Changes& changes,
+                 TimeStamp stamp,
+                 std::map<NodeId, ObjectReconciliationDetail>* object_details = nullptr);
 
  protected:
   // Utility.
-  void reconcileObjects(const Changes& changes, DynamicSceneGraph& dsg);
+  void reconcileObjects(const Changes& changes,
+                        DynamicSceneGraph& dsg,
+                        std::map<NodeId, ObjectReconciliationDetail>* object_details = nullptr);
   // Merge node from into node into in the dsg.
   void mergeObjects(const ObjectChange& change, DynamicSceneGraph& dsg) const;
   void mergeObjectAttributes(const KhronosObjectAttributes& from,

@@ -67,6 +67,7 @@
         <rosparam file="$(arg input_config)" ns="input" subst_value="true"/>
         <rosparam file="$(arg mapper_config)" subst_value="true"/>
         <rosparam file="$(arg labelspace_config)"/>
+        <param name="frontend/overwrite_mesh_timestamps" value="true"/>
 
         <!-- Argument dependent params -->
         <param name="experiment/output_dir" value="$(arg output_dir)" if="$(arg evaluate)"/>

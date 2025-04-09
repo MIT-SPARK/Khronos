@@ -143,6 +143,24 @@ void RayObjectChangeDetector::checkObjectObservation(KhronosObjectAttributes& at
   change.last_absent = after_result.closest_absent.value_or(0ul);
   change.first_persistent = before_result.furthest_persistent.value_or(0ul);
   change.last_persistent = after_result.furthest_persistent.value_or(0ul);
+
+  // Optionally store visualization details.
+  const bool store_visualization_details =
+      hydra::GlobalInfo::instance().getConfig().store_visualization_details;
+  if (store_visualization_details) {
+    attrs.details["cd_before_present"].insert(attrs.details["cd_before_present"].end(),
+                                              before_data.present.begin(),
+                                              before_data.present.end());
+    attrs.details["cd_before_absent"].insert(attrs.details["cd_before_absent"].end(),
+                                             before_data.absent.begin(),
+                                             before_data.absent.end());
+    attrs.details["cd_after_present"].insert(attrs.details["cd_after_present"].end(),
+                                             after_data.present.begin(),
+                                             after_data.present.end());
+    attrs.details["cd_after_absent"].insert(attrs.details["cd_after_absent"].end(),
+                                            after_data.absent.begin(),
+                                            after_data.absent.end());
+  }
 }
 
 }  // namespace khronos

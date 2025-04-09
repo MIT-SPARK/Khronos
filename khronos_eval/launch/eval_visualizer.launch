@@ -1,0 +1,13 @@
+<launch>
+
+    <!-- Args  -->
+   <arg name="visualization_directory" default="$(find khronos)/../output/tmp/eval_visualization/"/>
+
+
+    <!-- Run  -->
+    <node pkg="khronos_eval" type="eval_visualizer_node" name="eval_visualizer_node" output="screen" required="true">
+        <param name="visualization_directory" value="$(arg visualization_directory)"/>
+    </node>
+
+    <node name="rviz" pkg="rviz" type="rviz" output="log" args="-d $(find khronos_eval)/config/visualization/eval_visualizer.rviz"/>
+</launch>

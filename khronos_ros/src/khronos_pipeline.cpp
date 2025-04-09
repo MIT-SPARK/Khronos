@@ -165,7 +165,7 @@ bool KhronosPipeline::save(const hydra::LogSetup& log_setup, bool save_full_stat
                      object_symbol,
                      std::make_unique<KhronosObjectAttributes>(std::move(*object)));
   }
-  dsg->save(backend_path + "/dsg_with_mesh");
+  dsg->save(backend_path + "/dsg_with_mesh", true);
 
   CLOG(2) << "[Khronos Pipeline] Saved " << (save_full_state ? "full state" : "evaluation DSG")
           << " to '" << log_setup.getLogDir() << "'.";

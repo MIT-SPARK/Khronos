@@ -42,6 +42,7 @@
 #include <spark_dsg/colormaps.h>
 
 #include "khronos/active_window/data/reconstruction_types.h"
+#include "khronos/active_window/integration/binary_semantic_integrator.h"
 #include "khronos/utils/geometry_utils.h"
 
 namespace khronos {
@@ -74,9 +75,7 @@ void declare_config(MeshObjectExtractor::Config& config) {
 }
 
 MeshObjectExtractor::MeshObjectExtractor(const Config& config)
-    : config(config),
-      integrator_(config.projective_integrator),
-      mesh_integrator_(config.mesh_integrator) {}
+    : config(config), mesh_integrator_(config.mesh_integrator) {}
 
 KhronosObjectAttributes::Ptr MeshObjectExtractor::extractObject(const Track& track,
                                                                 const FrameDataBuffer& frame_data) {
@@ -234,7 +233,9 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
 
   // Perform 3D reconstruction using projective updates over all frames.
   for (const auto& [frame_data, segment_id] : frames) {
-    integrator_.updateObjectMap(*frame_data, map, segment_id);
+    const ProjectiveIntegrator integrator(config.projective_integrator,
+                                          std::make_unique<BinarySemanticIntegrator>(segment_id));
+    integrator.updateObjectMap(*frame_data, map);
   }
 
   // Erase low_confidence voxels to extract the object of interest.

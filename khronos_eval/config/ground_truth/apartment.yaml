@@ -1,0 +1,16 @@
+# Files to read for processing.
+ground_truth_cloud_file: /data/datasets/khronos/tesse_cd/apartment/ground_truth/raw/surface_cloud_1000.ply
+semantic_colors_file: /home/marcus/code/khronos_ws/src/khronos/colors/tesse_cd_apartment.csv
+label_space_file: /home/marcus/code/khronos_ws/src/hydra/config/label_spaces/tesse_cd_apartment_label_space.yaml
+label_remap_file: /home/marcus/code/khronos_ws/src/hydra/config/label_remaps/tesse_cd_apartment.yaml
+khronos_observed_dsg_file: /home/marcus/code/khronos_ws/src/khronos/output/apartment_gt/maps/00013/backend/dsg_with_mesh.sparkdsg
+
+# Algorithm params.
+unknown_label_is_background: false
+min_object_separation: 0.1
+max_observation_distance: 0.1
+
+# Output.
+output_directory: /data/datasets/khronos/tesse_cd/apartment/ground_truth
+save_ply_clouds: true
+save_dsgs: true

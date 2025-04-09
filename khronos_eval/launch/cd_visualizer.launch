@@ -1,0 +1,27 @@
+<launch>
+
+    <!-- Args  -->
+    <arg name="dsg_file" default="/home/marcus/code/khronos_ws/src/khronos/output/office_test/maps/00004/backend/dsg_with_mesh.sparkdsg"/>
+
+    <arg name="visualizer_config" default="$(find khronos_ros)/config/visualization/visualizer_config.yaml"/>
+    <arg name="change_detector_config" default="$(find khronos_eval)/config/visualization/cd_visualizer.yaml"/>
+
+    <include file="$(find khronos_ros)/launch/visualize_saved_dsg.launch">
+        <arg name="scene_graph" value="$(arg dsg_file)"/>
+        <arg name="start_rviz" value="false"/>
+    </include>
+
+    <node pkg="khronos_eval" type="cd_visualizer_node" name="cd_visualizer_node" output="screen" required="true">
+        <rosparam file="$(arg visualizer_config)" command="load"/>
+        <rosparam file="$(arg change_detector_config)" command="load"/>
+        <param name="visualizer_frame" value="world"/>
+        <param name="graph/type" value="GraphFromFile"/>
+        <param name="graph/filepath" value="$(arg dsg_file)"/>
+        <param name="scene_graph_filepath" value="$(arg dsg_file)"/>
+        <param name="load_graph" value="true"/>
+    </node>
+
+    <node name="rviz" pkg="rviz" type="rviz" output="log" args="-d $(find khronos_eval)/config/visualization/cd_visualizer.rviz"/>
+
+    <node name="global_tf" pkg="tf2_ros" type="static_transform_publisher" args="0 0 0 0 0 0 1 map world" />
+</launch>

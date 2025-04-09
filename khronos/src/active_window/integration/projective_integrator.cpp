@@ -39,24 +39,22 @@
 
 namespace khronos {
 
-ProjectiveIntegrator::ProjectiveIntegrator(const hydra::ProjectiveIntegrator::Config& config)
-    : hydra::ProjectiveIntegrator(config) {}
+ProjectiveIntegrator::ProjectiveIntegrator(const hydra::ProjectiveIntegrator::Config& config,
+                                           SemanticIntegratorPtr&& semantics)
+    : hydra::ProjectiveIntegrator(config, std::move(semantics)) {}
 
 void ProjectiveIntegrator::updateBackgroundMap(const FrameData& data, VolumetricMap& map) const {
   current_data_ = &data;
   hydra::ProjectiveIntegrator::updateMap(data.input, map, true);
 }
 
-void ProjectiveIntegrator::updateObjectMap(const FrameData& data,
-                                           VolumetricMap& map,
-                                           int object_id) const {
+void ProjectiveIntegrator::updateObjectMap(const FrameData& data, VolumetricMap& map) const {
   if (!semantic_integrator_) {
     LOG(WARNING) << "Can not perform object reconstruction without semantic integrator.";
     return;
   }
+
   current_data_ = &data;
-  // NOTE(lschmid): We abuse 'canIntegrate' which is not used in hydra.
-  semantic_integrator_->canIntegrate(object_id);
 
   // NOTE(nathan) we side-step finding "in-view" blocks and just integrate all of the allocated
   // blocks

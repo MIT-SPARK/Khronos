@@ -38,7 +38,6 @@
 #pragma once
 #include <cstdint>
 
-#include <config_utilities/factory.h>
 #include <hydra/reconstruction/semantic_integrator.h>
 #include <khronos/common/common_types.h>
 
@@ -46,10 +45,7 @@ namespace khronos {
 
 class BinarySemanticIntegrator : public hydra::SemanticIntegrator {
  public:
-  struct Config {
-  } const config;
-
-  explicit BinarySemanticIntegrator(const Config& config);
+  explicit BinarySemanticIntegrator(uint32_t object_id);
 
   // NOTE(lschmid): We highjack 'canIntegrate' which is not used in the Khronos projective
   // integrator to set the desired label.
@@ -61,13 +57,7 @@ class BinarySemanticIntegrator : public hydra::SemanticIntegrator {
 
  private:
   // The object ID of the current object being processed.
-  mutable uint32_t current_object_id_ = 0;
-  inline static const auto registration_ =
-      config::RegistrationWithConfig<SemanticIntegrator,
-                                     BinarySemanticIntegrator,
-                                     BinarySemanticIntegrator::Config>("BinarySemanticIntegrator");
+  const uint32_t current_object_id_ = 0;
 };
-
-void declare_config(BinarySemanticIntegrator::Config& config);
 
 }  // namespace khronos

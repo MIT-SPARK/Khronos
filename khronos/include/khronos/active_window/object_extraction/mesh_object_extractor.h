@@ -152,7 +152,6 @@ class MeshObjectExtractor : public ObjectExtractor {
                                   const hydra::SemanticVoxel& confidence_voxel) const;
 
  private:
-  ProjectiveIntegrator integrator_;
   hydra::MeshIntegrator mesh_integrator_;
 
   inline static const auto registration_ =

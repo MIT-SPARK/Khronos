@@ -79,7 +79,10 @@ void FrameDataBuffer::trimBuffer(const Tracks& tracks) {
       ++it;
     }
   }
-  oldest_time_stamp_ = buffer_.front()->input.timestamp_ns;
+
+  if (!buffer_.empty()) {
+    oldest_time_stamp_ = buffer_.front()->input.timestamp_ns;
+  }
 }
 
 void FrameDataBuffer::storeData(const FrameData::Ptr& data) {

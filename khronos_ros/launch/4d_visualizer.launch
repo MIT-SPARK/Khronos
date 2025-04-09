@@ -2,7 +2,7 @@
 
     <!-- Args  -->
     <!-- Data to visualize  -->
-    <arg name="map_file" default="$(find khronos)/../output/office_test/final.4dmap"/>
+    <arg name="map_file" default="$(find khronos)/../output/tmp/final.4dmap"/>
 
     <!-- Visualization config -->
     <arg name="show_gui" default="true"/>

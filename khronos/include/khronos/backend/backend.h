@@ -122,8 +122,6 @@ class Backend : public hydra::BackendModule {
   using hydra::BackendModule::optimize;  // disables hidden virtual warning
   void optimize(size_t timestamp_ns, bool force_find_merge_proposals = false);
 
-  void copyMeshDelta(const hydra::BackendInput& input) override;
-
   size_t findClosestNode(size_t timestamp_ns);
 
   void fixInputPoses(const hydra::BackendInput& input);

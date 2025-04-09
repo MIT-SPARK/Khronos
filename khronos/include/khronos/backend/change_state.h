@@ -81,7 +81,7 @@ struct ObjectChange {
   // first_absent -> first_persistent -> obj.first_seen -> obj.last_seen -> last_persistent ->
   // last_absent.
 
-  // This id is set to the object that this object is to be merged with. If the object is not
+  // This id is set to the object that this object is to be merged *into*. If the object is not
   // merged, this is set to the 0.
   NodeId merged_id = 0ul;
 

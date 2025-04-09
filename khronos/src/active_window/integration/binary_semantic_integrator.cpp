@@ -37,16 +37,12 @@
 
 #include "khronos/active_window/integration/binary_semantic_integrator.h"
 
-#include <config_utilities/config.h>
-
 namespace khronos {
 
-BinarySemanticIntegrator::BinarySemanticIntegrator(const Config& config) : config(config) {}
+BinarySemanticIntegrator::BinarySemanticIntegrator(uint32_t object_id)
+    : current_object_id_(object_id) {}
 
-bool BinarySemanticIntegrator::canIntegrate(uint32_t label) const {
-  current_object_id_ = label;
-  return true;
-}
+bool BinarySemanticIntegrator::canIntegrate(uint32_t /* label */) const { return true; }
 
 bool BinarySemanticIntegrator::isValidLabel(uint32_t /* label */) const { return true; }
 
@@ -62,11 +58,6 @@ void BinarySemanticIntegrator::updateLikelihoods(uint32_t label, SemanticVoxel& 
   } else {
     voxel.semantic_likelihoods[1] += 1;
   }
-}
-
-void declare_config(BinarySemanticIntegrator::Config& /* config */) {
-  using namespace config;
-  name("BinarySemanticIntegrator::Config");
 }
 
 }  // namespace khronos

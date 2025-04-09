@@ -62,8 +62,17 @@ Reconciler::Reconciler(const Config& config) : config(config::checkValid(config)
   }
 }
 
-void Reconciler::reconcile(DynamicSceneGraph& dsg, const Changes& changes, TimeStamp stamp) {
+void Reconciler::reconcile(DynamicSceneGraph& dsg,
+                           const Changes& changes,
+                           TimeStamp stamp,
+                           std::map<NodeId, ObjectReconciliationDetail>* object_details) {
   Timer timer("reconcile/all", stamp);
+
+  VLOG(4) << "Reconciler has " << changes.object_changes.size() << " object changes.";
+  for (const auto& change : changes.object_changes) {
+    VLOG(4) << "\tChange: " << NodeSymbol(change.node_id).getLabel() << " -> "
+            << NodeSymbol(change.merged_id).getLabel();
+  }
 
   // Reconcile the background mesh.
   if (mesh_merger_) {
@@ -73,10 +82,35 @@ void Reconciler::reconcile(DynamicSceneGraph& dsg, const Changes& changes, TimeS
 
   // Reconcile the objects based on the observed changes.
   Timer obj_timer("reconcile/objects", stamp);
-  reconcileObjects(changes, dsg);
+  reconcileObjects(changes, dsg, object_details);
 }
 
-void Reconciler::reconcileObjects(const Changes& changes, DynamicSceneGraph& dsg) {
+void Reconciler::ObjectReconciliationDetail::merge(const ObjectReconciliationDetail& other) {
+  // Merge observed times.
+  observed_times.insert(
+      observed_times.end(), other.observed_times.begin(), other.observed_times.end());
+
+  // Merge estimated times.
+  estimated_times.insert(
+      estimated_times.end(), other.estimated_times.begin(), other.estimated_times.end());
+}
+
+std::string Reconciler::ObjectReconciliationDetail::serializeTimestamps(
+    const std::vector<uint64_t>& timestamps) const {
+  std::string result;
+  for (auto it = timestamps.begin(); it != timestamps.end(); ++it) {
+    if (it != timestamps.begin()) {
+      result += ":";
+    }
+    result += std::to_string(*it);
+  }
+  return result;
+}
+
+void Reconciler::reconcileObjects(const Changes& changes,
+                                  DynamicSceneGraph& dsg,
+                                  std::map<NodeId, Reconciler::ObjectReconciliationDetail>*
+                                      object_details) {
   // Check which objects will be merged, and which have no merges.
   std::stringstream logging_info;
   ChangeMap all_changes;
@@ -121,9 +155,22 @@ void Reconciler::reconcileObjects(const Changes& changes, DynamicSceneGraph& dsg
 
   // Estimate updated presence times for all observations based on change detection results.
   for (const auto& [node_id, change] : all_changes) {
+    if (object_details && !object_details->count(node_id)) {
+      object_details->insert({node_id, ObjectReconciliationDetail()});
+    }
     const SceneGraphNode& node = dsg.getNode(node_id);
     KhronosObjectAttributes& attrs = node.attributes<KhronosObjectAttributes>();
+    if (object_details) {
+      auto& detail = object_details->at(node_id);
+      detail.observed_times.push_back(attrs.first_observed_ns.front());
+      detail.observed_times.push_back(attrs.last_observed_ns.front());
+    }
     estimatePresenceTimes(change, attrs);
+    if (object_details) {
+      auto& detail = object_details->at(node_id);
+      detail.estimated_times.push_back(attrs.first_observed_ns.front());
+      detail.estimated_times.push_back(attrs.last_observed_ns.front());
+    }
   }
 
   // Merge all nodes with verified merges, and their change observations.
@@ -138,6 +185,10 @@ void Reconciler::reconcileObjects(const Changes& changes, DynamicSceneGraph& dsg
 
     // Merge the nodes and their change info together.
     mergeObjects(change, dsg);
+    if (object_details) {
+      object_details->at(change.merged_id).merge(object_details->at(change.node_id));
+    }
+
     const SceneGraphNode& node = dsg.getNode(change.merged_id);
     const KhronosObjectAttributes& attrs = node.attributes<KhronosObjectAttributes>();
     mergeObjectChanges(change,
@@ -288,10 +339,6 @@ void Reconciler::mergeObjectAttributes(const KhronosObjectAttributes& from,
   for (size_t i = 0; i < from.first_observed_ns.size(); ++i) {
     addPresenceDuration(into, from.first_observed_ns[i], from.last_observed_ns[i]);
   }
-
-  // Combine the AW time stamps.
-  into.details["AW_time"] = {
-      std::min(into.details["AW_time"].front(), from.details.at("AW_time").front())};
 }
 
 void Reconciler::mergeObjectMeshes(const KhronosObjectAttributes& from,

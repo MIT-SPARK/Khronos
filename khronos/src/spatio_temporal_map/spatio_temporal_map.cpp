@@ -328,6 +328,7 @@ void SpatioTemporalMap::moveObjectsBackward() {
     current_dsg_->removeNode(node_id);
   }
 }
+
 void SpatioTemporalMap::moveDynamicObjectAttributesBackward() {
   if (!current_dsg_->hasLayer(DsgLayers::OBJECTS)) {
     return;

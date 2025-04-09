@@ -163,15 +163,12 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& 
   CLOG(5) << "[Khronos Active Window] Extracting output data.";
   auto output = extractOutputData(*data, config.detach_object_extraction);
   output->sensor_data = std::make_shared<hydra::InputData>(data->input);
-  for (const auto& block : *map_.getTrackingLayer()) {
-    if (!block.has_active_data) {
-      output->archived_mesh_indices.push_back(block.index);
-    }
-  }
+  last_full_upated_ = latest_stamp_;
 
-  map_.removeBlocks(output->archived_mesh_indices);
-  CLOG(4) << "[Khronos Active Window] Archiving " << output->archived_mesh_indices.size()
-          << " blocks.";
+  // unset update flags
+  for (const auto& block : map_.getTsdfLayer()) {
+    block.clearUpdated();
+  }
 
   return output;
 }
@@ -206,14 +203,8 @@ std::vector<std::shared_ptr<KhronosObjectAttributes>> ActiveWindow::extractObjec
 void ActiveWindow::updateMap(const FrameData& data) {
   Timer timer("active_window/update_map", latest_stamp_);
 
-  // Reset inactive voxels.
-  tracking_integrator_.resetInactive(map_);
-
   // Perform projective TSDF integration for all potentially visible blocks.
   integrator_.updateBackgroundMap(data, map_);
-
-  // Reconstruct the mesh from TSDF.
-  mesh_integrator_.generateMesh(map_, true, true);
 
   // Update the tracking information for all touched blocks. This resets
   // deactivated voxels so needs to come after meshing.
@@ -224,11 +215,23 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::extractOutputData(const FrameData& 
                                                                bool threaded) {
   // Extract background mesh and objects that leaves the active window.
   Timer timer("active_window/extract_output", latest_stamp_);
+
+  // Reconstruct the mesh from TSDF.
+  mesh_integrator_.generateMesh(map_, true, true);
+
   auto output = std::make_shared<hydra::ActiveWindowOutput>();
   output->timestamp_ns = data.input.timestamp_ns;
   output->world_t_body = data.input.world_T_body.translation();
   output->world_R_body = data.input.world_T_body.rotation();
   output->setMap(map_.cloneUpdated());
+
+  // NOTE(nathan) comes after cloning the map and generating the mesh to preserve updated blocks
+  // that have left the temporal window. This can only happen if the active window has a temporal
+  // window smaller than min_input_separation_s (or in other rarer situations where the data period
+  // is larger than the temporal window)
+  tracking_integrator_.resetInactive(map_, &output->archived_mesh_indices);
+  CLOG(4) << "[Khronos Active Window] Archiving " << output->archived_mesh_indices.size()
+          << " blocks.";
 
   extractInactiveObjects();
   if (!threaded) {

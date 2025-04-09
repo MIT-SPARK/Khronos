@@ -221,7 +221,7 @@ BlockIndexSet RayVerificator::addVertices() {
 
     // Create the rays and add them to the hash.
     for (const size_t source_index : source_indices) {
-      rays_.emplace_back(timestamps_[source_index], source_index, i);
+      rays_.emplace_back(timestamps_.at(source_index), source_index, i);
       observed_blocks.merge(addRayToHash(rays_.size() - 1));
     }
   }
