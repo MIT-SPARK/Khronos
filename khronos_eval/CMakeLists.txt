@@ -47,10 +47,10 @@ target_link_libraries(${PROJECT_NAME} gtsam ${PCL_LIBRARIES} ${OpenCV_LIBRARIES}
 # ##############################################################################
 
 add_executable(exp_pipeline app/exp_pipeline.cpp)
-target_link_libraries(exp_pipeline ${PROJECT_NAME})
+target_link_libraries(exp_pipeline ${PROJECT_NAME} ${gflags_LIBRARIES})
 
 add_executable(eval_visualizer_node app/eval_visualizer_node.cpp)
-target_link_libraries(eval_visualizer_node ${PROJECT_NAME})
+target_link_libraries(eval_visualizer_node ${PROJECT_NAME} ${gflags_LIBRARIES})
 
 add_executable(cd_visualizer_node app/cd_visualizer_node.cpp)
 target_link_libraries(cd_visualizer_node ${PROJECT_NAME} ${gflags_LIBRARIES})
@@ -61,19 +61,9 @@ target_link_libraries(cd_visualizer_node ${PROJECT_NAME} ${gflags_LIBRARIES})
 
 install(
   TARGETS ${PROJECT_NAME}
-          evaluate_mesh
-          evaluate_meshes
-          exp_evaluate_mesh
-          exp_reconcile
-          exp_change_detection
           exp_pipeline
-          create_gt
-          create_dynamic_object_gt
-          create_dynamic_object_gt_real_data
-          consolidate_gt
           eval_visualizer_node
           cd_visualizer_node
-          hydra_converter
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION})

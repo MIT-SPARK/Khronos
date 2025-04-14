@@ -70,8 +70,8 @@ void Reconciler::reconcile(DynamicSceneGraph& dsg,
 
   VLOG(4) << "Reconciler has " << changes.object_changes.size() << " object changes.";
   for (const auto& change : changes.object_changes) {
-    VLOG(4) << "\tChange: " << NodeSymbol(change.node_id).getLabel() << " -> "
-            << NodeSymbol(change.merged_id).getLabel();
+    VLOG(4) << "\tChange: " << NodeSymbol(change.node_id).str() << " -> "
+            << NodeSymbol(change.merged_id).str();
   }
 
   // Reconcile the background mesh.
