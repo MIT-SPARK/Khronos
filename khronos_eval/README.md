@@ -3,11 +3,11 @@ Evaluation suite for `khronos`.
 
 Download ground-truth files to evaluate relevant datasets [here](https://drive.google.com/drive/folders/1lKbbpb1gWwrGBcQLikoaavXIO41fHOJ9?usp=drive_link).
 
-> The most relevant file is `scripts/evaluate_pipeline.sh`, following that script should point you at all relevant files (mostly `src/pipeline_evaluator.cpp` that runs all evaluations).
+> The most relevant file is [scripts/evaluate_pipeline.sh](scripts/evaluate_pipeline.sh), following that script should point you at all relevant files (mostly [src/pipeline_evaluator.cpp](src/pipeline_evaluator.cpp) that runs all evaluations).
 
 After setting the script parameters and associated config file parameters properly, run the script to generate the `results` subdirectory with all relevant evaluation results in the output directory. To get a quick overview of the results, run `python3 plotting/tables.py`. Note that you will have to manually set filepaths and provide a list of `method`s, which are all of the runs you want to evaluate over, in that file as well. 
 
-Once you run [tables.py](khronos_eval/plotting/tables.py), you should see something like this (with rows for every dataset you're evaluating):
+Once you run [tables.py](plotting/tables.py), you should see something like this (with rows for every dataset you're evaluating):
 
 | Data      | Accuracy@0.2 | Completeness@0.2 | F1@0.2 | ObjectPrecision | ObjectRecall | ObjectF1 | DynamicPrecision | DynamicRecall | DynamicF1 | ChangePrecision | ChangeRecall | ChangeF1 |
 |-----------|--------------|------------------|--------|-----------------|--------------|----------|------------------|---------------|-----------|-----------------|--------------|----------|
