@@ -1,5 +1,5 @@
 # Header
-Header header
+std_msgs/Header header
 
 # All background changes
 int8[] background
