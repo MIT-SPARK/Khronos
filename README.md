@@ -17,7 +17,9 @@ Khronos is a unified approach that can reason about short-term dynamics and long
 
 **Examples**
 * [Run Khronos](#run-khronos)
+* [Open-Set Segmentation](#open-set-segmentation)
 * [Visualize 4D Map](#visualize-4d-map)
+* [Evaluation](#evaluation)
 
 **Contributing**
 * [Contributing](#contributing)
@@ -127,6 +129,8 @@ You can now terminate Khronos.
 
 To run Khronos with the apartment dataset, change the `dataset` from `tesse_cd_office` to `tesse_cd_apartment` and change the rosbag path accordingly. You can then run the launch file as before.
 
+## Open-Set Segmentation
+
 To run Khronos with semantic_inference, change the `use_gt_semantics` parameter in the launch file from `true` to `false`. Set `use_openset_semantics` to `true` for open-set segmentation.
 
 ## Visualize 4D map
@@ -145,6 +149,10 @@ The visualizer will load the map located (by default) in [output/tmp](output/tmp
 <img src="https://github.com/MIT-SPARK/Khronos/assets/32229998/d8072aab-a874-483f-aada-24607eb620be" alt="Khronos 4D Map" width="700">
 
 You can play forward or backward, and see Khronos' estimate of the state of the scene at each timestamp, with current or future knowledge. As an example, fix the query time to 0 and play forward on robot time mode to see how Khronos' understanding of the initial state of the scene evolves over time.
+
+## Evaluation
+
+For more information on how to perform evaluation, see [this readme](khronos_eval/README.md).
 
 # Contributing
 This is an open-source project and pull requests for features and fixes are very welcome! We follow the [Feature-Branch-Workflow](https://www.atlassian.com/git/tutorials/comparing-workflows/feature-branch-workflow) and the [google C++ style guide](https://google.github.io/styleguide/cppguide.html). To adhere to this, please setup the auto formatter and linter for khronos as follows:
