@@ -40,16 +40,14 @@
 #include <config_utilities/config.h>
 #include <config_utilities/validation.h>
 #include <hydra/utils/pgmo_mesh_traits.h>
-#include <hydra_visualizer/color/mesh_color_adaptor.h>
-#include <kimera_pgmo_msgs/KimeraPgmoMesh.h>
-#include <kimera_pgmo_ros/conversion/ros_conversion.h>
+#include <kimera_pgmo_ros/conversion/mesh.h>
 
 #include "khronos_ros/utils/ros_conversions.h"
 #include "khronos_ros/visualization/visualization_utils.h"
 
 namespace hydra {
 
-Eigen::Vector3f pgmoGetVertex(const MeshColorAdaptor& mesh_adaptor,
+Eigen::Vector3f pgmoGetVertex(const MeshColorAdapter& mesh_adaptor,
                               size_t i,
                               kimera_pgmo::traits::VertexTraits* traits) {
   const auto c = mesh_adaptor.getVertexColor(i);
@@ -57,15 +55,15 @@ Eigen::Vector3f pgmoGetVertex(const MeshColorAdaptor& mesh_adaptor,
   return mesh_adaptor.mesh.pos(i);
 }
 
-size_t pgmoNumVertices(const MeshColorAdaptor& mesh_adaptor) {
+size_t pgmoNumVertices(const MeshColorAdapter& mesh_adaptor) {
   return pgmoNumVertices(mesh_adaptor.mesh);
 }
 
-size_t pgmoNumFaces(const MeshColorAdaptor& mesh_adaptor) {
+size_t pgmoNumFaces(const MeshColorAdapter& mesh_adaptor) {
   return pgmoNumFaces(mesh_adaptor.mesh);
 }
 
-kimera_pgmo::traits::Face pgmoGetFace(const MeshColorAdaptor& mesh_adaptor, size_t i) {
+kimera_pgmo::traits::Face pgmoGetFace(const MeshColorAdapter& mesh_adaptor, size_t i) {
   return pgmoGetFace(mesh_adaptor.mesh, i);
 }
 
@@ -84,10 +82,11 @@ void declare_config(KhronosMeshVisualizer::Config& config) {
   checkCondition(!config.global_frame_name.empty(), "'global_frame_name' can not be empty.");
 }
 
-KhronosMeshVisualizer::KhronosMeshVisualizer(const Config& config, const ros::NodeHandle& nh)
-    : config(config::checkValid(config)), nh_(nh) {
+KhronosMeshVisualizer::KhronosMeshVisualizer(const Config& config, const ianvs::NodeHandle& nh)
+    : config(config::checkValid(config)), nh_(nh), tf_broadcaster_(nh.node()) {
   // Advertise the publishers.
-  pub_ = nh_.advertise<kimera_pgmo_msgs::KimeraPgmoMesh>("mesh", config.queue_size, true);
+  pub_ = nh_.create_publisher<kimera_pgmo_msgs::msg::Mesh>(
+      "mesh", rclcpp::QoS(config.queue_size).transient_local());
 }
 
 void KhronosMeshVisualizer::draw(const DynamicSceneGraph& dsg,
@@ -99,23 +98,23 @@ void KhronosMeshVisualizer::draw(const DynamicSceneGraph& dsg,
 
 void KhronosMeshVisualizer::drawBackground(const DynamicSceneGraph& dsg, const Coloring& coloring) {
   // Nothing to do if there is no mesh.
-  if (!dsg.hasMesh() || dsg.mesh()->empty() || pub_.getNumSubscribers() == 0) {
+  if (!dsg.hasMesh() || dsg.mesh()->empty() || pub_->get_subscription_count() == 0) {
     return;
   }
-  std_msgs::Header header;
+  std_msgs::msg::Header header;
   header.frame_id = config.global_frame_name;
-  header.stamp = ros::Time::now();
+  header.stamp = nh_.now();
   publishMesh(header, kBackgroundNs, *dsg.mesh(), coloring);
 }
 
 void KhronosMeshVisualizer::drawObjects(const DynamicSceneGraph& dsg,
                                         const ObjectColors& colorings) {
-  if (pub_.getNumSubscribers() == 0 || !dsg.hasLayer(DsgLayers::OBJECTS)) {
+  if (pub_->get_subscription_count() == 0 || !dsg.hasLayer(DsgLayers::OBJECTS)) {
     return;
   }
   // Setup header.
-  std_msgs::Header header;
-  header.stamp = ros::Time::now();
+  std_msgs::msg::Header header;
+  header.stamp = nh_.now();
 
   // Visualize all objects.
   std::unordered_set<uint64_t> present_objects;
@@ -179,26 +178,26 @@ std::string KhronosMeshVisualizer::getFrameName(const uint64_t id) {
 
 void KhronosMeshVisualizer::clearMesh(const std::string& ns) {
   // An empty message will clear the object in the rviz plugin.
-  kimera_pgmo_msgs::KimeraPgmoMesh msg;
+  kimera_pgmo_msgs::msg::Mesh msg;
   msg.ns = ns;
   pub_.publish(msg);
 }
 
-void KhronosMeshVisualizer::publishMesh(const std_msgs::Header& header,
+void KhronosMeshVisualizer::publishMesh(const std_msgs::msg::Header& header,
                                         const std::string& ns,
                                         const Mesh& mesh,
                                         const Coloring& coloring) {
-  const hydra::MeshColorAdaptor adaptor(mesh, coloring);
+  const hydra::MeshColorAdapter adaptor(mesh, coloring);
   auto msg = kimera_pgmo::conversions::toMsg(adaptor);
   msg.header = header;
   msg.ns = ns;
   pub_.publish(msg);
 }
 
-void KhronosMeshVisualizer::publishTransform(const std_msgs::Header& header,
+void KhronosMeshVisualizer::publishTransform(const std_msgs::msg::Header& header,
                                              const KhronosObjectAttributes& attrs,
                                              const uint64_t id) {
-  geometry_msgs::TransformStamped msg;
+  geometry_msgs::msg::TransformStamped msg;
   msg.header = header;
   msg.child_frame_id = getFrameName(id);
   // The khronos meshes are in bounding box coordinates.

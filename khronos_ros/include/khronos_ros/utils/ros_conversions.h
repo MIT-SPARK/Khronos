@@ -38,17 +38,17 @@
 #pragma once
 
 #include <khronos/backend/change_state.h>
-#include <khronos_msgs/Changes.h>
+#include <khronos_msgs/msg/changes.hpp>
 #include <spark_dsg/mesh.h>
 
 namespace khronos {
 
-ObjectChange fromMsg(const khronos_msgs::ObjectChange& msg);
+ObjectChange fromMsg(const khronos_msgs::msg::ObjectChange& msg);
 
-khronos_msgs::ObjectChange toMsg(const ObjectChange& object_change);
+khronos_msgs::msg::ObjectChange toMsg(const ObjectChange& object_change);
 
-Changes fromMsg(const khronos_msgs::Changes& msg);
+Changes fromMsg(const khronos_msgs::msg::Changes& msg);
 
-khronos_msgs::Changes toMsg(const Changes& changes);
+khronos_msgs::msg::Changes toMsg(const Changes& changes);
 
 }  // namespace khronos

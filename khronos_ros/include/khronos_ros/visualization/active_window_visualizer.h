@@ -43,16 +43,15 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <geometry_msgs/Point.h>
-#include <geometry_msgs/Vector3.h>
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/vector3.hpp>
 #include <hydra/common/global_info.h>
 #include <khronos/active_window/data/frame_data.h>
 #include <khronos/active_window/data/reconstruction_types.h>
 #include <khronos/active_window/data/track.h>
-#include <ros/node_handle.h>
-#include <std_msgs/ColorRGBA.h>
-#include <visualization_msgs/Marker.h>
-#include <visualization_msgs/MarkerArray.h>
+#include <rclcpp/time.hpp>
+#include <std_msgs/msg/color_rgba.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 namespace khronos {
 
@@ -144,7 +143,7 @@ class ActiveWindowVisualizer {
   ros::Publisher track_image_pub_;
 
   // Variables.
-  ros::Time stamp_;
+  rclcpp::Time stamp_;
   bool stamp_is_set_ = false;
   Transform robot_pose_;
   size_t num_previous_object_bbs_ = 0u;
@@ -153,10 +152,10 @@ class ActiveWindowVisualizer {
   size_t num_previous_pixel_tracks_ = 0u;
 
   // Time stamp caching for synchronization of multiple visualizations.
-  ros::Time getStamp() const { return stamp_is_set_ ? stamp_ : ros::Time::now(); }
+  rclcpp::Time getStamp() const { return stamp_is_set_ ? stamp_ : ros::Time::now(); }
 
   // Visualization Utility.
-  static void deletePreviousMarkers(visualization_msgs::MarkerArray& msg,
+  static void deletePreviousMarkers(visualization_msgs::msg::MarkerArray& msg,
                                     size_t num_previous_markers);
 };
 

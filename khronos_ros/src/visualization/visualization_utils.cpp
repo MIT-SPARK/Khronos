@@ -39,13 +39,13 @@
 
 namespace khronos {
 
-visualization_msgs::Marker setBoundingBox(const BoundingBox& bb,
+visualization_msgs::msg::Marker setBoundingBox(const BoundingBox& bb,
                                           const Color& color,
-                                          const std_msgs::Header& header,
+                                          const std_msgs::msg::Header& header,
                                           const float scale) {
-  visualization_msgs::Marker msg;
+  visualization_msgs::msg::Marker msg;
   msg.header = header;
-  msg.type = visualization_msgs::Marker::LINE_LIST;
+  msg.type = visualization_msgs::msg::Marker::LINE_LIST;
   msg.scale.x = scale;
   msg.pose.orientation.w = 1.f;
   msg.pose.position.x = bb.world_P_center.x();
@@ -88,24 +88,24 @@ visualization_msgs::Marker setBoundingBox(const BoundingBox& bb,
   return msg;
 }
 
-geometry_msgs::Vector3 setScale(const float scale) {
-  geometry_msgs::Vector3 msg;
+geometry_msgs::msg::Vector3 setScale(const float scale) {
+  geometry_msgs::msg::Vector3 msg;
   msg.x = scale;
   msg.y = scale;
   msg.z = scale;
   return msg;
 }
 
-geometry_msgs::Point setPoint(const Point& point) {
-  geometry_msgs::Point msg;
+geometry_msgs::msg::Point setPoint(const Point& point) {
+  geometry_msgs::msg::Point msg;
   msg.x = point.x();
   msg.y = point.y();
   msg.z = point.z();
   return msg;
 }
 
-std_msgs::ColorRGBA setColor(const std::vector<float>& color) {
-  std_msgs::ColorRGBA msg;
+std_msgs::msg::ColorRGBA setColor(const std::vector<float>& color) {
+  std_msgs::msg::ColorRGBA msg;
   msg.r = color[0];
   msg.g = color[1];
   msg.b = color[2];
@@ -113,8 +113,8 @@ std_msgs::ColorRGBA setColor(const std::vector<float>& color) {
   return msg;
 }
 
-std_msgs::ColorRGBA setColor(const Color& color) {
-  std_msgs::ColorRGBA msg;
+std_msgs::msg::ColorRGBA setColor(const Color& color) {
+  std_msgs::msg::ColorRGBA msg;
   msg.r = static_cast<float>(color.r) / 255.f;
   msg.g = static_cast<float>(color.g) / 255.f;
   msg.b = static_cast<float>(color.b) / 255.f;
@@ -130,7 +130,7 @@ void applyColor(const Color& color, cv::Vec3b& pixel, float alpha) {
   pixel = colorToCv(cvToColor(pixel).blend(color, alpha));
 }
 
-void MarkerArrayTracker::updateMarkerArray(visualization_msgs::MarkerArray& marker) {
+void MarkerArrayTracker::updateMarkerArray(visualization_msgs::msg::MarkerArray& marker) {
   std::unordered_map<std::string, std::unordered_set<int>> current_ids;
   for (const auto& marker : marker.markers) {
     current_ids[marker.ns].emplace(marker.id);
@@ -140,8 +140,8 @@ void MarkerArrayTracker::updateMarkerArray(visualization_msgs::MarkerArray& mark
       continue;
     }
     const auto& curr_ids = current_ids.at(prev_ns);
-    visualization_msgs::Marker delete_marker;
-    delete_marker.action = visualization_msgs::Marker::DELETE;
+    visualization_msgs::msg::Marker delete_marker;
+    delete_marker.action = visualization_msgs::msg::Marker::DELETE;
     delete_marker.ns = prev_ns;
     for (const int id : prev_ids) {
       if (curr_ids.count(id)) {
@@ -156,12 +156,12 @@ void MarkerArrayTracker::updateMarkerArray(visualization_msgs::MarkerArray& mark
   }
 }
 
-visualization_msgs::MarkerArray MarkerArrayTracker::createResetMarker(
+visualization_msgs::msg::MarkerArray MarkerArrayTracker::createResetMarker(
     std::vector<std::string> namespaces) {
-  visualization_msgs::MarkerArray reset_markers;
+  visualization_msgs::msg::MarkerArray reset_markers;
   for (const auto& ns : namespaces) {
-    visualization_msgs::Marker reset_marker;
-    reset_marker.action = visualization_msgs::Marker::DELETEALL;
+    visualization_msgs::msg::Marker reset_marker;
+    reset_marker.action = visualization_msgs::msg::Marker::DELETEALL;
     reset_marker.ns = ns;
     reset_markers.markers.push_back(reset_marker);
     previous_ids_.erase(ns);

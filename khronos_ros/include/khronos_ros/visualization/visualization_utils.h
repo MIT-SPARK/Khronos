@@ -42,29 +42,28 @@
 #include <unordered_set>
 #include <vector>
 
-#include <geometry_msgs/Point.h>
-#include <geometry_msgs/Vector3.h>
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/vector3.hpp>
 #include <khronos/common/common_types.h>
-#include <std_msgs/ColorRGBA.h>
-#include <visualization_msgs/Marker.h>
-#include <visualization_msgs/MarkerArray.h>
+#include <std_msgs/msg/color_rgba.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 namespace khronos {
 
 // Conversion utils.
-geometry_msgs::Vector3 setScale(const float scale);
-geometry_msgs::Point setPoint(const Point& point);
-std_msgs::ColorRGBA setColor(const std::vector<float>& color);
-std_msgs::ColorRGBA setColor(const Color& color);
+geometry_msgs::msg::Vector3 setScale(const float scale);
+geometry_msgs::msg::Point setPoint(const Point& point);
+std_msgs::msg::ColorRGBA setColor(const std::vector<float>& color);
+std_msgs::msg::ColorRGBA setColor(const Color& color);
 cv::Vec3b colorToCv(const Color& color);
 Color cvToColor(const cv::Vec3b& color);
 void applyColor(const Color& color, cv::Vec3b& pixel, float alpha = 1.f);
 
 // Visualization utils.
-visualization_msgs::Marker setBoundingBox(const BoundingBox& bb,
-                                          const Color& color,
-                                          const std_msgs::Header& header,
-                                          const float scale = 0.03);
+visualization_msgs::msg::Marker setBoundingBox(const BoundingBox& bb,
+                                               const Color& color,
+                                               const std_msgs::msg::Header& header,
+                                               const float scale = 0.03);
 
 // Filling annoying rviz markers with empty and reset markers.
 class MarkerArrayTracker {
@@ -76,8 +75,8 @@ class MarkerArrayTracker {
    * markers for all ids that are not in the current marker array for all namespaces that occur in
    * the current marker array.
    */
-  void updateMarkerArray(visualization_msgs::MarkerArray& marker);
-  visualization_msgs::MarkerArray createResetMarker(std::vector<std::string> namespaces);
+  void updateMarkerArray(visualization_msgs::msg::MarkerArray& marker);
+  visualization_msgs::msg::MarkerArray createResetMarker(std::vector<std::string> namespaces);
 
   std::unordered_map<std::string, std::unordered_set<int>> previous_ids_;
 };

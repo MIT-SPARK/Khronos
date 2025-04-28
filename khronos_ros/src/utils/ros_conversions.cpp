@@ -39,7 +39,7 @@
 
 namespace khronos {
 
-ObjectChange fromMsg(const khronos_msgs::ObjectChange& msg) {
+ObjectChange fromMsg(const khronos_msgs::msg::ObjectChange& msg) {
   ObjectChange result;
   result.node_id = msg.node_id;
   result.merged_id = msg.merged_id;
@@ -50,8 +50,8 @@ ObjectChange fromMsg(const khronos_msgs::ObjectChange& msg) {
   return result;
 }
 
-khronos_msgs::ObjectChange toMsg(const ObjectChange& object_change) {
-  khronos_msgs::ObjectChange msg;
+khronos_msgs::msg::ObjectChange toMsg(const ObjectChange& object_change) {
+  khronos_msgs::msg::ObjectChange msg;
   msg.node_id = object_change.node_id;
   msg.merged_id = object_change.merged_id;
   msg.first_absent = object_change.first_absent;
@@ -60,7 +60,7 @@ khronos_msgs::ObjectChange toMsg(const ObjectChange& object_change) {
   return msg;
 }
 
-Changes fromMsg(const khronos_msgs::Changes& msg) {
+Changes fromMsg(const khronos_msgs::msg::Changes& msg) {
   Changes changes;
   changes.object_changes.reserve(msg.objects.size());
   for (const auto& object_change_msg : msg.objects) {
@@ -73,8 +73,8 @@ Changes fromMsg(const khronos_msgs::Changes& msg) {
   return changes;
 }
 
-khronos_msgs::Changes toMsg(const Changes& changes) {
-  khronos_msgs::Changes msg;
+khronos_msgs::msg::Changes toMsg(const Changes& changes) {
+  khronos_msgs::msg::Changes msg;
   msg.objects.reserve(changes.object_changes.size());
   for (const auto& object_change : changes.object_changes) {
     msg.objects.emplace_back(toMsg(object_change));

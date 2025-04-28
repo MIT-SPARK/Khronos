@@ -1,13 +1,13 @@
 #pragma once
 #include <hydra_ros/input/image_receiver.h>
 #include <message_filters/subscriber.h>
-#include <semantic_inference_msgs/FeatureImage.h>
+#include <semantic_inference_msgs/msg/feature_image.hpp>
 
 namespace khronos {
 
 class OpenSetSubscriber {
  public:
-  using MsgType = semantic_inference_msgs::FeatureImage;
+  using MsgType = semantic_inference_msgs::msg::FeatureImage;
   using Filter = message_filters::SimpleFilter<MsgType>;
 
   OpenSetSubscriber();

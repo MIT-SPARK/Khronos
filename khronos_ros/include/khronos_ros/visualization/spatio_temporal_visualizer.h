@@ -49,13 +49,12 @@
 #include <hydra_visualizer/utils/config_wrapper.h>
 #include <khronos/common/common_types.h>
 #include <khronos/spatio_temporal_map/spatio_temporal_map.h>
-#include <khronos_msgs/KhronosSpatioTemporalVisConfig.h>
-#include <khronos_msgs/SpatioTemporalVisualizerSetState.h>
-#include <khronos_msgs/SpatioTemporalVisualizerSetTimeMode.h>
-#include <khronos_msgs/SpatioTemporalVisualizerSetup.h>
-#include <ros/node_handle.h>
-#include <std_srvs/SetBool.h>
-#include <visualization_msgs/MarkerArray.h>
+//#include <khronos_msgs/msg/khronos_spatio_temporal_vis_config.hpp>
+#include <khronos_msgs/srv/spatio_temporal_visualizer_set_state.hpp>
+#include <khronos_msgs/srv/spatio_temporal_visualizer_set_time_mode.hpp>
+#include <khronos_msgs/srv/spatio_temporal_visualizer_setup.h>
+#include <std_srvs/srv/set_bool.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include "khronos_ros/visualization/khronos_mesh_visualizer.h"
 
@@ -106,14 +105,14 @@ class SpatioTemporalVisualizer {
   void reset();
 
   // Service callbacks.
-  bool playCb(std_srvs::SetBool::Request& req, std_srvs::SetBool::Response& /* res */);
-  bool setPlayForwardCb(std_srvs::SetBool::Request& req, std_srvs::SetBool::Response& /* res */);
-  bool isSetupCb(khronos_msgs::SpatioTemporalVisualizerSetup::Request& /* req */,
-                 khronos_msgs::SpatioTemporalVisualizerSetup::Response& res);
-  bool setTimeModeCb(khronos_msgs::SpatioTemporalVisualizerSetTimeMode::Request& req,
-                     khronos_msgs::SpatioTemporalVisualizerSetTimeMode::Response& res);
-  bool setStateCb(khronos_msgs::SpatioTemporalVisualizerSetState::Request& req,
-                  khronos_msgs::SpatioTemporalVisualizerSetState::Response& /* res*/);
+  bool playCb(std_srvs::srv::SetBool::Request& req, std_srvs::srv::SetBool::Response& /* res */);
+  bool setPlayForwardCb(std_srvs::srv::SetBool::Request& req, std_srvs::srv::SetBool::Response& /* res */);
+  bool isSetupCb(khronos_msgs::srv::SpatioTemporalVisualizerSetup::Request& /* req */,
+                 khronos_msgs::srv::SpatioTemporalVisualizerSetup::Response& res);
+  bool setTimeModeCb(khronos_msgs::srv::SpatioTemporalVisualizerSetTimeMode::Request& req,
+                     khronos_msgs::srv::SpatioTemporalVisualizerSetTimeMode::Response& res);
+  bool setStateCb(khronos_msgs::srv::SpatioTemporalVisualizerSetState::Request& req,
+                  khronos_msgs::srv::SpatioTemporalVisualizerSetState::Response& /* res*/);
 
  private:
   DynamicConfig dynamic_config_;
@@ -185,10 +184,10 @@ class SpatioTemporalVisualizer {
 
   // Visualization.
   void drawDynamicObjects();
-  void visualizeDynamicObject(const std_msgs::Header& header,
+  void visualizeDynamicObject(const std_msgs::msg::Header& header,
                               const KhronosObjectAttributes& attrs,
                               const size_t id,
-                              visualization_msgs::MarkerArray& msg) const;
+                              visualization_msgs::msg::MarkerArray& msg) const;
   void resetStaticObjects();
   void resetDynamicObjects();
   void drawAgent();
@@ -199,11 +198,11 @@ class SpatioTemporalVisualizer {
   hydra::MeshColoring::Ptr getBackgroundMeshColoring() const;
   void recolorObjectDsgBoundingBoxes();
 
-  void visualizeStaticObject(const std_msgs::Header& header,
+  void visualizeStaticObject(const std_msgs::msg::Header& header,
                              const KhronosObjectAttributes& attrs,
                              const NodeId id,
                              const Color& color,
-                             visualization_msgs::MarkerArray& msg) const;
+                             visualization_msgs::msg::MarkerArray& msg) const;
 
   // Tools.
   float stampToSec(const uint64_t stamp) const;

@@ -1,46 +1,21 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.22.1)
 project(khronos_ros VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-add_compile_options(-Wall -Wextra)
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra)
+endif()
 
 option(BUILD_SHARED_LIBS "Build shared libs" ON)
 
-find_package(
-  catkin REQUIRED
-  COMPONENTS hydra_ros
-             hydra_visualizer
-             pose_graph_tools_ros
-             kimera_pgmo_ros
-             khronos_msgs
-             kimera_pgmo_msgs
-             pose_graph_tools_msgs
-             sensor_msgs)
-find_package(GTSAM REQUIRED)
-find_package(hydra REQUIRED)
-find_package(spark_dsg REQUIRED)
-find_package(khronos REQUIRED)
+find_package(ament_cmake REQUIRED)
 find_package(gflags REQUIRED)
-
-catkin_package(
-  CATKIN_DEPENDS
-  hydra_ros
-  hydra_visualizer
-  pose_graph_tools_ros
-  kimera_pgmo_ros
-  khronos_msgs
-  kimera_pgmo_msgs
-  pose_graph_tools_msgs
-  sensor_msgs
-  DEPENDS
-  hydra
-  khronos
-  INCLUDE_DIRS
-  include
-  LIBRARIES
-  ${PROJECT_NAME})
+find_package(hydra_ros REQUIRED)
+find_package(khronos REQUIRED)
+find_package(khronos_msgs REQUIRED)
 
 # ##############################################################################
 # Libraries #
@@ -58,10 +33,13 @@ add_library(
   src/visualization/khronos_mesh_visualizer.cpp
   src/visualization/visualization_utils.cpp
   src/visualization/spatio_temporal_visualizer.cpp)
-target_link_libraries(
-  ${PROJECT_NAME} PUBLIC ${catkin_LIBRARIES} gtsam hydra::hydra
-                         spark_dsg::spark_dsg khronos::khronos)
-target_include_directories(${PROJECT_NAME} PUBLIC include ${catkin_INCLUDE_DIRS})
+target_include_directories(
+  ${PROJECT_NAME}
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+         "$<INSTALL_INTERFACE:include>"
+)
+target_link_libraries(${PROJECT_NAME} PUBLIC khronos::khronos hydra_ros::hydra_ros)
+ament_target_dependencies(${PROJECT_NAME} PUBLIC khronos_msgs)
 
 # ##############################################################################
 # Executables #
@@ -70,21 +48,19 @@ target_include_directories(${PROJECT_NAME} PUBLIC include ${catkin_INCLUDE_DIRS}
 add_executable(khronos_node app/khronos_node.cpp)
 target_link_libraries(khronos_node ${PROJECT_NAME} ${gflags_LIBRARIES})
 
-add_executable(spatio_temporal_visualizer_node
-               app/spatio_temporal_visualizer_node.cpp)
-target_link_libraries(spatio_temporal_visualizer_node ${PROJECT_NAME}
-                      ${gflags_LIBRARIES})
+add_executable(spatio_temporal_visualizer_node app/spatio_temporal_visualizer_node.cpp)
+target_link_libraries(spatio_temporal_visualizer_node ${PROJECT_NAME} ${gflags_LIBRARIES})
 
 # ##############################################################################
 # Export #
 # ##############################################################################
 
-install(
-  TARGETS ${PROJECT_NAME} khronos_node spatio_temporal_visualizer_node
-  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION})
-install(DIRECTORY include/${PROJECT_NAME}/
-        DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
-install(DIRECTORY launch/
-        DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch)
+install(TARGETS ${PROJECT_NAME} EXPORT ${PROJECT_NAME}-targets ARCHIVE DESTINATION lib LIBRARY DESTINATION lib)
+install(TARGETS khronos_node spatio_temporal_visualizer_node RUNTIME DESTINATION lib/${PROJECT_NAME})
+install(DIRECTORY include/ DESTINATION include/)
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
+
+ament_export_targets(${PROJECT_NAME}-targets HAS_LIBRARY_TARGET)
+ament_export_dependencies(gflags hydra_ros khronos khronos_msgs)
+ament_package()

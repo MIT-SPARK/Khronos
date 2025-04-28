@@ -45,9 +45,10 @@
 #include <unordered_set>
 #include <vector>
 
-#include <hydra_visualizer/color/mesh_color_adaptor.h>
+#include <hydra_visualizer/adapters/mesh_color.h>
+#include <ianvs/node_handle.h>
 #include <khronos/common/common_types.h>
-#include <ros/node_handle.h>
+#include <kimera_pgmo_msgs/msg/mesh.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 
 namespace khronos {
@@ -76,7 +77,7 @@ class KhronosMeshVisualizer {
   } const config;
 
   // Construction.
-  KhronosMeshVisualizer(const Config& config, const ros::NodeHandle& nh);
+  KhronosMeshVisualizer(const Config& config, const ianvs::NodeHandle& nh);
 
   // Visualization.
   /**
@@ -122,20 +123,20 @@ class KhronosMeshVisualizer {
   inline static const std::string kBackgroundNs = "background";
 
   // ROS.
-  ros::NodeHandle nh_;
-  ros::Publisher pub_;
+  ianvs::NodeHandle nh_;
+  rclcpp::Publisher<kimera_pgmo_msgs::msg::Mesh>::SharedPtr pub_;
   tf2_ros::TransformBroadcaster tf_broadcaster_;
   std::unordered_set<uint64_t> previous_objects_;
 
   // Helper functions.
   void clearMesh(const std::string& ns);
 
-  void publishMesh(const std_msgs::Header& header,
+  void publishMesh(const std_msgs::msg::Header& header,
                    const std::string& ns,
                    const Mesh& mesh,
                    const Coloring& coloring);
 
-  void publishTransform(const std_msgs::Header& header,
+  void publishTransform(const std_msgs::msg::Header& header,
                         const KhronosObjectAttributes& attrs,
                         const uint64_t id);
 
