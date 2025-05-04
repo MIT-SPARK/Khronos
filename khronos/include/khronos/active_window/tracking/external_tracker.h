@@ -37,47 +37,49 @@
 
 #pragma once
 
-#include <optional>
-#include <vector>
+#include <hydra/common/global_info.h>
 
-#include "khronos/common/common_types.h"
+#include "khronos/active_window/data/frame_data.h"
+#include "khronos/active_window/tracking/tracker.h"
 
 namespace khronos {
 
-//! Semantic attributes associated with a cluster
-struct SemanticClusterInfo {
-  //! Semantic category ID of this cluster.
-  int category_id = -1;
-  //! Feature vector (used for open-set)
-  FeatureVector feature = FeatureVector::Zero(1, 1);
-
-  explicit SemanticClusterInfo(int category_id) : category_id(category_id) {}
-  explicit SemanticClusterInfo(const FeatureVector& feature) : feature(feature) {}
-  explicit SemanticClusterInfo(int category_id, const FeatureVector& feature)
-      : category_id(category_id), feature(feature) {}
-};
-
 /**
- * @brief Common data structurefor all detected measurement clusters.
+ * @brief Tracker if tracking is performed externally, i.e. all input IDs are already conssitent
+ * instance IDs.
+ * @note This currently does not handle any dynamic tracks, only semantic ones.
+ * @note
  */
-struct MeasurementCluster {
-  // All pixels associated with this cluster in the object_image.
-  Pixels pixels;
+class ExternalTracker : public Tracker {
+ public:
+  struct Config {
+    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
 
-  // 3D axis aligned bounding box of this cluster in world frame.
-  BoundingBox bounding_box;
+    // Duration [s] until tracks become deactivated, leaving the active window.
+    float temporal_window = 3.f;
 
-  // Center points of all voxels associated with this cluster in world frame.
-  GlobalIndexSet voxels;
+    // Number of times a track has to be observed to be considered existent.
+    int min_num_observations = 20;
+  } const config;
 
-  // ID of this cluster (=value of pixels in the corresponding image).
-  int id;
+  // Construction.
+  explicit ExternalTracker(const Config& config);
+  virtual ~ExternalTracker() = default;
 
-  //! Semantic information associated with the cluster
-  std::optional<SemanticClusterInfo> semantics;
+  // Inputs.
+  void processInput(FrameData& data) override;
 
-  // NOTE(nathan) someone might want to consider a dynamic info struct here
+ protected:
+  // Processing.
+  void associateTracks(const FrameData& data);
+  void updateTrackingDuration();
+  void addNewTrack(const MeasurementCluster& observation);
+  void updateTrack(const MeasurementCluster& observation, Track& track) const;
+
+ private:
+  TimeStamp processing_stamp_;
 };
-using MeasurementClusters = std::vector<MeasurementCluster>;
+
+void declare_config(ExternalTracker::Config& config);
 
 }  // namespace khronos

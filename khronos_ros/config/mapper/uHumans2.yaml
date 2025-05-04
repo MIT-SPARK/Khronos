@@ -46,14 +46,14 @@ active_window:
     truncation_distance: 0.2 # m (Usually 2-3x voxel size)
     voxels_per_side: 16
 
-    # Motion Detector. The motion detector is optional, by not setting the 'type' param no motion detection will be performed.
+  # Motion Detector. The motion detector is optional, by not setting the 'type' param no motion detection will be performed.
   motion_detector:
     type: "FreeSpaceMotionDetector" # 'FreeSpaceMotionDetector'
     min_cluster_size: 500 # pixels
     min_separation_distance: 2 # voxels
     num_threads: *active_window_threads
     max_range: *max_range # m
-  
+
   # Semantic Object Detector. The object detector is optional, by not setting the 'type' param no object detection will be performed.
   object_detector:
     type: "ConnectedSemantics" # 'ConnectedSemantics' 'InstanceForwarding'
@@ -66,7 +66,7 @@ active_window:
   # Object association and tracking. The tracker is optional, by not setting the 'type' param no tracking will be performed.
   tracker:
     verbosity: 0
-    type: "MaxIouTracker" # 'MaxIouTracker'
+    type: "MaxIouTracker" # 'MaxIouTracker', 'ExternalTracker'
     track_by: "voxels" # 'pixels', 'voxels', 'bounding_box'
     min_semantic_iou: 0.25
     min_cross_iou: 0.1
@@ -155,7 +155,6 @@ backend:
   max_dt_merge_proposal: 3.0 # max time between looking for node merge
   add_merge_factor: true
   optimize_on_new_merge: true
-  add_merge_factor: true
   pose_object_covariance: 1.0e-01
   object_merge_covariance: 10.0 # very permissive for now
   pose_object_consistency_threshold: 0.2 # meters / node # 0.2
@@ -195,9 +194,9 @@ backend:
     allow_overestimation: true
     merge_object_meshes: true
 
-# =============================== Optimization Params ===============================
+  # =============================== Optimization Params ===============================
   pgmo:
-    run_mode: MESH_ONLY  # kimera_pgmo run mode FULL is required
+    run_mode: MESH_ONLY # kimera_pgmo run mode FULL is required
     embed_trajectory_delta_t: 5.0
     num_interp_pts: 3
     interp_horizon: 10.0

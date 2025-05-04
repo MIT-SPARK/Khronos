@@ -40,6 +40,10 @@
 #include <string>
 #include <vector>
 
+#include <config_utilities/config.h>
+#include <config_utilities/factory.h>
+#include <config_utilities/types/enum.h>
+#include <config_utilities/validation.h>
 #include <hydra/openset/embedding_distances.h>
 
 #include "khronos/active_window/data/reconstruction_types.h"
@@ -48,8 +52,11 @@
 namespace khronos {
 namespace {
 
+static const auto registration =
+    config::RegistrationWithConfig<Tracker, MaxIoUTracker, MaxIoUTracker::Config>("MaxIouTracker");
+
 float computeCosineSim(const FeatureVector& lhs, const FeatureVector& rhs) {
-  const static auto metric = hydra::CosineDistance();
+  static const auto metric = hydra::CosineDistance();
   return metric.score(lhs, rhs);
 }
 
@@ -178,10 +185,7 @@ void MaxIoUTracker::setup() {
       break;
     }
     case Config::TrackBy::kBouningBox: {
-      setupTrackMeasurement = [](const FrameData& data, MeasurementCluster& cluster) {
-        cluster.bounding_box =
-            BoundingBox(utils::VertexMapAdaptor(cluster.pixels, data.input.vertex_map));
-      };
+      setupTrackMeasurement = [](const FrameData&, MeasurementCluster&) {};
       computeIoU = std::bind(&MaxIoUTracker::computeIoUBoundingBox,
                              this,
                              std::placeholders::_1,
@@ -235,7 +239,7 @@ void MaxIoUTracker::associateDynamicTracks(const FrameData& data) {
     }
     float best_distance = config.max_dynamic_distance;
     const MeasurementCluster* best_cluster = nullptr;
-    Point best_centroid;
+    Point best_centroid = Point::Zero();
 
     for (const auto& cluster : data.dynamic_clusters) {
       if (associated_objects.find(cluster.id) != associated_objects.end()) {
@@ -497,11 +501,6 @@ void MaxIoUTracker::updateTrack(const FrameData& data,
   }
   // TODO(nathan) add new feature and aggregate semantics
 
-  // Simple existence probability estimate: count number of observations. We multiply by
-  // two so that the minimum observations yield 50% confidence.
-  track.confidence = std::min(
-      static_cast<float>(track.observations.size()) / (config.min_num_observations * 2), 1.f);
-
   // Update tracking values.
   // NOTE(lschmid): This needs to happen after the bbox and confidence update as the
   // size of the previous observations is used.
@@ -509,6 +508,11 @@ void MaxIoUTracker::updateTrack(const FrameData& data,
   track.observations.emplace_back(processing_stamp_,
                                   !is_observation_dynamic ? observation.id : -1,
                                   is_observation_dynamic ? observation.id : -1);
+
+  // Simple existence probability estimate: count number of observations. We multiply by
+  // two so that the minimum observations yield 50% confidence.
+  track.confidence = std::min(
+      static_cast<float>(track.observations.size()) / (config.min_num_observations * 2), 1.f);
 }
 
 void MaxIoUTracker::updateTrackingDuration() {
