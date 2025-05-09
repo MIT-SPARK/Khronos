@@ -30,8 +30,7 @@ add_library(${PROJECT_NAME}
         src/active_window/active_window.cpp
         src/active_window/data/frame_data_buffer.cpp
         src/active_window/data/track.cpp
-        src/active_window/integration/binary_semantic_integrator.cpp
-        src/active_window/integration/projective_integrator.cpp
+        src/active_window/integration/object_integrator.cpp
         src/active_window/integration/tracking_integrator.cpp
         src/active_window/motion_detection/free_space_motion_detector.cpp
         src/active_window/object_detection/connected_semantics.cpp

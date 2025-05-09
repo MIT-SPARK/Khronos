@@ -48,28 +48,29 @@ namespace khronos {
  * @brief Retain khronos-specific data and interfaces for the projective integrator after it was
  * moved to hydra.
  */
-class ProjectiveIntegrator : protected hydra::ProjectiveIntegrator {
+class ObjectIntegrator : public hydra::ProjectiveIntegrator {
  public:
   // Construction.
-  explicit ProjectiveIntegrator(const hydra::ProjectiveIntegrator::Config& config,
-                                SemanticIntegratorPtr&& semantic_integrator = nullptr);
-  ~ProjectiveIntegrator() = default;
+  explicit ObjectIntegrator(const hydra::ProjectiveIntegrator::Config& config);
+  ~ObjectIntegrator() = default;
 
   /**
-   * @brief Update all blocks in the object map with the given data in parallel.
-   * @param data Input data to use for the update.
-   * @param map Map to update.
-   * estimation.
+   * @brief Set the data and target object ID for the integrator.
+   * @param frame_data The frame data to use for integration.
+   * @param target_object_id The ID of the target object to integrate as belonging to the object.
    */
-  void updateObjectMap(const FrameData& data, VolumetricMap& map) const;
+  void setFrameData(FrameData* frame_data, int target_object_id);
 
  private:
+  // Specialize computeLabel to select the object image insstead of semantics.
   bool computeLabel(const VolumetricMap::Config& map_config,
-                    const InputData& data,
+                    const InputData& /* data */,
                     const cv::Mat& integration_mask,
                     VoxelMeasurement& measurement) const override;
 
-  mutable const FrameData* current_data_ = nullptr;
+  // The current frame data to use for integration.
+  FrameData* current_data_ = nullptr;
+  int current_object_id_ = -1;
 };
 
 }  // namespace khronos

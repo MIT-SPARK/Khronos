@@ -42,7 +42,7 @@
 #include <spark_dsg/colormaps.h>
 
 #include "khronos/active_window/data/reconstruction_types.h"
-#include "khronos/active_window/integration/binary_semantic_integrator.h"
+#include "khronos/active_window/integration/object_integrator.h"
 #include "khronos/utils/geometry_utils.h"
 
 namespace khronos {
@@ -225,6 +225,7 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
     }
   }
 
+  // Print info if desired.
   const Eigen::IOFormat fmt(
       Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "; ", "", "", "[", "]");
   CLOG(5) << "[MeshObjectExtractor] Allocated TSDF layer for " << getTrackName(track) << " with "
@@ -232,10 +233,10 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
           << ", max_index=" << max_block_index.format(fmt) << ")";
 
   // Perform 3D reconstruction using projective updates over all frames.
+  ObjectIntegrator integrator(config.projective_integrator);
   for (const auto& [frame_data, segment_id] : frames) {
-    const ProjectiveIntegrator integrator(config.projective_integrator,
-                                          std::make_unique<BinarySemanticIntegrator>(segment_id));
-    integrator.updateObjectMap(*frame_data, map);
+    integrator.setFrameData(frame_data.get(), segment_id);
+    integrator.updateMap(frame_data->input, map);
   }
 
   // Erase low_confidence voxels to extract the object of interest.
@@ -337,8 +338,6 @@ BoundingBox MeshObjectExtractor::computeExtent(
 
 float MeshObjectExtractor::computeConfidence(const TsdfVoxel& /* tsdf_voxel */,
                                              const hydra::SemanticVoxel& confidence_voxel) const {
-  // NOTE(lschmid): This exploits the semantic_likelihoods to store the counts of correct and
-  // incorrect observations.
   if (confidence_voxel.empty) {
     return 0.0f;
   }
@@ -350,7 +349,7 @@ float MeshObjectExtractor::computeConfidence(const TsdfVoxel& /* tsdf_voxel */,
     return -1.f;
   }
 
-  return confidence_voxel.semantic_likelihoods(0) / total_observations;
+  return confidence_voxel.semantic_likelihoods(1) / total_observations;
 }
 
 bool MeshObjectExtractor::trackIsValid(const Track& track) const {

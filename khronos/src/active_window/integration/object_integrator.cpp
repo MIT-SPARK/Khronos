@@ -35,45 +35,48 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#include "khronos/active_window/integration/projective_integrator.h"
+#include "khronos/active_window/integration/object_integrator.h"
 
 namespace khronos {
 
-ProjectiveIntegrator::ProjectiveIntegrator(const hydra::ProjectiveIntegrator::Config& config,
-                                           SemanticIntegratorPtr&& semantics)
-    : hydra::ProjectiveIntegrator(config, std::move(semantics)) {}
+using IntegratorConfig = hydra::ProjectiveIntegrator::Config;
 
-void ProjectiveIntegrator::updateObjectMap(const FrameData& data, VolumetricMap& map) const {
-  if (!semantic_integrator_) {
-    LOG(WARNING) << "Can not perform object reconstruction without semantic integrator.";
-    return;
-  }
-
-  current_data_ = &data;
-
-  // NOTE(nathan) we side-step finding "in-view" blocks and just integrate all of the allocated
-  // blocks
-  const auto indices = map.getTsdfLayer().allocatedBlockIndices();
-  hydra::ProjectiveIntegrator::updateBlocks(indices, data.input, cv::Mat(), map);
+IntegratorConfig forceBinaryIntegrator(const IntegratorConfig& config) {
+  auto new_config = config;
+  new_config.semantic_integrator = hydra::BinarySemanticIntegrator::Config();
+  return new_config;
 }
 
-bool ProjectiveIntegrator::computeLabel(const VolumetricMap::Config& map_config,
-                                        const InputData& /* data */,
-                                        const cv::Mat& /* integration_mask */,
-                                        VoxelMeasurement& measurement) const {
-  // Don't integrate surface voxels of dynamic measurements.
-  const bool is_dynamic = interpolator_->interpolateID(current_data_->dynamic_image,
-                                                       measurement.interpolation_weights) != 0u;
-  if (is_dynamic && measurement.sdf < map_config.truncation_distance) {
+ObjectIntegrator::ObjectIntegrator(const IntegratorConfig& config)
+    : hydra::ProjectiveIntegrator(forceBinaryIntegrator(config)) {}
+
+void ObjectIntegrator::setFrameData(FrameData* frame_data, int target_object_id) {
+  current_data_ = frame_data;
+  current_object_id_ = target_object_id;
+}
+
+bool ObjectIntegrator::computeLabel(const VolumetricMap::Config& map_config,
+                                    const InputData& /* data */,
+                                    const cv::Mat& integration_mask,
+                                    VoxelMeasurement& measurement) const {
+  if (std::abs(measurement.sdf) >= map_config.truncation_distance) {
+    // If SDF value is beyond the truncation band, we don't need to
+    // compute a label and the point is always valid for integration
+    return true;
+  }
+
+  // the formatting here is a little ugly, but if an integration mask is supplied and it
+  // is non-zero for the best pixel, we skip integrating the current voxel
+  if (!integration_mask.empty() &&
+      interpolator_->interpolateID(integration_mask, measurement.interpolation_weights)) {
     return false;
   }
 
   // If the semantic integrator is set, we assume this is used for object extraction. We thus set
   // the label to the object id.
-  if (semantic_integrator_) {
-    measurement.label = interpolator_->interpolateID(current_data_->object_image,
-                                                     measurement.interpolation_weights);
-  }
+  measurement.label =
+      interpolator_->interpolateID(current_data_->object_image,
+                                   measurement.interpolation_weights) == current_object_id_;
   return true;
 }
 
