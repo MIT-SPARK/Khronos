@@ -42,7 +42,6 @@
 #include <spark_dsg/colormaps.h>
 
 #include "khronos/active_window/data/reconstruction_types.h"
-#include "khronos/active_window/integration/object_integrator.h"
 #include "khronos/utils/geometry_utils.h"
 
 namespace khronos {

@@ -46,7 +46,7 @@
 #include <hydra/common/global_info.h>
 #include <hydra/reconstruction/mesh_integrator.h>
 
-#include "khronos/active_window/integration/projective_integrator.h"
+#include "khronos/active_window/integration/object_integrator.h"
 #include "khronos/active_window/object_extraction/object_extractor.h"
 
 namespace khronos {
