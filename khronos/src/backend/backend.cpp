@@ -93,9 +93,6 @@ Backend::Backend(const Config& config,
   change_detector_ = std::make_unique<SequentialChangeDetector>(config.change_detection);
   change_detector_->setDsg(unmerged_graph_);
   reconciler_ = std::make_unique<Reconciler>(config.reconciler);
-  update_functors_.emplace(
-      "khronos_objects",
-      std::make_shared<UpdateKhronosObjectsFunctor>(config.update_objects));
 }
 
 Backend::~Backend() {}
@@ -163,7 +160,8 @@ void Backend::spinCallback(const hydra::BackendInput& input) {
     optimize(timestamp_ns, force_check_merge_proposals);
   } else {
     updateDsgMesh(timestamp_ns);
-    callUpdateFunctions(timestamp_ns);
+    UpdateInfo::ConstPtr info(new UpdateInfo{timestamp_ns});
+    dsg_updater_->callUpdateFunctions(timestamp_ns, info);
   }
 
   CLOG(3) << "Proposed " << new_proposed_merges_.size() << " node merges.";
@@ -224,28 +222,8 @@ void Backend::finishProcessing() {
 }
 
 void Backend::optimize(size_t timestamp_ns, bool force_find_merge_proposals) {
-  if (config.add_places_to_deformation_graph) {
-    const auto vertex_key = hydra::GlobalInfo::instance().getRobotPrefix().vertex_key;
-    hydra::addPlacesToDeformationGraph(*unmerged_graph_,
-                                       timestamp_ns,
-                                       *deformation_graph_,
-                                       config.pgmo.place_edge_variance,
-                                       config.pgmo.place_mesh_variance,
-                                       [vertex_key](auto) { return vertex_key; });
-  }
-
-  Timer timer("backend/optimization", timestamp_ns, true, 0, false);
-  KimeraPgmoInterface::optimize();
-  timer.stop();
-
-  updateDsgMesh(timestamp_ns, true);
-
-  const bool process_loopclosures = have_new_loopclosures_ || force_find_merge_proposals;
-  callUpdateFunctions(timestamp_ns,
-                      *deformation_graph_->getTempValues(),
-                      *deformation_graph_->getValues(),
-                      process_loopclosures);
-  if (process_loopclosures) {
+  hydra::BackendModule::optimize(timestamp_ns, force_find_merge_proposals);
+  if (have_new_loopclosures_ || force_find_merge_proposals) {
     last_merge_proposal_t_ = timestamp_ns;
   }
 }

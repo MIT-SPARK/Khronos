@@ -44,6 +44,11 @@ struct UpdateKhronosObjectsFunctor : public hydra::UpdateFunctor {
 
   mutable hydra::ActiveWindowTracker active_tracker;
   mutable std::unordered_map<NodeId, Eigen::Vector3d> cached_pos_;
+
+ private:
+  inline static const auto registration_ =
+      config::RegistrationWithConfig<UpdateFunctor, UpdateKhronosObjectsFunctor, Config>(
+          "UpdateKhronosObjectsFunctor");
 };
 
 void declare_config(UpdateKhronosObjectsFunctor::Config& config);
