@@ -4,7 +4,7 @@ shared_parameters:
   max_range: &max_range 4 # m
   temporal_window: &temporal_window 3 # s
   active_window_threads: &active_window_threads -1 # Num threads in the AW to give resources to other parts, too. Use -1 for hardware concurrency.
-  map_update_frequency: &map_update_frequency 300 # -1 to disable, 0 for on loop closure, n for every n frames.
+  map_update_frequency: &map_update_frequency 50 # -1 to disable, 0 for on loop closure, n for every n frames.
 
 # =============================== Experiment Setup ===============================
 finish_processing_on_shutdown: true
@@ -200,7 +200,7 @@ backend:
     verbosity: 0 # 4 to show merges
     time_estimates_conservative: false # Whether to use the conservative or optimistic time estimates.
     allow_overestimation: true
-    merge_object_meshes: false
+    merge_object_meshes: true
 
 # =============================== Optimization Params ===============================
   pgmo:

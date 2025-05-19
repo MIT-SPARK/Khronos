@@ -18,12 +18,12 @@
     <arg name="input_config" default="$(find khronos_ros)/config/datasets/jackal_openset.yaml" if="$(arg use_openset_semantics)"/>
     <arg name="mapper_config" default="$(find khronos_ros)/config/mapper/jackal.yaml" unless="$(arg use_openset_semantics)"/>
     <arg name="mapper_config" default="$(find khronos_ros)/config/mapper/jackal_openset.yaml" if="$(arg use_openset_semantics)"/>
-    <arg name="rviz_config" default="$(find khronos_ros)/config/rviz/jackal.rviz"/>
+    <arg name="rviz_path" default="$(find khronos_ros)/config/rviz/jackal.rviz"/>
 
     <!-- Dataset: tesse_cd_office, tesse_cd_apartment -->
     <arg name="dataset" default="tesse_cd_office"/>
     <arg name="bag_dir" default="$(env HOME)/datasets/khronos"/>
-    <arg name="play_rate" default="1"/>
+    <arg name="play_rate" default="0.3"/>
     <arg name="compressed_rgb" default="true"/>
 
     <!-- ============ Auto-generated args ============ -->

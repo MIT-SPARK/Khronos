@@ -17,6 +17,7 @@ Khronos is a unified approach that can reason about short-term dynamics and long
 
 **Examples**
 * [Run Khronos](#run-khronos)
+* [Run Khronos on real Data](#run-khronos-on-real-data)
 * [Open-Set Segmentation](#open-set-segmentation)
 * [Visualize 4D Map](#visualize-4d-map)
 * [Evaluation](#evaluation)
@@ -92,11 +93,11 @@ Note that the first time you run `semantic_inference`, it will download the pre-
 
 ## Download datasets
 
-Download the simulated datsets used in our paper [here](https://drive.google.com/drive/folders/1Miv2uPBYzg_FyqMX5vAWI4MDZ70sPLW-?usp=drive_link).
+Download the simulated datsets used in our paper [here](https://drive.google.com/drive/folders/1VQf-Q8nAuCAsq9wplB07oIpAiWpVVR7U?usp=sharing) under `tesse_cd`. For the real dataset, download the mezzanine rosbag (with pre-recorded semanticl labels) under `khronos_real`.
 
-The `khronos_office.bag` dataset is the longer of the two and contains the most changes and dynamic objects.
+The `tesse_cd_office.bag` dataset is the longer of the two simulated datasets and contains the most changes and dynamic objects.
 
-Optionally, run `rosbag decompress khronos_office.bag` to unpack the rosbag for faster runtime.
+Optionally, run `rosbag decompress tesse_cd_office.bag` to unpack the rosbag for faster runtime.
 
 # Examples
 ## Run Khronos
@@ -112,7 +113,10 @@ roslaunch khronos_ros uhumans2_khronos.launch
 
 RVIZ will launch automatically for real-time visualization. You should see the method build an incremental background mesh, detect and segment static and dynamic objects, and generate object nodes. The following image shows the human motion detection (left red), a segmented static chair object and associated scene-graph node (right blue), and a segmented dynamic object and associated node (center yellow):
 
-<img src="https://github.com/MIT-SPARK/Khronos/assets/32229998/01c265ac-c2ab-42e7-8a6a-2f9df84fc85b" alt="Khronos Beginning" width="500"/>
+<!-- <img src="https://github.com/MIT-SPARK/Khronos/assets/32229998/01c265ac-c2ab-42e7-8a6a-2f9df84fc85b" alt="Khronos Beginning" width="500"/> -->
+
+<img src="https://private-user-images.githubusercontent.com/32229998/443228741-950df183-f045-4c46-ac04-52c7411a224c.gif?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDcxNDMxNTMsIm5iZiI6MTc0NzE0Mjg1MywicGF0aCI6Ii8zMjIyOTk5OC80NDMyMjg3NDEtOTUwZGYxODMtZjA0NS00YzQ2LWFjMDQtNTJjNzQxMWEyMjRjLmdpZj9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA1MTMlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNTEzVDEzMjczM1omWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPWE3ZjVhNTRhZTE4NDEyYmUzNGM4NWJhNjkwOGYyN2RjYjE3NDIzZWNiMzQwZTdlMWZkMDQ5M2FjYzdkYjUyMzgmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.pJ3_yaZrpjUGgFKENNVXRpg9BdBI8S_gv_V9GpPK060" 
+alt = "Khronos Beginning" width="500">
 
 Use the right side panel of rviz to toggle different visualization options to see each component of the method, including inpus, object/motion detection, factor graph, scene graph, and backend visuals. Most of these are disabled by default.
 
@@ -129,14 +133,28 @@ You can now terminate Khronos.
 
 To run Khronos with the apartment dataset, change the `dataset` from `tesse_cd_office` to `tesse_cd_apartment` and change the rosbag path accordingly. You can then run the launch file as before.
 
+## Run Khronos on Real Data
+
+Download the mezzanine robsag [here](https://drive.google.com/file/d/1UJdbkW5BCj_vTdKEbfs3orG-Mg6NkWVU/view?usp=sharing).
+
+To run Khronos on real data, use the `jackal_khronos.launch` file. To use pre-recorded semantic labels, set `use_prerecorded_semantics` to `true`:
+
+```bash
+roslaunch khronos_ros jackal_khronos.launch bag_path:=PATH_TO_BAG use_prerecorded_semantics:=true
+```
+
+The rosbag will start paused by default, so after you see "Spinning Kimera-VIO" in the terminal, unpause the rosbag by pressing the spacebar in terminal. 
+
+Your ouptut will look something like this:
+
+<img src="https://private-user-images.githubusercontent.com/32229998/443228717-e6a89f0a-e321-4e85-922f-6deb7a709923.gif?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDcxNDMxNTMsIm5iZiI6MTc0NzE0Mjg1MywicGF0aCI6Ii8zMjIyOTk5OC80NDMyMjg3MTctZTZhODlmMGEtZTMyMS00ZTg1LTkyMmYtNmRlYjdhNzA5OTIzLmdpZj9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA1MTMlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNTEzVDEzMjczM1omWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTIzYjVkODAyOWIyMDE2ZTdiMTMxNzdkNWFhM2Y1MzUwMWU0ODM3M2JmM2IzMWE2OTcwNjhmZTViNGMwN2Q5ODUmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.LwB98VNkdLw3rtPf6CazfADbNBkgUykIk26A9VJgdHE" 
+alt="Khronos on Real Data" width="500">
+
 ## Open-Set Segmentation
 
 To run Khronos with semantic_inference, change the `use_gt_semantics` parameter in the launch file from `true` to `false`. Set `use_openset_semantics` to `true` for open-set segmentation.
 
 ## Visualize 4D map
-
-> **⚠️ NOTE**<br> 
-> We are aware of a bug currently impacting change-detection performance. Objects will appear/disappear at incorrect times. We expect this to be resolved soon. To reproduce behavior from the paper, please use the [release commit](https://github.com/MIT-SPARK/Khronos/tree/e1108b9a92bfdffb5732b42ff11fa8af76083447). Note that you will have to rollback Hydra and other dependencies as well.
 
 To visualize the spatio-temporal map of the scene after running Khronos, run the following in commandline:
 
@@ -146,7 +164,9 @@ roslaunch khronos_ros 4d_visualizer.launch
 
 The visualizer will load the map located (by default) in [output/tmp](output/tmp/). If you save the map elsewhere, be sure to modify the path in [4d_visualizer.launch](khronos_ros/launch/4d_visualizer.launch).
 
-<img src="https://github.com/MIT-SPARK/Khronos/assets/32229998/d8072aab-a874-483f-aada-24607eb620be" alt="Khronos 4D Map" width="700">
+<!-- <img src="https://github.com/MIT-SPARK/Khronos/assets/32229998/d8072aab-a874-483f-aada-24607eb620be" alt="Khronos 4D Map" width="700"> -->
+
+<img src="https://private-user-images.githubusercontent.com/32229998/443236066-302e0a61-d155-4475-9df9-421d640fdafd.gif?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDcxNDQxMzQsIm5iZiI6MTc0NzE0MzgzNCwicGF0aCI6Ii8zMjIyOTk5OC80NDMyMzYwNjYtMzAyZTBhNjEtZDE1NS00NDc1LTlkZjktNDIxZDY0MGZkYWZkLmdpZj9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA1MTMlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNTEzVDEzNDM1NFomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTI3MDg0MjQyYWUyMTNjYWU4NGQ1NWQ2OGU1ODVlMWY3MzQ2MDY0ZGFlY2Q2MmFkNjI0ODA1Mzk2YzFjYzg0YzImWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.AR_ZI7KRdTXMPJBd3kzFfBBm51s_CGm8JpKpvP4Iydg" alt="Khronos 4D Map" width="700">
 
 You can play forward or backward, and see Khronos' estimate of the state of the scene at each timestamp, with current or future knowledge. As an example, fix the query time to 0 and play forward on robot time mode to see how Khronos' understanding of the initial state of the scene evolves over time.
 

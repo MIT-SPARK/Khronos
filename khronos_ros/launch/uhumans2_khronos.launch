@@ -18,7 +18,7 @@
     <arg name="input_config" default="$(find khronos_ros)/config/datasets/uHumans2_openset.yaml" if="$(arg use_openset_semantics)"/>
     <arg name="mapper_config" default="$(find khronos_ros)/config/mapper/uHumans2.yaml" unless="$(arg use_openset_semantics)"/>
     <arg name="mapper_config" default="$(find khronos_ros)/config/mapper/uHumans2_openset.yaml" if="$(arg use_openset_semantics)"/>
-    <arg name="rviz_config" default="$(find khronos_ros)/config/rviz/uHumans2.rviz"/>
+    <arg name="rviz_path" default="$(find khronos_ros)/config/rviz/uHumans2.rviz"/>
 
     <!-- Dataset: tesse_cd_office, tesse_cd_apartment -->
     <arg name="dataset" default="tesse_cd_office"/>

@@ -18,7 +18,7 @@ Once you run [tables.py](plotting/tables.py), you should see something like this
 You can change output format in `tables.py`, with parameter `PRINT_MODE`.
 
 ## Current output directory structure
-The **core** structure is governed by the [experiment_manager](https://github.mit.edu/SPARK/Khronos/blob/feature/eval_reconciliation/khronos_ros/include/khronos_ros/experiments/experiment_manager.h) and created when running `khronos.launch`:
+The **core** structure is governed by the [experiment_manager](https://github.com/MIT-SPARK/Khronos/blob/main/khronos_ros/include/khronos_ros/experiments/experiment_manager.h) and created when running `khronos.launch`:
 ```bash
 ├── config.txt      # Human readable config of khronos that was run.
 ├── experiment_log.txt  # Meta iformaton about the experiment and future evaluations. This file should say "[FLAG] [Experiment Finished Cleanly]" somewhere if the data is complete.

@@ -1,7 +1,7 @@
 # Definition of shared parameters (not read by the system).
 # TODO(lschmid): Maybe these should be unified in globals, have more flexibility like this though.
 shared_parameters:
-  max_range: &max_range 4 # m
+  max_range: &max_range 3 # m
   temporal_window: &temporal_window 3 # s
   active_window_threads: &active_window_threads -1 # Num threads in the AW to give resources to other parts, too. Use -1 for hardware concurrency.
   map_update_frequency: &map_update_frequency 300 # -1 to disable, 0 for on loop closure, n for every n frames.
@@ -49,8 +49,8 @@ active_window:
   # Motion Detector. The motion detector is optional, by not setting the 'type' param no motion detection will be performed.
   motion_detector:
     type: "FreeSpaceMotionDetector" # 'FreeSpaceMotionDetector'
-    min_cluster_size: 500 # pixels
-    min_separation_distance: 2 # voxels
+    min_cluster_size: 50000 # pixels
+    min_separation_distance: 50 # voxels
     num_threads: *active_window_threads
     max_range: *max_range # m
 
@@ -71,7 +71,7 @@ active_window:
     min_cross_iou: 0.1
     voxel_size: 0.2 # m
     temporal_window: *temporal_window # s
-    min_num_observations: 15
+    min_num_observations: 30
 
   # (Background) map integration.
   projective_integrator:
@@ -184,6 +184,7 @@ backend:
     ray_change_detector:
       temporal_resolution: 5.0 # s
       window_size: 5 # times the temporal_resolution
+      use_relative_confidence: true
       absence_confidence: 0.6 # [0,1]
       presence_confidence: 0.5 # [0,1]
     objects:
@@ -194,7 +195,7 @@ backend:
     verbosity: 0 # 4 to show merges
     time_estimates_conservative: false # Whether to use the conservative or optimistic time estimates.
     allow_overestimation: true
-    merge_object_meshes: false
+    merge_object_meshes: true
 
 # =============================== Optimization Params ===============================
   pgmo:
