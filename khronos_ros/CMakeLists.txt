@@ -12,6 +12,7 @@ endif()
 option(BUILD_SHARED_LIBS "Build shared libs" ON)
 
 find_package(ament_cmake REQUIRED)
+find_package(cv_bridge REQUIRED)
 find_package(gflags REQUIRED)
 find_package(hydra_ros REQUIRED)
 find_package(khronos REQUIRED)
@@ -27,10 +28,8 @@ add_library(
   src/experiments/experiment_logger.cpp
   src/experiments/experiment_manager.cpp
   src/experiments/experiment_directory.cpp
-  src/input/openset_subscriber.cpp
   src/khronos_pipeline.cpp
   src/visualization/active_window_visualizer.cpp
-  src/visualization/khronos_mesh_visualizer.cpp
   src/visualization/visualization_utils.cpp
   src/visualization/spatio_temporal_visualizer.cpp)
 target_include_directories(
@@ -38,7 +37,7 @@ target_include_directories(
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
          "$<INSTALL_INTERFACE:include>"
 )
-target_link_libraries(${PROJECT_NAME} PUBLIC khronos::khronos hydra_ros::hydra_ros)
+target_link_libraries(${PROJECT_NAME} PUBLIC khronos::khronos hydra_ros::hydra_ros PRIVATE cv_bridge::cv_bridge)
 ament_target_dependencies(${PROJECT_NAME} PUBLIC khronos_msgs)
 
 # ##############################################################################

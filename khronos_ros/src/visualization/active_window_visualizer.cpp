@@ -38,8 +38,7 @@
 #include "khronos_ros/visualization/active_window_visualizer.h"
 
 #include <config_utilities/config_utilities.h>
-#include <config_utilities/parsing/ros.h>
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 #include <khronos/utils/geometry_utils.h>
 #include <spark_dsg/colormaps.h>
 
@@ -72,9 +71,6 @@ void declare_config(ActiveWindowVisualizer::Config& config) {
   check(config.id_color_revolutions, GT, 0, "id_color_revolutions");
   check(config.bounding_box_line_width, GT, 0, "bounding_box_line_width");
 }
-
-ActiveWindowVisualizer::ActiveWindowVisualizer(const ros::NodeHandle& nh)
-    : ActiveWindowVisualizer(config::fromRos<ActiveWindowVisualizer::Config>(nh), nh) {}
 
 ActiveWindowVisualizer::ActiveWindowVisualizer(const Config& config, const ros::NodeHandle& nh)
     : config(config::checkValid(config)), nh_(nh) {

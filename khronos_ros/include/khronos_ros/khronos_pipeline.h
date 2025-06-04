@@ -51,11 +51,12 @@
 #include <hydra_ros/frontend/ros_frontend_publisher.h>
 #include <hydra_ros/input/ros_input_module.h>
 #include <hydra_ros/utils/bow_subscriber.h>
+#include <ianvs/node_handle.h>
 #include <khronos/active_window/active_window.h>
 #include <khronos/backend/backend.h>
 #include <khronos/common/common_types.h>
-#include <ros/node_handle.h>
-#include <std_srvs/Empty.h>
+#include <khronos_msgs/msg/changes.hpp>
+#include <std_srvs/srv/empty.hpp>
 
 #include "khronos/spatio_temporal_map/spatio_temporal_map.h"
 #include "khronos_ros/visualization/active_window_visualizer.h"
@@ -98,7 +99,7 @@ class KhronosPipeline {
       void(TimeStamp, const DynamicSceneGraph&, const kimera_pgmo::DeformationGraph&)>;
 
   // Construction.
-  explicit KhronosPipeline(const ros::NodeHandle& nh);
+  explicit KhronosPipeline(ianvs::NodeHandle nh);
   ~KhronosPipeline() = default;
 
   // Interaction with the pipeline.
@@ -140,15 +141,15 @@ class KhronosPipeline {
   std::string getConfigInfo() const;
 
   // ROS Callbacks.
-  bool finishMappingCallback(std_srvs::Empty::Request& /* req */,
-                             std_srvs::Empty::Response& /* res */);
+  bool finishMappingCallback(std_srvs::srv::Empty::Request& /* req */,
+                             std_srvs::srv::Empty::Response& /* res */);
 
  private:
   // ROS.
-  ros::NodeHandle nh_;
+  ianvs::NodeHandle nh_;
   ros::Publisher mesh_graph_pub_;
   ros::Publisher mesh_update_pub_;
-  ros::Publisher changes_pub_;
+  rclcpp::Publisher<khronos_msgs::msg::Changes>::SharedPtr changes_pub_;
   ros::ServiceServer finish_mapping_srv_;
 
   // Members.
@@ -191,6 +192,6 @@ void declare_config(KhronosPipeline::Config& config);
  * @brief Initialize the configuration of the pipeline from the given node handle and verify
  * dependent paramters.
  */
-KhronosPipeline::Config initializeConfig(const ros::NodeHandle& nh);
+KhronosPipeline::Config initializeConfig(ianvs::NodeHandle nh);
 
 }  // namespace khronos

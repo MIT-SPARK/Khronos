@@ -41,14 +41,12 @@
 #include <memory>
 
 #include <config_utilities/config_utilities.h>
-#include <config_utilities/parsing/ros.h>
 #include <hydra/common/global_info.h>
 #include <hydra/common/pipeline_queues.h>
 #include <hydra_ros/backend/ros_backend_publisher.h>
 #include <hydra_ros/frontend/ros_frontend_publisher.h>
-#include <hydra_ros/loop_closure/ros_lcd_registration.h>
 #include <khronos/utils/khronos_attribute_utils.h>
-#include <khronos_msgs/Changes.h>
+#include <khronos_msgs/msg/changes.hpp>
 
 #include "khronos_ros/utils/ros_conversions.h"
 #include "khronos_ros/utils/ros_namespaces.h"
@@ -268,9 +266,9 @@ std::string KhronosPipeline::getConfigInfo() const {
 void KhronosPipeline::sendChanges(uint64_t timestamp_ns,
                                   const DynamicSceneGraph&,
                                   const kimera_pgmo::DeformationGraph&) const {
-  khronos_msgs::Changes msg = toMsg(backend_->getChanges());
-  msg.header.stamp.fromNSec(timestamp_ns);
-  changes_pub_.publish(msg);
+  khronos_msgs::msg::Changes msg = toMsg(backend_->getChanges());
+  msg.header.stamp = rclcpp::Time(timestamp_ns);
+  changes_pub_->publish(msg);
 }
 
 bool KhronosPipeline::finishMappingCallback(std_srvs::Empty::Request& /* req */,

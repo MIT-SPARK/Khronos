@@ -46,10 +46,12 @@
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
 #include <hydra/common/global_info.h>
+#include <ianvs/node_handle.h>
 #include <khronos/active_window/data/frame_data.h>
 #include <khronos/active_window/data/reconstruction_types.h>
 #include <khronos/active_window/data/track.h>
 #include <rclcpp/time.hpp>
+#include <sensor_msgs/msg/image.hpp>
 #include <std_msgs/msg/color_rgba.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -92,8 +94,7 @@ class ActiveWindowVisualizer {
   } const config;
 
   // Construction.
-  explicit ActiveWindowVisualizer(const ros::NodeHandle& nh);
-  ActiveWindowVisualizer(const Config& config, const ros::NodeHandle& nh);
+  ActiveWindowVisualizer(const Config& config, ianvs::NodeHandle nh);
   virtual ~ActiveWindowVisualizer() = default;
 
   // Visualization.
@@ -128,19 +129,19 @@ class ActiveWindowVisualizer {
 
  private:
   // ROS.
-  ros::NodeHandle nh_;
-  ros::Publisher ever_free_slice_pub_;
-  ros::Publisher tsdf_slice_pub_;
-  ros::Publisher tracking_slice_pub_;
-  ros::Publisher dynamic_points_pub_;
-  ros::Publisher dynamic_image_pub_;
-  ros::Publisher object_image_pub_;
-  ros::Publisher semantic_image_pub_;
-  ros::Publisher object_bb_pub_;
-  ros::Publisher track_bbox_pub_;
-  ros::Publisher track_voxels_pub_;
-  ros::Publisher track_pixels_pub_;
-  ros::Publisher track_image_pub_;
+  ianvs::NodeHandle nh_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr ever_free_slice_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tsdf_slice_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tracking_slice_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr dynamic_points_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr dynamic_image_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr object_image_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr semantic_image_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr object_bb_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr track_bbox_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr track_voxels_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr track_pixels_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr track_image_pub_;
 
   // Variables.
   rclcpp::Time stamp_;
@@ -152,7 +153,7 @@ class ActiveWindowVisualizer {
   size_t num_previous_pixel_tracks_ = 0u;
 
   // Time stamp caching for synchronization of multiple visualizations.
-  rclcpp::Time getStamp() const { return stamp_is_set_ ? stamp_ : ros::Time::now(); }
+  rclcpp::Time getStamp() const { return stamp_is_set_ ? stamp_ : nh_.now(); }
 
   // Visualization Utility.
   static void deletePreviousMarkers(visualization_msgs::msg::MarkerArray& msg,
