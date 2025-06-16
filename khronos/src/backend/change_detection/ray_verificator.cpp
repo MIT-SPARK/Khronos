@@ -148,6 +148,7 @@ void RayVerificator::setDsg(std::shared_ptr<const DynamicSceneGraph> dsg) {
   dsg_ = std::move(dsg);
   rays_.clear();
   timestamps_.clear();
+  node_ids_.clear();
   block_seen_by_rays_.clear();
   vertices_in_block_.clear();
   objects_in_block_.clear();
@@ -184,7 +185,8 @@ void RayVerificator::addPoseNodes() {
     return;
   }
 
-  const auto agents = dsg_->findLayer(dsg_->getLayerKey(DsgLayers::AGENTS)->layer, config.prefix.key);
+  const auto agents =
+      dsg_->findLayer(dsg_->getLayerKey(DsgLayers::AGENTS)->layer, config.prefix.key);
   if (!agents) {
     return;
   }
@@ -201,6 +203,7 @@ void RayVerificator::addPoseNodes() {
     previous_node_id_ = node_id;
     timestamps_.emplace_back(static_cast<uint64_t>(
         node->attributes<spark_dsg::AgentNodeAttributes>().timestamp.count()));
+    node_ids_.emplace_back(node_id);
   }
 }
 
@@ -230,7 +233,7 @@ BlockIndexSet RayVerificator::addVertices() {
 
     // Create the rays and add them to the hash.
     for (const size_t source_index : source_indices) {
-      rays_.emplace_back(timestamps_.at(source_index), source_index, i);
+      rays_.emplace_back(timestamps_.at(source_index), node_ids_.at(source_index), i);
       observed_blocks.merge(addRayToHash(rays_.size() - 1));
     }
   }
