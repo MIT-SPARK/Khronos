@@ -84,7 +84,12 @@ class MeshObjectExtractor : public ObjectExtractor {
     // Resolution at which extracted objects are reconstructed. Positive values
     // indicate the voxel size in meters. Negative values indicate a fraction of
     // the extent. A value of 0 skips reconstruction.
-    float object_reconstruction_resolution = -0.02;
+    float object_reconstruction_resolution = -0.02f;
+
+    // Minimum limit to override small reconstruction resolutions computed
+    // from fraction of extent. Has no effect when `object_reconstruction_resolution`
+    // is positive.
+    float min_reconstruction_resolution = 0.0f;
 
     // If true, don't prune the mesh to only the relevant parts but isntead color it by confidence
     // for debugging.

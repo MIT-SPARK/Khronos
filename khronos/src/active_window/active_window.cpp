@@ -65,6 +65,7 @@ void declare_config(ActiveWindow::Config& config) {
   field(config.tracker, "tracker");
   config.object_extractor.setOptional();
   field(config.object_extractor, "object_extractor");
+  field(config.extraction_worker, "extraction_worker");
   field(config.mesh_integrator, "mesh_integrator");
   field(config.frame_data_buffer, "frame_data_buffer");
 }
@@ -75,6 +76,7 @@ ActiveWindow::ActiveWindow(const Config& config, const OutputQueue::Ptr& output_
       integrator_(config.projective_integrator),
       tracking_integrator_(config.tracking_integrator),
       mesh_integrator_(config.mesh_integrator),
+      extraction_worker_(config.extraction_worker, config.object_extractor.create()),
       frame_data_buffer_(config.frame_data_buffer) {
   // Create member processors as specified in the configs.
   motion_detector_ = config.motion_detector.create();
@@ -93,10 +95,6 @@ ActiveWindow::ActiveWindow(const Config& config, const OutputQueue::Ptr& output_
           << "[Khronos Active Window] Tracker was not specified but motion and/or object detector "
              "is present. These detections will not be tracked or extracted.";
     }
-  }
-  object_extractor_ = config.object_extractor.create();
-  if (!object_extractor_) {
-    object_extractor_ = std::make_unique<ObjectExtractor>();
   }
 
   if (!map_.config.with_tracking) {
@@ -142,7 +140,7 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& 
   frame_data_buffer_.storeData(data);
 
   CLOG(4) << "[Khronos Active Window] Frame data buffer size: " << frame_data_buffer_.size()
-          << ", object extraction threads running: " << output_objects_processing_ << ".";
+          << ", object extraction threads running: " << extraction_worker_.numRunning() << ".";
   if (num_frames_processed_ % 10 == 0) {
     CLOG(3) << "[Khronos Active Window] Processed input frame " << num_frames_processed_ << " ("
             << input.timestamp_ns << "). Queues: " << input_queue_->size() << " input,  "
@@ -193,7 +191,7 @@ std::vector<std::shared_ptr<KhronosObjectAttributes>> ActiveWindow::extractObjec
   std::vector<std::shared_ptr<KhronosObjectAttributes>> result;
   std::lock_guard<std::mutex> lock(mutex_);
   for (const auto& track : tracker_->getTracks()) {
-    auto output_object = object_extractor_->extractObject(track, frame_data_buffer_);
+    auto output_object = extraction_worker_.runBlocking(track, frame_data_buffer_);
     if (output_object) {
       result.emplace_back(std::move(output_object));
     }
@@ -239,18 +237,13 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::extractOutputData(const FrameData& 
 
   extractInactiveObjects();
   if (!threaded) {
-    joinObjectExtractionThreads();
+    extraction_worker_.join();
   }
 
-  // Add all finished objects to the output.
-  std::lock_guard<std::mutex> lock(output_objects_mutex_);
   // TODO(nathan) fix the layer update to not use LayerId
   auto update = std::make_shared<hydra::LayerUpdate>(2);
   output->graph_update[update->layer] = update;
-
-  std::move(output_objects_.begin(), output_objects_.end(), std::back_inserter(update->attributes));
-  output_objects_.clear();
-
+  extraction_worker_.fill(*update);
   return output;
 }
 
@@ -264,37 +257,10 @@ void ActiveWindow::extractInactiveObjects() {
       continue;
     }
 
-    // Launch a detached thread for object extraction.
     // NOTE(lschmid) Move the track and copy the frame data buffer to the thread. The buffer will
     // keep relevant frames alive while the AW updates.
-    output_objects_processing_++;
-    std::thread([this, track = std::move(*it), frame_data = frame_data_buffer_]() {
-      objectExtractionThreadFunction(latest_stamp_, track, frame_data);
-    }).detach();
+    extraction_worker_.submit(latest_stamp_, std::move(*it), frame_data_buffer_);
     it = tracker_->getTracks().erase(it);
-  }
-}
-
-void ActiveWindow::objectExtractionThreadFunction(const TimeStamp stamp,
-                                                  const Track& track,
-                                                  const FrameDataBuffer& frame_data) {
-  const auto start = std::chrono::high_resolution_clock::now();
-  auto output_object = object_extractor_->extractObject(track, frame_data);
-  const auto stop = std::chrono::high_resolution_clock::now();
-
-  if (output_object) {
-    std::lock_guard<std::mutex> lock(output_objects_mutex_);
-    output_objects_.push_back(std::move(output_object));
-  }
-
-  hydra::timing::ElapsedTimeRecorder::instance().record(
-      "active_window/extract_object", stamp, start - stop);
-  output_objects_processing_--;
-}
-
-void ActiveWindow::joinObjectExtractionThreads() {
-  while (output_objects_processing_ > 0) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 }
 

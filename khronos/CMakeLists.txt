@@ -36,6 +36,7 @@ add_library(${PROJECT_NAME}
         src/active_window/object_detection/connected_semantics.cpp
         src/active_window/object_detection/instance_forwarding.cpp
         src/active_window/object_extraction/mesh_object_extractor.cpp
+        src/active_window/object_extraction/object_worker_pool.cpp
         src/active_window/tracking/external_tracker.cpp
         src/active_window/tracking/max_iou_tracker.cpp
         src/backend/backend.cpp

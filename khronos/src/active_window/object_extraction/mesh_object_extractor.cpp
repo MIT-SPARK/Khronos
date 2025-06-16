@@ -58,6 +58,7 @@ void declare_config(MeshObjectExtractor::Config& config) {
   field(config.min_object_reconstruction_confidence, "min_object_reconstruction_confidence");
   field(config.min_object_reconstruction_observations, "min_object_reconstruction_observations");
   field(config.object_reconstruction_resolution, "object_reconstruction_resolution");
+  field(config.min_reconstruction_resolution, "min_reconstruction_resolution");
   field(config.visualize_classification, "visualize_classification");
   field(config.projective_integrator, "projective_integrator");
   field(config.mesh_integrator, "mesh_integrator");
@@ -71,6 +72,7 @@ void declare_config(MeshObjectExtractor::Config& config) {
   check(config.min_object_volume, GE, 0, "min_object_volume");
   check(config.max_object_volume, GE, config.min_object_volume, "max_object_volume");
   check(config.min_dynamic_displacement, GE, 0, "min_dynamic_displacement");
+  check(config.min_reconstruction_resolution, GE, 0.0f, "min_reconstruction_resolution");
 }
 
 MeshObjectExtractor::MeshObjectExtractor(const Config& config)
@@ -199,6 +201,7 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
   VolumetricMap::Config map_config;
   if (config.object_reconstruction_resolution < 0.f) {
     map_config.voxel_size = extent.dimensions.maxCoeff() * -config.object_reconstruction_resolution;
+    map_config.voxel_size = std::max(map_config.voxel_size, config.min_reconstruction_resolution);
   } else {
     map_config.voxel_size = config.object_reconstruction_resolution;
   }
@@ -229,13 +232,14 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
       Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "; ", "", "", "[", "]");
   CLOG(5) << "[MeshObjectExtractor] Allocated TSDF layer for " << getTrackName(track) << " with "
           << tsdf_layer.numBlocks() << " blocks (min_index=" << min_block_index.format(fmt)
-          << ", max_index=" << max_block_index.format(fmt) << ")";
+          << ", max_index=" << max_block_index.format(fmt) << ") with voxel size "
+          << map_config.voxel_size << " [m]";
 
   // Perform 3D reconstruction using projective updates over all frames.
   ObjectIntegrator integrator(config.projective_integrator);
   for (const auto& [frame_data, segment_id] : frames) {
     integrator.setFrameData(frame_data.get(), segment_id);
-    integrator.updateMap(frame_data->input, map);
+    integrator.updateMap(frame_data->input, map, false);
   }
 
   // Erase low_confidence voxels to extract the object of interest.

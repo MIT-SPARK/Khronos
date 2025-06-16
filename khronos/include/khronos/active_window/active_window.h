@@ -58,7 +58,7 @@
 #include "khronos/active_window/integration/tracking_integrator.h"
 #include "khronos/active_window/motion_detection/motion_detector.h"
 #include "khronos/active_window/object_detection/object_detector.h"
-#include "khronos/active_window/object_extraction/object_extractor.h"
+#include "khronos/active_window/object_extraction/object_worker_pool.h"
 #include "khronos/active_window/tracking/tracker.h"
 #include "khronos/common/common_types.h"
 
@@ -86,6 +86,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     config::VirtualConfig<ObjectDetector> object_detector;
     config::VirtualConfig<Tracker> tracker;
     config::VirtualConfig<ObjectExtractor> object_extractor;
+    ObjectWorkerPool::Config extraction_worker;
     hydra::MeshIntegratorConfig mesh_integrator;
     FrameDataBuffer::Config frame_data_buffer;
 
@@ -162,12 +163,6 @@ class ActiveWindow : public hydra::ActiveWindowModule {
    */
   void extractInactiveObjects();
 
-  // Threaded object extraction.
-  void objectExtractionThreadFunction(const TimeStamp stamp,
-                                      const Track& track,
-                                      const FrameDataBuffer& frame_data);
-  void joinObjectExtractionThreads();
-
  protected:
   // Members.
   hydra::ProjectiveIntegrator integrator_;
@@ -176,7 +171,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   std::unique_ptr<MotionDetector> motion_detector_;
   std::unique_ptr<ObjectDetector> object_detector_;
   std::unique_ptr<Tracker> tracker_;
-  std::unique_ptr<ObjectExtractor> object_extractor_;
+  ObjectWorkerPool extraction_worker_;
 
   std::mutex mutex_;
   Sink::List sinks_;
@@ -184,11 +179,6 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   // Internal processing.
   // Keep frames in buffer for later extraction of objects.
   FrameDataBuffer frame_data_buffer_;
-
-  // Output data for detached object extraction.
-  mutable std::mutex output_objects_mutex_;
-  std::list<spark_dsg::NodeAttributes::Ptr> output_objects_;
-  std::atomic<int> output_objects_processing_{0};
 
   // Variables.
   TimeStamp latest_stamp_;
