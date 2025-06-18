@@ -41,10 +41,13 @@
 #include <memory>
 
 #include <config_utilities/config_utilities.h>
+#include <config_utilities/parsing/context.h>
 #include <hydra/common/global_info.h>
 #include <hydra/common/pipeline_queues.h>
 #include <hydra_ros/backend/ros_backend_publisher.h>
 #include <hydra_ros/frontend/ros_frontend_publisher.h>
+#include <khronos/active_window/active_window.h>
+#include <khronos/backend/backend.h>
 #include <khronos/utils/khronos_attribute_utils.h>
 #include <khronos_msgs/msg/changes.hpp>
 
@@ -53,43 +56,38 @@
 
 namespace khronos {
 
+using khronos_msgs::msg::Changes;
+using std_srvs::srv::Empty;
+
+KhronosPipeline::Config::Config() : hydra::HydraRosPipeline::Config() {
+  active_window = ActiveWindow::Config{};
+  backend = Backend::Config{};
+  verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+}
+
 void declare_config(KhronosPipeline::Config& config) {
   using namespace config;
-  name("KhronosPipeline");
+  name("KhronosPipeline::Config");
+  base<hydra::HydraRosPipeline::Config>(config);
   field(config.verbosity, "verbosity");
   field(config.finish_processing_on_shutdown, "finish_processing_on_shutdown");
   field(config.save_active_window_objects, "save_active_window_objects");
-  base<hydra::PipelineConfig>(config);
-
-  // Module configs.
-  field(config.input, "input");
-  field(config.active_window, "active_window");
-  field(config.frontend, "frontend");
-  field(config.backend, "backend");
 }
 
-KhronosPipeline::Config initializeConfig(const ros::NodeHandle& nh) {
-  return config::fromRos<KhronosPipeline::Config>(nh);
-}
-
-KhronosPipeline::KhronosPipeline(const ros::NodeHandle& nh)
-    : config(config::checkValid(initializeConfig(nh))),
+KhronosPipeline::KhronosPipeline(ianvs::NodeHandle nh)
+    : hydra::HydraRosPipeline(0, 5),
+      config(config::checkValid(config::fromContext<Config>())),
       nh_(nh),
-      map_visualizer_(ros::NodeHandle(nh, RosNs::VISUALIZATION)) {
-  hydra::GlobalInfo::init(config, 0);
-  setupDsgs();
-  setupMembers();
+      changes_pub_(nh_.create_publisher<Changes>("changes", rclcpp::QoS(10).transient_local())),
+      finish_mapping_srv_(nh_.create_service<Empty>("finish_mapping",
+                                                    &KhronosPipeline::finishMappingCallback,
+                                                    this)),
+      map_visualizer_(nh / RosNs::VISUALIZATION) {
   setupRos();
 }
 
 void KhronosPipeline::start() {
-  input_module_->start();
-  active_window_->start();
-  frontend_->start();
-  backend_->start();
-  if (lcd_) {
-    lcd_->start();
-  }
+  HydraRosPipeline::start();
   CLOG(1) << "[Khronos Pipeline] Started.";
 }
 
@@ -135,12 +133,7 @@ bool KhronosPipeline::save(const hydra::DataDirectory& log_setup, bool save_full
 
   // Save state of all modules.
   if (save_full_state) {
-    active_window_->save(log_setup);
-    frontend_->save(log_setup);
-    if (lcd_) {
-      lcd_->save(log_setup);
-    }
-    backend_->save(log_setup);
+    HydraRosPipeline::save();
   }
 
   // Always save evaluation relevant data.
@@ -175,56 +168,6 @@ void KhronosPipeline::finishMapping() {
   map_visualizer_.visualizeAllMaps(active_window_->getMap());
 }
 
-void KhronosPipeline::setupDsgs() {
-  // Populate the scene graphs and shared state.
-  SharedDsgInfo::Config layer_config{{{DsgLayers::AGENTS, 2},
-                                      {DsgLayers::OBJECTS, 2},
-                                      {DsgLayers::PLACES, 3},
-                                      {DsgLayers::ROOMS, 4},
-                                      {DsgLayers::BUILDINGS, 5}}};
-  // Frontend scene graph.
-  frontend_dsg_ = std::make_shared<SharedDsgInfo>(layer_config);
-  frontend_dsg_->graph->setMesh(std::make_shared<spark_dsg::Mesh>(true, true, false, true));
-
-  // Bacend scene graph.
-  backend_dsg_ = std::make_shared<SharedDsgInfo>(layer_config);
-  backend_dsg_->graph->setMesh(std::make_shared<spark_dsg::Mesh>(true, true, false, true));
-
-  // Shared state.
-  shared_state_.reset(new SharedModuleState());
-  shared_state_->lcd_graph = std::make_shared<SharedDsgInfo>(layer_config);
-  shared_state_->backend_graph = std::make_shared<SharedDsgInfo>(layer_config);
-}
-
-void KhronosPipeline::setupMembers() {
-  // Setup the frontend.
-  frontend_ = std::make_shared<GraphBuilder>(config.frontend, frontend_dsg_, shared_state_);
-
-  // Setup the active window.
-  active_window_ = std::make_shared<ActiveWindow>(config.active_window, frontend_->queue());
-
-  // Setup the input module.
-  input_module_ = std::make_shared<hydra::RosInputModule>(config.input, active_window_->queue());
-
-  // Setup the backend.
-  backend_ = std::make_shared<Backend>(config.backend, backend_dsg_, shared_state_);
-
-  // Setup lood closure detection.
-  // TODO(lschmid): Streamline all of this with optional configs.
-  if (config.enable_lcd) {
-    auto lcd_config = config::fromRos<hydra::LoopClosureConfig>(nh_, RosNs::LOOPCLOSURE);
-    lcd_config.detector.num_semantic_classes = hydra::GlobalInfo::instance().getTotalLabels();
-    CLOG(3) << "Number of classes for LCD: " << lcd_config.detector.num_semantic_classes;
-    lcd_.reset(new LoopClosureModule(lcd_config, shared_state_));
-
-    // noop if bow vectors are not enabled
-    bow_subscriber_ = std::make_unique<BowSubscriber>(nh_);
-    if (lcd_config.detector.enable_agent_registration) {
-      lcd_->getDetector().setRegistrationSolver(0, std::make_unique<hydra::lcd::DsgAgentSolver>());
-    }
-  }
-}
-
 void KhronosPipeline::setupRos() {
   // Add callbacks to all modules for visualization and evaluation.
   active_window_->addSink(ActiveWindow::Sink::fromCallback(
@@ -245,11 +188,6 @@ void KhronosPipeline::setupRos() {
           backend_evaluation_callback_(timestamp_ns, dsg, dfg);
         }
       }));
-
-  // Ros publishers.
-  changes_pub_ = nh_.advertise<khronos_msgs::Changes>("changes", 10, true);
-  finish_mapping_srv_ =
-      nh_.advertiseService("finish_mapping", &KhronosPipeline::finishMappingCallback, this);
 }
 
 std::string KhronosPipeline::getConfigInfo() const {
@@ -271,10 +209,9 @@ void KhronosPipeline::sendChanges(uint64_t timestamp_ns,
   changes_pub_->publish(msg);
 }
 
-bool KhronosPipeline::finishMappingCallback(std_srvs::Empty::Request& /* req */,
-                                            std_srvs::Empty::Response& /* res */) {
+void KhronosPipeline::finishMappingCallback(const Empty::Request::SharedPtr&,
+                                            Empty::Response::SharedPtr) {
   finishMapping();
-  return true;
 }
 
 void KhronosPipeline::setActiveWindowEvaluationCallback(
