@@ -41,7 +41,6 @@
 #include <numeric>
 #include <thread>
 
-#include <config_utilities/parsing/ros.h>
 #include <config_utilities/types/path.h>
 #include <khronos_msgs/SpatioTemporalVisualizerState.h>
 #include <spark_dsg/colormaps.h>

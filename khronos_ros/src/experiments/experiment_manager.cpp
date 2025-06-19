@@ -46,9 +46,8 @@
 #include <stdexcept>
 #include <string>
 
-#include <config_utilities/parsing/ros.h>
 #include <glog/logging.h>
-#include <hydra_ros/utils/node_utilities.h>
+#include <ianvs/spin_functions.h>
 #include <khronos/common/common_types.h>
 
 namespace khronos {
@@ -64,11 +63,13 @@ void declare_config(ExperimentManager::Config& config) {
   field(config.log_timing_details, "log_timing_details");
   field(config.save_every_n_frames, "save_every_n_frames");
   field(config.save_full_state, "save_full_state");
+  field(config.exit_after_clock, "exit_after_clock");
 }
 
-ExperimentManager::ExperimentManager(const ros::NodeHandle& nh,
+ExperimentManager::ExperimentManager(const Config& config,
+                                     ianvs::NodeHandle nh,
                                      std::shared_ptr<KhronosPipeline> khronos)
-    : config(config::checkValid(config::fromRos<Config>(nh))),
+    : config(config::checkValid(config)),
       data_dir_(config.output_dir, hydra::DataDirectory::Config{true, config.overwrite}),
       khronos_(std::move(khronos)),
       nh_(nh) {
@@ -112,7 +113,7 @@ ExperimentManager::ExperimentManager(const ros::NodeHandle& nh,
   CLOG(1) << "[ExperimentManager] Setup output directory: '" << data_dir_.path() << "'.";
 
   // Setup service for termination.
-  finish_mapping_and_save_srv_ = nh_.advertiseService(
+  finish_mapping_and_save_srv_ = nh_.create_service<std_srvs::srv::Empty>(
       "finish_mapping_and_save", &ExperimentManager::finishMappingAndSaveCallback, this);
 }
 
@@ -125,7 +126,7 @@ void ExperimentManager::run() {
     logger_->log("Starting experiment.");
   }
   khronos_->start();
-  hydra::spinAndWait(nh_);
+  ianvs::spinAndWait(nh_, config.exit_after_clock);
   if (logger_) {
     logger_->log("Stopping experiment.");
   }
@@ -149,12 +150,12 @@ void ExperimentManager::addBackendCallback(size_t every_n_frames,
   backend_callback_counters_.emplace_back(0);
 }
 
-bool ExperimentManager::finishMappingAndSaveCallback(std_srvs::Empty::Request& /* req */,
-                                                     std_srvs::Empty::Response& /* res */) {
+void ExperimentManager::finishMappingAndSaveCallback(
+    const std_srvs::srv::Empty::Request::SharedPtr&,
+    std_srvs::srv::Empty::Response::SharedPtr) {
   khronos_->finishMapping();
   logData();
   final_map_saved_ = true;
-  return true;
 }
 
 void ExperimentManager::evaluateFrontend(const VolumetricMap& map,
@@ -219,6 +220,7 @@ void ExperimentManager::logData() {
       hydra::timing::ElapsedTimeRecorder::instance().logTimers(timing_path);
     }
   }
+
   if (evaluationIsOn()) {
     // TODO(Yun): someone figure out how they want these logs organized
     if (config.save_every_n_frames > 0) {

@@ -42,8 +42,6 @@
 #include <utility>
 #include <vector>
 
-#include <config_utilities/config_utilities.h>
-#include <hydra/utils/data_directory.h>
 #include <khronos/active_window/data/frame_data.h>
 #include <khronos/active_window/data/reconstruction_types.h>
 
@@ -80,6 +78,9 @@ class ExperimentManager {
 
     // If true save the full state of Khronos every N frames. Otherwise only save the backend DSG.
     bool save_full_state = false;
+
+    // If true, finish and save pipeline after clock stops publishing
+    bool exit_after_clock = false;
   } const config;
 
   // Types.
@@ -87,15 +88,17 @@ class ExperimentManager {
   using BackendEvaluationCallback = KhronosPipeline::BackendEvaluationCallback;
 
   // Construction.
-  ExperimentManager(const ros::NodeHandle& nh, std::shared_ptr<KhronosPipeline> khronos);
+  ExperimentManager(const Config& config,
+                    ianvs::NodeHandle nh,
+                    std::shared_ptr<KhronosPipeline> khronos);
   virtual ~ExperimentManager();
 
   // Run the experiment.
   void run();
 
   // Service for clean termination.
-  bool finishMappingAndSaveCallback(std_srvs::Empty::Request& /* req */,
-                                    std_srvs::Empty::Response& /* res */);
+  void finishMappingAndSaveCallback(const std_srvs::srv::Empty::Request::SharedPtr& req,
+                                    std_srvs::srv::Empty::Response::SharedPtr res);
 
   /**
    * @brief To be called after an experiment to write all collected data to disk.
@@ -137,8 +140,8 @@ class ExperimentManager {
   const std::shared_ptr<KhronosPipeline> khronos_;
 
   // ROS members.
-  ros::NodeHandle nh_;
-  ros::ServiceServer finish_mapping_and_save_srv_;
+  ianvs::NodeHandle nh_;
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr finish_mapping_and_save_srv_;
 
   // Experiment logger to write experiment progress to disk.
   ExperimentLogger::Ptr logger_;
