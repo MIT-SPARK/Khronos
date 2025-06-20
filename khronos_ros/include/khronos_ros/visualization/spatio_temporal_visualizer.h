@@ -49,14 +49,13 @@
 #include <hydra_visualizer/utils/config_wrapper.h>
 #include <khronos/common/common_types.h>
 #include <khronos/spatio_temporal_map/spatio_temporal_map.h>
-//#include <khronos_msgs/msg/khronos_spatio_temporal_vis_config.hpp>
+// #include <khronos_msgs/msg/khronos_spatio_temporal_vis_config.hpp>
+#include <khronos_msgs/msg/spatio_temporal_visualizer_state.hpp>
 #include <khronos_msgs/srv/spatio_temporal_visualizer_set_state.hpp>
 #include <khronos_msgs/srv/spatio_temporal_visualizer_set_time_mode.hpp>
-#include <khronos_msgs/srv/spatio_temporal_visualizer_setup.h>
+#include <khronos_msgs/srv/spatio_temporal_visualizer_setup.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
-
-#include "khronos_ros/visualization/khronos_mesh_visualizer.h"
 
 namespace khronos {
 
@@ -68,6 +67,13 @@ class SpatioTemporalVisualizer {
   using Coloring = std::optional<KhronosMeshVisualizer::Coloring>;
   using DynamicConfig =
       hydra::visualizer::ConfigWrapper<khronos_msgs::KhronosSpatioTemporalVisConfig>;
+  using MarkerArray = visualization_msgs::msg::MarkerArray;
+  using Marker = visualization_msgs::msg::Marker;
+  using State = khronos_msgs::msg::SpatioTemporalVisualizerState;
+  using SetBool = std_srvs::srv::SetBool;
+  using SetTimeMode = khronos_msgs::srv::SpatioTemporalVisualizerSetTimeMode;
+  using Setup = khronos_msgs::srv::SpatioTemporalVisualizerSetup;
+  using SetState = khronos_msgs::srv::SpatioTemporalVisualizerSetState;
 
   // Config.
   struct Config {
@@ -91,13 +97,16 @@ class SpatioTemporalVisualizer {
     // Config of the mesh visualizer.
     KhronosMeshVisualizer::Config mesh_visualizer;
 
+    //! Config for underlying scene graph visualizer
+    hydra::SceneGraphRenderer::Config scene_graph;
+
     // Initial settings of the dsg visualizer.
     float initial_robot_time = 1.0f;  // Percentage of time to show on initialization.
     float initial_query_time = 1.0f;  // Percentage of time to show on initialization.
     enum class TimeMode { ROBOT, QUERY, ONLINE } initial_time_mode = TimeMode::ONLINE;
   } const config;
 
-  explicit SpatioTemporalVisualizer(const ros::NodeHandle& nh);
+  SpatioTemporalVisualizer(const Config& config, ianvs::NodeHandle nh);
   virtual ~SpatioTemporalVisualizer() = default;
 
   void spin();
@@ -105,29 +114,26 @@ class SpatioTemporalVisualizer {
   void reset();
 
   // Service callbacks.
-  bool playCb(std_srvs::srv::SetBool::Request& req, std_srvs::srv::SetBool::Response& /* res */);
-  bool setPlayForwardCb(std_srvs::srv::SetBool::Request& req, std_srvs::srv::SetBool::Response& /* res */);
-  bool isSetupCb(khronos_msgs::srv::SpatioTemporalVisualizerSetup::Request& /* req */,
-                 khronos_msgs::srv::SpatioTemporalVisualizerSetup::Response& res);
-  bool setTimeModeCb(khronos_msgs::srv::SpatioTemporalVisualizerSetTimeMode::Request& req,
-                     khronos_msgs::srv::SpatioTemporalVisualizerSetTimeMode::Response& res);
-  bool setStateCb(khronos_msgs::srv::SpatioTemporalVisualizerSetState::Request& req,
-                  khronos_msgs::srv::SpatioTemporalVisualizerSetState::Response& /* res*/);
+  void playCb(SetBool::Request::SharedPtr req, SetBool::Response::SharedPtr res);
+  void setPlayForwardCb(SetBool::Request::SharedPtr req, SetBool::Response::SharedPtr& res);
+  void isSetupCb(Setup::Request::SharedPtr& req, Setup::Response::SharedPtr& res);
+  void setTimeModeCb(SetTimeMode::Request::SharedPtr& req, SetTimeMode::Response::SharedPtr& res);
+  void setStateCb(SetState::Request::SharedPtr& req, SetState::Response::SharedPtr& res);
 
  private:
   DynamicConfig dynamic_config_;
 
   // ROS.
-  ros::NodeHandle nh_;
-  ros::Publisher state_pub_;
-  ros::Publisher dynamic_obj_pub_;
-  ros::Publisher static_obj_pub_;
-  ros::Publisher agent_pub_;
-  ros::ServiceServer play_srv_;
-  ros::ServiceServer set_play_forward_srv_;
-  ros::ServiceServer set_time_mode_srv_;
-  ros::ServiceServer is_setup_srv_;
-  ros::ServiceServer set_state_srv_;
+  ianvs::NodeHandle nh_;
+  rclcpp::Publisher<State>::SharedPtr state_pub_;
+  rclcpp::Publisher<MarkerArray>::SharedPtr dynamic_obj_pub_;
+  rclcpp::Publisher<MarkerArray>::SharedPtr static_obj_pub_;
+  rclcpp::Publisher<Marker>::SharedPtr agent_pub_;
+  rclcpp::Service<SetBool>::SharedPtr play_srv_;
+  rclcpp::Service<SetBool>::SharedPtr set_play_forward_srv_;
+  rclcpp::Service<SetTimeMode>::SharedPtr set_time_mode_srv_;
+  rclcpp::Service<Setup>::SharedPtr is_setup_srv_;
+  rclcpp::Service<SetState>::SharedPtr set_state_srv_;
 
   // Stored data.
   const DynamicSceneGraph::LayerIds layer_ids_;
@@ -187,7 +193,7 @@ class SpatioTemporalVisualizer {
   void visualizeDynamicObject(const std_msgs::msg::Header& header,
                               const KhronosObjectAttributes& attrs,
                               const size_t id,
-                              visualization_msgs::msg::MarkerArray& msg) const;
+                              MarkerArray& msg) const;
   void resetStaticObjects();
   void resetDynamicObjects();
   void drawAgent();
@@ -202,7 +208,7 @@ class SpatioTemporalVisualizer {
                              const KhronosObjectAttributes& attrs,
                              const NodeId id,
                              const Color& color,
-                             visualization_msgs::msg::MarkerArray& msg) const;
+                             MarkerArray& msg) const;
 
   // Tools.
   float stampToSec(const uint64_t stamp) const;

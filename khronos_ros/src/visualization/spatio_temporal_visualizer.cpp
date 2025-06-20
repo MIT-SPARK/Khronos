@@ -42,12 +42,11 @@
 #include <thread>
 
 #include <config_utilities/types/path.h>
-#include <khronos_msgs/SpatioTemporalVisualizerState.h>
+#include <khronos/utils/geometry_utils.h>
+#include <khronos/utils/khronos_attribute_utils.h>
 #include <spark_dsg/colormaps.h>
-#include <visualization_msgs/MarkerArray.h>
+#include <visualization_msgs/msg/marker_array.hpp>
 
-#include "khronos/utils/geometry_utils.h"
-#include "khronos/utils/khronos_attribute_utils.h"
 #include "khronos_ros/experiments/experiment_directory.h"
 #include "khronos_ros/visualization/visualization_utils.h"
 
@@ -78,6 +77,7 @@ void declare_config(SpatioTemporalVisualizer::Config& config) {
   field(config.robot_prefix, "robot_prefix");
   field(config.dynamic_config, "dynamic_config");
   field(config.mesh_visualizer, "mesh_visualizer");
+  field(config.scene_graph, "scene_graph");
   field(config.initial_robot_time, "initial_robot_time");
   field(config.initial_query_time, "initial_query_time");
   enum_field(config.initial_time_mode, "initial_time_mode", {"Robot", "Query", "Online"});
@@ -90,14 +90,14 @@ void declare_config(SpatioTemporalVisualizer::Config& config) {
 }
 
 // TODO(nathan) fix layer IDs
-SpatioTemporalVisualizer::SpatioTemporalVisualizer(const ros::NodeHandle& nh)
-    : config(config::checkValid(config::fromRos<Config>(nh))),
+SpatioTemporalVisualizer::SpatioTemporalVisualizer(const Config& config, ianvs::NodeHandle nh)
+    : config(config::checkValid(config)),
       dynamic_config_(nh, ""),
       nh_(nh),
       layer_ids_({2, 3, 4, 5}),
       min_time_delta_(config.max_frame_rate > 0 ? 1.0 / config.max_frame_rate : 0),
       mesh_visualizer_(config.mesh_visualizer, nh),
-      dsg_renderer_(nh),
+      dsg_renderer_(config.scene_graph, nh),
       map_(SpatioTemporalMap::Config()) {
   // Load all data and setup.
   LOG(INFO) << "Config:\n" << config;
@@ -107,7 +107,7 @@ SpatioTemporalVisualizer::SpatioTemporalVisualizer(const ros::NodeHandle& nh)
   setupRos();
 
   // Advertize that the visualizer is ready.
-  is_setup_srv_ = nh_.advertiseService("is_setup", &SpatioTemporalVisualizer::isSetupCb, this);
+  is_setup_srv_ = nh_.create_service<Setup>("is_setup", &SpatioTemporalVisualizer::isSetupCb, this);
   LOG(INFO) << "SpatioTemporalVisualizer initialized.";
 }
 
@@ -229,7 +229,8 @@ void SpatioTemporalVisualizer::reset() {
 
 void SpatioTemporalVisualizer::drawAgent() {
   // Draw all trajectory nodes from the query to the robot time.
-  const auto layer = current_dsg_->findLayer(current_dsg_->getLayerKey(DsgLayers::AGENTS)->layer, config.robot_prefix.key);
+  const auto layer = current_dsg_->findLayer(current_dsg_->getLayerKey(DsgLayers::AGENTS)->layer,
+                                             config.robot_prefix.key);
   if (!layer) {
     return;
   }
@@ -573,7 +574,7 @@ void SpatioTemporalVisualizer::recolorObjectDsgBoundingBoxes() {
     };
   }
 
-  visualization_msgs::MarkerArray static_objs_msg;
+  MarkerArray static_objs_msg;
   // Set the node colors.
   for (const auto& [id, node] : current_dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
     auto& attrs = node->attributes<KhronosObjectAttributes>();
@@ -596,7 +597,7 @@ void SpatioTemporalVisualizer::visualizeStaticObject(const std_msgs::Header& hea
                                                      const KhronosObjectAttributes& attrs,
                                                      const NodeId id,
                                                      const Color& color,
-                                                     visualization_msgs::MarkerArray& msg) const {
+                                                     MarkerArray& msg) const {
   // TODO(lschmid): future potential params.
   const float line_scale = 0.03;
   // const float alpha = 0.3;
@@ -607,87 +608,81 @@ void SpatioTemporalVisualizer::visualizeStaticObject(const std_msgs::Header& hea
   marker.ns = "static_bbox";
 }
 
-bool SpatioTemporalVisualizer::playCb(std_srvs::SetBool::Request& req,
-                                      std_srvs::SetBool::Response& /* res */) {
-  playing_ = req.data;
+void SpatioTemporalVisualizer::playCb(SetBool::Request::SharedPtr req,
+                                      SetBool::Response::SharedPtr /* res */) {
+  playing_ = req->data;
   previous_wall_time_ = ros::WallTime::now().toSec();
-  return true;
 }
 
-bool SpatioTemporalVisualizer::setPlayForwardCb(std_srvs::SetBool::Request& req,
-                                                std_srvs::SetBool::Response& /* res */) {
-  play_forward_ = req.data;
-  return true;
+void SpatioTemporalVisualizer::setPlayForwardCb(SetBool::Request::SharedPtr req,
+                                                SetBool::Response::SharedPtr& /* res */) {
+  play_forward_ = req->data;
 }
 
-bool SpatioTemporalVisualizer::isSetupCb(
-    khronos_msgs::SpatioTemporalVisualizerSetup::Request& /* req */,
-    khronos_msgs::SpatioTemporalVisualizerSetup::Response& res) {
-  res.map_stamps = {map_.earliest()};
-  res.map_stamps.insert(res.map_stamps.end(), map_.stamps().begin(), map_.stamps().end());
-  res.initial_robot_time = robot_time_;
-  res.initial_query_time = query_time_;
-  res.initial_time_mode = static_cast<int>(time_mode_);
-  return true;
+void SpatioTemporalVisualizer::isSetupCb(Setup::Request::SharedPtr& /* req */,
+                                         Setup::Response::SharedPtr& res) {
+  res->map_stamps = {map_.earliest()};
+  res->map_stamps.insert(res->map_stamps.end(), map_.stamps().begin(), map_.stamps().end());
+  res->initial_robot_time = robot_time_;
+  res->initial_query_time = query_time_;
+  res->initial_time_mode = static_cast<int>(time_mode_);
 }
 
-bool SpatioTemporalVisualizer::setTimeModeCb(
-    khronos_msgs::SpatioTemporalVisualizerSetTimeMode::Request& req,
-    khronos_msgs::SpatioTemporalVisualizerSetTimeMode::Response& res) {
+void SpatioTemporalVisualizer::setTimeModeCb(SetTimeMode::Request::SharedPtr& req,
+                                             SetTimeMode::Response::SharedPtr& res) {
   // Set the time mode.
-  if (req.time_mode > 2) {
-    LOG(ERROR) << "Invalid time mode '" << req.time_mode << "'.";
-    res.resulting_time_mode = static_cast<int>(time_mode_);
-    return false;
+  if (req->time_mode > 2) {
+    LOG(ERROR) << "Invalid time mode '" << req->time_mode << "'.";
+    res->resulting_time_mode = static_cast<int>(time_mode_);
+    return;
   }
   if (playing_) {
     LOG(WARNING) << "Can not set time mode while playing.";
-    res.resulting_time_mode = static_cast<int>(time_mode_);
-    return false;
+    res->resulting_time_mode = static_cast<int>(time_mode_);
+    return;
   }
   std::lock_guard<std::mutex> lock(mutex_);
-  time_mode_ = static_cast<Config::TimeMode>(req.time_mode);
+  time_mode_ = static_cast<Config::TimeMode>(req->time_mode);
   if (time_mode_ == Config::TimeMode::ONLINE) {
     query_time_ = robot_time_;
   }
-  res.resulting_time_mode = static_cast<int>(time_mode_);
-  return true;
+  res->resulting_time_mode = static_cast<int>(time_mode_);
 }
 
-bool SpatioTemporalVisualizer::setStateCb(
-    khronos_msgs::SpatioTemporalVisualizerSetState::Request& req,
-    khronos_msgs::SpatioTemporalVisualizerSetState::Response& /* res*/) {
+void SpatioTemporalVisualizer::setStateCb(SetState::Request::SharedPtr& req,
+                                          SetState::Response::SharedPtr& /* res */) {
   if (playing_) {
     // NOTE(lschmid): Could change this in the future.
     LOG(WARNING) << "Can not set time while playing.";
-    return false;
+    return;
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
-  if (req.state.robot_time > 0) {
-    robot_time_ = req.state.robot_time;
+  if (req->state.robot_time > 0) {
+    robot_time_ = req->state.robot_time;
     robot_time_ = std::clamp(robot_time_, map_.earliest(), map_.latest());
   }
-  if (req.state.query_time > 0) {
-    query_time_ = req.state.query_time;
+  if (req->state.query_time > 0) {
+    query_time_ = req->state.query_time;
     query_time_ = std::clamp(query_time_, map_.earliest(), robot_time_);
   }
-
-  return true;
 }
 
 void SpatioTemporalVisualizer::setupRos() {
   // Advertise services.
-  play_srv_ = nh_.advertiseService("play", &SpatioTemporalVisualizer::playCb, this);
-  set_play_forward_srv_ =
-      nh_.advertiseService("set_play_forward", &SpatioTemporalVisualizer::setPlayForwardCb, this);
-  set_time_mode_srv_ =
-      nh_.advertiseService("set_time_mode", &SpatioTemporalVisualizer::setTimeModeCb, this);
-  set_state_srv_ = nh_.advertiseService("set_state", &SpatioTemporalVisualizer::setStateCb, this);
-  state_pub_ = nh_.advertise<khronos_msgs::SpatioTemporalVisualizerState>("state", 1, true);
-  dynamic_obj_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("dynamic_objects", 100, true);
-  static_obj_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("static_objects", 100, true);
-  agent_pub_ = nh_.advertise<visualization_msgs::Marker>("agent", 100, true);
+  play_srv_ = nh_.create_service<SetBool>("play", &SpatioTemporalVisualizer::playCb, this);
+  set_play_forward_srv_ = nh_.create_service<SetBool>(
+      "set_play_forward", &SpatioTemporalVisualizer::setPlayForwardCb, this);
+  set_time_mode_srv_ = nh_.create_service<SetTimeMode>(
+      "set_time_mode", &SpatioTemporalVisualizer::setTimeModeCb, this);
+  set_state_srv_ =
+      nh_.create_service<SetState>("set_state", &SpatioTemporalVisualizer::setStateCb, this);
+  state_pub_ = nh_.create_publisher<State>("state", rclcpp::QoS(1).transient_local());
+  dynamic_obj_pub_ =
+      nh_.create_publisher<MarkerArray>("dynamic_objects", rclcpp::QoS(100).transient_local());
+  static_obj_pub_ =
+      nh_.create_publisher<MarkerArray>("static_objects", rclcpp::QoS(100).transient_local());
+  agent_pub_ = nh_.create_publisher<Marker>("agent", rclcpp::QoS(100).transient_local());
 }
 
 void SpatioTemporalVisualizer::loadMap() {
