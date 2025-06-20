@@ -51,6 +51,33 @@
 #include <khronos/common/common_types.h>
 
 namespace khronos {
+namespace {
+
+struct Proc {
+  Proc(const std::string& cmd) : pipe_(popen(cmd.c_str(), "r")) {}
+
+  ~Proc() {
+    if (pipe_) {
+      pclose(pipe_);
+    }
+  }
+
+  operator bool() const { return pipe_ != nullptr; }
+
+  std::string exec() {
+    std::array<char, 128> buffer;
+    std::string output;
+    while (fgets(buffer.data(), buffer.size(), pipe_) != nullptr) {
+      output += buffer.data();
+    }
+
+    return output;
+  }
+
+  FILE* pipe_;
+};
+
+}  // namespace
 
 void declare_config(ExperimentManager::Config& config) {
   using namespace config;
@@ -153,7 +180,7 @@ void ExperimentManager::addBackendCallback(size_t every_n_frames,
 void ExperimentManager::finishMappingAndSaveCallback(
     const std_srvs::srv::Empty::Request::SharedPtr&,
     std_srvs::srv::Empty::Response::SharedPtr) {
-  khronos_->finishMapping();
+  khronos_->stop();
   logData();
   final_map_saved_ = true;
 }
@@ -237,8 +264,8 @@ void ExperimentManager::logData() {
     logger_->log("Saved final spatio-temporal map to '" + data_dir_.path().string() + "'.");
     logger_->setFlag("Experiment Finished Cleanly");
   }
-  CLOG(1) << "[ExperimentManager] Finished writing data to output directory: '"
-          << data_dir_.path() << "'.";
+  CLOG(1) << "[ExperimentManager] Finished writing data to output directory: '" << data_dir_.path()
+          << "'.";
 }
 
 void ExperimentManager::logConfigs() {
@@ -264,7 +291,7 @@ void ExperimentManager::logConfigs() {
   // Store git commit hash for reproducibility.
   std::string git_hash;
   command = "eval 'roscd khronos && git rev-parse HEAD'";
-  if (exec(command.c_str(), git_hash)) {
+  if (exec(command, git_hash)) {
     logger_->log("Running Khronos on git commit: " + git_hash);
   } else {
     logger_->log("Failed to get git hash.");
@@ -282,16 +309,13 @@ void ExperimentManager::logConfigs() {
   }
 }
 
-bool ExperimentManager::exec(const char* cmd, std::string& output) {
-  std::array<char, 128> buffer;
-  std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
-  if (!pipe) {
+bool ExperimentManager::exec(const std::string& cmd, std::string& output) {
+  Proc proc(cmd);
+  if (!proc) {
     return false;
   }
-  output.clear();
-  while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-    output += buffer.data();
-  }
+
+  output = proc.exec();
   return true;
 }
 

@@ -131,7 +131,7 @@ class ExperimentManager {
 
   // Utility tools.
   // Execute a shell command and return the output.
-  bool exec(const char* cmd, std::string& output);
+  bool exec(const std::string& cmd, std::string& output);
 
  private:
   // Manages the allocation of the output directory.
