@@ -163,7 +163,7 @@ void ActiveWindowVisualizer::visualizeTrackBoundingBoxes(const Tracks& tracks) c
     return;
   }
 
-  MarkerArray msg;
+  MarkerArray new_markers;
   size_t id = 0u;
   std_msgs::msg::Header header;
   header.frame_id = config.global_frame_name;
@@ -186,16 +186,17 @@ void ActiveWindowVisualizer::visualizeTrackBoundingBoxes(const Tracks& tracks) c
       }
     }
 
-    auto& marker = msg.markers.emplace_back(setBoundingBox(
+    auto& marker = new_markers.markers.emplace_back(setBoundingBox(
         bbox, colormaps::quality(track.confidence), header, config.bounding_box_line_width));
     marker.id = id++;
   }
-  deletePreviousMarkers(msg, num_previous_bbox_tracks_);
-  num_previous_bbox_tracks_ = id;
-  if (msg.markers.empty()) {
-    return;
+
+  MarkerArray msg;
+  bbox_tracks_tracker_.add(new_markers, msg);
+  bbox_tracks_tracker_.clearPrevious(header, msg);
+  if (!msg.markers.empty()) {
+    track_bbox_pub_->publish(msg);
   }
-  track_bbox_pub_->publish(msg);
 }
 
 void ActiveWindowVisualizer::visualizeTrackVoxels(const Tracks& tracks) const {
@@ -203,7 +204,7 @@ void ActiveWindowVisualizer::visualizeTrackVoxels(const Tracks& tracks) const {
     return;
   }
 
-  MarkerArray msg;
+  MarkerArray new_markers;
   size_t id = 0u;
   std_msgs::msg::Header header;
   header.frame_id = config.global_frame_name;
@@ -212,7 +213,7 @@ void ActiveWindowVisualizer::visualizeTrackVoxels(const Tracks& tracks) const {
     if (track.last_voxels.empty()) {
       continue;
     }
-    auto& marker = msg.markers.emplace_back();
+    auto& marker = new_markers.markers.emplace_back();
     marker.action = Marker::ADD;
     marker.id = id++;
     marker.header = header;
@@ -226,12 +227,13 @@ void ActiveWindowVisualizer::visualizeTrackVoxels(const Tracks& tracks) const {
           setPoint(spatial_hash::centerPointFromIndex(voxel, track.last_voxel_size)));
     }
   }
-  deletePreviousMarkers(msg, num_previous_voxel_tracks_);
-  num_previous_voxel_tracks_ = id;
-  if (msg.markers.empty()) {
-    return;
+
+  MarkerArray msg;
+  voxel_tracks_tracker_.add(new_markers, msg);
+  voxel_tracks_tracker_.clearPrevious(header, msg);
+  if (!msg.markers.empty()) {
+    track_voxels_pub_->publish(msg);
   }
-  track_voxels_pub_->publish(msg);
 }
 
 void ActiveWindowVisualizer::visualizeTrackPixels(const Tracks& tracks) const {
@@ -239,7 +241,7 @@ void ActiveWindowVisualizer::visualizeTrackPixels(const Tracks& tracks) const {
     return;
   }
 
-  MarkerArray msg;
+  MarkerArray new_markers;
   size_t id = 0u;
   std_msgs::msg::Header header;
   header.frame_id = config.global_frame_name;
@@ -248,7 +250,7 @@ void ActiveWindowVisualizer::visualizeTrackPixels(const Tracks& tracks) const {
     if (track.last_points.empty()) {
       continue;
     }
-    auto& marker = msg.markers.emplace_back();
+    auto& marker = new_markers.markers.emplace_back();
     marker.action = Marker::ADD;
     marker.id = id++;
     marker.header = header;
@@ -260,12 +262,13 @@ void ActiveWindowVisualizer::visualizeTrackPixels(const Tracks& tracks) const {
       marker.points.emplace_back(setPoint(point));
     }
   }
-  deletePreviousMarkers(msg, num_previous_pixel_tracks_);
-  num_previous_pixel_tracks_ = id;
-  if (msg.markers.empty()) {
-    return;
+
+  MarkerArray msg;
+  pixel_tracks_tracker_.add(new_markers, msg);
+  pixel_tracks_tracker_.clearPrevious(header, msg);
+  if (!msg.markers.empty()) {
+    track_pixels_pub_->publish(msg);
   }
-  track_pixels_pub_->publish(msg);
 }
 
 void ActiveWindowVisualizer::visualizeTrackingImage(const Tracks& tracks,
@@ -304,15 +307,15 @@ void ActiveWindowVisualizer::visualizeObjectBoundingBoxes(const FrameData& data)
   }
   Timer timer("visualize/object_bb", stamp_.nanoseconds());
 
-  MarkerArray msg;
-  msg.markers.reserve(data.semantic_clusters.size());
+  MarkerArray new_markers;
+  new_markers.markers.reserve(data.semantic_clusters.size());
   size_t id = 0u;
   std_msgs::msg::Header header;
   header.frame_id = config.global_frame_name;
   header.stamp = getStamp();
   for (const auto& cluster : data.semantic_clusters) {
     if (cluster.bounding_box.isValid()) {
-      auto& marker = msg.markers.emplace_back(
+      auto& marker = new_markers.markers.emplace_back(
           setBoundingBox(cluster.bounding_box,
                          colormaps::rainbowId(cluster.id, config.id_color_revolutions),
                          header,
@@ -320,14 +323,17 @@ void ActiveWindowVisualizer::visualizeObjectBoundingBoxes(const FrameData& data)
       marker.id = id++;
     }
   }
-  deletePreviousMarkers(msg, num_previous_object_bbs_);
-  if (msg.markers.size() > 0) {
-    num_previous_object_bbs_ = id;
+
+  MarkerArray msg;
+  object_bbs_tracker_.add(new_markers, msg);
+  object_bbs_tracker_.clearPrevious(header, msg);
+  if (!msg.markers.empty()) {
     object_bb_pub_->publish(msg);
   }
 }
 
-void ActiveWindowVisualizer::visualizeEverFreeSlice(const VolumetricMap& map, float robot_height) const {
+void ActiveWindowVisualizer::visualizeEverFreeSlice(const VolumetricMap& map,
+                                                    float robot_height) const {
   if (ever_free_slice_pub_->get_subscription_count() == 0) {
     return;
   }
@@ -387,7 +393,8 @@ void ActiveWindowVisualizer::visualizeEverFreeSlice(const VolumetricMap& map, fl
   }
 }
 
-void ActiveWindowVisualizer::visualizeTrackingSlice(const VolumetricMap& map, float robot_height) const {
+void ActiveWindowVisualizer::visualizeTrackingSlice(const VolumetricMap& map,
+                                                    float robot_height) const {
   if (tracking_slice_pub_->get_subscription_count() == 0 || !map.getTrackingLayer()) {
     return;
   }
@@ -449,7 +456,8 @@ void ActiveWindowVisualizer::visualizeTrackingSlice(const VolumetricMap& map, fl
   }
 }
 
-void ActiveWindowVisualizer::visualizeTsdfSlice(const VolumetricMap& map, float robot_height) const {
+void ActiveWindowVisualizer::visualizeTsdfSlice(const VolumetricMap& map,
+                                                float robot_height) const {
   if (tsdf_slice_pub_->get_subscription_count() == 0) {
     return;
   }
@@ -597,20 +605,6 @@ void ActiveWindowVisualizer::visualizeSemanticImage(const FrameData& data) const
   }
   msg.header.stamp = rclcpp::Time(data.input.timestamp_ns);
   semantic_image_pub_->publish(*msg.toImageMsg());
-}
-
-void ActiveWindowVisualizer::deletePreviousMarkers(MarkerArray& msg, size_t num_previous_markers) {
-  // Unfortunately this is needed by some rviz versions as the DELETE_ALL action
-  // does not work.
-  if (msg.markers.size() >= num_previous_markers) {
-    return;
-  }
-  msg.markers.reserve(num_previous_markers);
-  for (size_t i = msg.markers.size(); i < num_previous_markers; ++i) {
-    auto& marker = msg.markers.emplace_back();
-    marker.action = Marker::DELETE;
-    marker.id = i;
-  }
 }
 
 }  // namespace khronos

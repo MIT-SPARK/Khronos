@@ -46,6 +46,7 @@
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
 #include <hydra/common/global_info.h>
+#include <hydra_visualizer/utils/marker_tracker.h>
 #include <ianvs/node_handle.h>
 #include <khronos/active_window/active_window.h>
 #include <rclcpp/time.hpp>
@@ -151,10 +152,6 @@ class ActiveWindowVisualizer : public ActiveWindow::Sink {
 
   // Time stamp caching for synchronization of multiple visualizations.
   rclcpp::Time getStamp() const { return stamp_is_set_ ? stamp_ : nh_.now(); }
-
-  // Visualization Utility.
-  static void deletePreviousMarkers(visualization_msgs::msg::MarkerArray& msg,
-                                    size_t num_previous_markers);
 };
 
 void declare_config(ActiveWindowVisualizer::Config& config);
