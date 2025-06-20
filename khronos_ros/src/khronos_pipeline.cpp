@@ -53,6 +53,7 @@
 
 #include "khronos_ros/utils/ros_conversions.h"
 #include "khronos_ros/utils/ros_namespaces.h"
+#include "khronos_ros/visualization/active_window_visualizer.h"
 
 namespace khronos {
 
@@ -71,7 +72,6 @@ void declare_config(KhronosPipeline::Config& config) {
   base<hydra::HydraRosPipeline::Config>(config);
   field(config.verbosity, "verbosity");
   field(config.finish_processing_on_shutdown, "finish_processing_on_shutdown");
-  field(config.save_active_window_objects, "save_active_window_objects");
 }
 
 KhronosPipeline::KhronosPipeline(ianvs::NodeHandle nh)
@@ -79,50 +79,11 @@ KhronosPipeline::KhronosPipeline(ianvs::NodeHandle nh)
       config(config::checkValid(config::fromContext<Config>())),
       nh_(nh),
       changes_pub_(nh_.create_publisher<Changes>("changes", rclcpp::QoS(10).transient_local())),
-      finish_mapping_srv_(nh_.create_service<Empty>("finish_mapping",
-                                                    &KhronosPipeline::finishMappingCallback,
-                                                    this)),
-      map_visualizer_(nh / RosNs::VISUALIZATION) {
-  setupRos();
-}
-
-void KhronosPipeline::start() {
-  HydraRosPipeline::start();
-  CLOG(1) << "[Khronos Pipeline] Started.";
-}
+{}
 
 void KhronosPipeline::stop() {
-  CLOG(1) << "[Khronos Pipeline] Stopping...";
-  hydra::GlobalInfo::instance().setForceShutdown(!config.finish_processing_on_shutdown);
-
-  input_module_->stop();
-  if (config.finish_processing_on_shutdown) {
-    CLOG(1) << "[Khronos Pipeline] Finishing processing " << active_window_->queue()->size()
-            << " input frames...";
-  }
-
-  active_window_->stop();
-  if (config.finish_processing_on_shutdown) {
-    active_window_->finishMapping();
-    CLOG(1) << "[Khronos Pipeline] Finishing processing " << frontend_->queue()->size()
-            << " frontend packets ...";
-  }
-  frontend_->stop();
-
-  if (config.finish_processing_on_shutdown) {
-    CLOG(1) << "[Khronos Pipeline] Finishing processing "
-            << hydra::PipelineQueues::instance().backend_queue.size() << " backend packets ...";
-  }
-  backend_->stop();
-  if (config.finish_processing_on_shutdown) {
-    CLOG(1) << "[Khronos Pipeline] Running final optimization.";
-    backend_->finishProcessing();
-  }
-
-  if (lcd_) {
-    lcd_->stop();
-  }
-  CLOG(1) << "[Khronos Pipeline] Stopped.";
+  active_window_->finishMapping();
+  backend_->finishProcessing();
 }
 
 bool KhronosPipeline::save(const hydra::DataDirectory& log_setup, bool save_full_state) {
@@ -169,19 +130,17 @@ void KhronosPipeline::finishMapping() {
 }
 
 void KhronosPipeline::setupRos() {
-  // Add callbacks to all modules for visualization and evaluation.
+  // map_visualizer_(nh / RosNs::VISUALIZATION)
+  // map_visualizer_.visualizeAll(map, frame_data, tracks);
+  backend_->addSink(Backend::Sink::fromMethod(&KhronosPipeline::sendChanges, this));
+
   active_window_->addSink(ActiveWindow::Sink::fromCallback(
       [this](const auto& frame_data, const auto& map, const auto& tracks) {
-        map_visualizer_.visualizeAll(map, frame_data, tracks);
         if (evaluate_aw_) {
           aw_evaluation_callback_(map, frame_data, tracks);
         }
       }));
-  frontend_->addSink(
-      std::make_shared<hydra::RosFrontendPublisher>(ros::NodeHandle(nh_, RosNs::FRONTEND)));
-  backend_->addSink(
-      std::make_shared<hydra::RosBackendPublisher>(ros::NodeHandle(nh_, RosNs::BACKEND)));
-  backend_->addSink(Backend::Sink::fromMethod(&KhronosPipeline::sendChanges, this));
+
   backend_->addSink(
       Backend::Sink::fromCallback([this](uint64_t timestamp_ns, const auto& dsg, const auto& dfg) {
         if (evaluate_backend_) {
@@ -207,11 +166,6 @@ void KhronosPipeline::sendChanges(uint64_t timestamp_ns,
   khronos_msgs::msg::Changes msg = toMsg(backend_->getChanges());
   msg.header.stamp = rclcpp::Time(timestamp_ns);
   changes_pub_->publish(msg);
-}
-
-void KhronosPipeline::finishMappingCallback(const Empty::Request::SharedPtr&,
-                                            Empty::Response::SharedPtr) {
-  finishMapping();
 }
 
 void KhronosPipeline::setActiveWindowEvaluationCallback(

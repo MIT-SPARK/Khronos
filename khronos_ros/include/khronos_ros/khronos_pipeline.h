@@ -37,41 +37,21 @@
 
 #pragma once
 
-#include <atomic>
 #include <memory>
 #include <string>
-#include <thread>
-#include <unordered_map>
 
-#include <config_utilities/config_utilities.h>
 #include <hydra_ros/hydra_ros_pipeline.h>
 #include <ianvs/node_handle.h>
 #include <khronos/active_window/active_window.h>
 #include <khronos/backend/backend.h>
 #include <khronos/common/common_types.h>
 #include <khronos_msgs/msg/changes.hpp>
-#include <std_srvs/srv/empty.hpp>
-
-#include "khronos/spatio_temporal_map/spatio_temporal_map.h"
-#include "khronos_ros/visualization/active_window_visualizer.h"
 
 namespace khronos {
 
-using hydra::BackendInput;
-using hydra::BowSubscriber;
-using hydra::GraphBuilder;
-using hydra::RosInputModule;
-using hydra::SharedDsgInfo;
-using hydra::SharedModuleState;
-
 class KhronosPipeline : public hydra::HydraRosPipeline {
  public:
-  // Config.
   struct Config : public hydra::HydraRosPipeline::Config {
-    //! If true process all remaining data in the input queue when shutting down.
-    bool finish_processing_on_shutdown = false;
-    //! If true extract objects from the active window before saving the backend dsg.
-    bool save_active_window_objects = false;
     //! Overrides defaults in Hydra for modules and other settings
     Config();
   } const config;
@@ -82,13 +62,10 @@ class KhronosPipeline : public hydra::HydraRosPipeline {
   using BackendEvaluationCallback = std::function<
       void(TimeStamp, const DynamicSceneGraph&, const kimera_pgmo::DeformationGraph&)>;
 
-  // Construction.
   explicit KhronosPipeline(ianvs::NodeHandle nh);
   ~KhronosPipeline() = default;
 
-  // Interaction with the pipeline.
-  void start() override;
-  void stop() override;
+  void init() override;
 
   /**
    * @brief Saves the current state of the pipeline to the given path.
@@ -98,12 +75,6 @@ class KhronosPipeline : public hydra::HydraRosPipeline {
    * @returns True if the save was successful, false otherwise.
    */
   bool save(const hydra::DataDirectory& log_setup, bool save_full_state = true);
-
-  /**
-   * @brief Extracts all data currently in the active window and adds it to the
-   * DSG.
-   */
-  void finishMapping();
 
   /**
    * @brief Optionally set an evaluation callback that is called after every
@@ -125,11 +96,6 @@ class KhronosPipeline : public hydra::HydraRosPipeline {
   std::string getConfigInfo() const;
 
  private:
-  void finishMappingCallback(const std_srvs::srv::Empty::Request::SharedPtr& req,
-                             std_srvs::srv::Empty::Response::SharedPtr res);
-
-  void setupRos();
-
   void sendChanges(uint64_t timestamp_ns,
                    const DynamicSceneGraph&,
                    const kimera_pgmo::DeformationGraph&) const;
@@ -137,10 +103,6 @@ class KhronosPipeline : public hydra::HydraRosPipeline {
   // ROS.
   ianvs::NodeHandle nh_;
   rclcpp::Publisher<khronos_msgs::msg::Changes>::SharedPtr changes_pub_;
-  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr finish_mapping_srv_;
-
-  // Visualization.
-  ActiveWindowVisualizer map_visualizer_;
 
   // Callbacks.
   bool evaluate_aw_ = false;

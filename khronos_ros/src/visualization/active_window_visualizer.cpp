@@ -93,9 +93,9 @@ ActiveWindowVisualizer::ActiveWindowVisualizer(const Config& config, ianvs::Node
   track_image_pub_ = nh_.create_publisher<ImageMsg>("tracking/image", config.queue_size);
 }
 
-void ActiveWindowVisualizer::visualizeAll(const VolumetricMap& map,
-                                          const FrameData& data,
-                                          const Tracks& tracks) {
+void ActiveWindowVisualizer::call(const VolumetricMap& map,
+                                  const FrameData& data,
+                                  const Tracks& tracks) const {
   stamp_ = rclcpp::Time(data.input.timestamp_ns);
   Timer timer("visualize/active_window/all", data.input.timestamp_ns);
   stamp_is_set_ = true;

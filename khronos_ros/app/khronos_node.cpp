@@ -36,7 +36,6 @@
  * -------------------------------------------------------------------------- */
 
 #include <glog/logging.h>
-#include <ros/ros.h>
 
 #include "khronos_ros/experiments/experiment_manager.h"
 #include "khronos_ros/khronos_pipeline.h"

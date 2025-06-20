@@ -57,7 +57,7 @@
 
 namespace khronos {
 
-class ActiveWindowVisualizer {
+class ActiveWindowVisualizer : public ActiveWindow::Sink {
  public:
   // Config.
   struct Config {
@@ -106,7 +106,7 @@ class ActiveWindowVisualizer {
    * @param tracks The current tracks in the active window to visualize. If a bounding box for a
    * track is newly computed it will be stored in the track.
    */
-  void visualizeAll(const VolumetricMap& map, const FrameData& data, const Tracks& tracks);
+  void call(const VolumetricMap& map, const FrameData& data, const Tracks& tracks) const override;
 
   // Aggregated visualizations.
   void visualizeAllMaps(const VolumetricMap& map);
