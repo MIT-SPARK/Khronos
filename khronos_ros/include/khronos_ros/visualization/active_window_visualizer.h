@@ -144,10 +144,10 @@ class ActiveWindowVisualizer : public ActiveWindow::Sink {
   // Variables.
   mutable rclcpp::Time stamp_;
   mutable bool stamp_is_set_ = false;
-  size_t num_previous_object_bbs_ = 0u;
-  size_t num_previous_bbox_tracks_ = 0u;
-  size_t num_previous_voxel_tracks_ = 0u;
-  size_t num_previous_pixel_tracks_ = 0u;
+  mutable hydra::MarkerTracker object_bbs_tracker_;
+  mutable hydra::MarkerTracker bbox_tracks_tracker_;
+  mutable hydra::MarkerTracker voxel_tracks_tracker_;
+  mutable hydra::MarkerTracker pixel_tracks_tracker_;
 
   // Time stamp caching for synchronization of multiple visualizations.
   rclcpp::Time getStamp() const { return stamp_is_set_ ? stamp_ : nh_.now(); }
