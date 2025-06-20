@@ -57,8 +57,7 @@
 
 namespace khronos {
 
-using khronos_msgs::msg::Changes;
-using std_srvs::srv::Empty;
+using ChangeMsg = khronos_msgs::msg::Changes;
 
 KhronosPipeline::Config::Config() : hydra::HydraRosPipeline::Config() {
   active_window = ActiveWindow::Config{};
@@ -70,20 +69,48 @@ void declare_config(KhronosPipeline::Config& config) {
   using namespace config;
   name("KhronosPipeline::Config");
   base<hydra::HydraRosPipeline::Config>(config);
-  field(config.verbosity, "verbosity");
-  field(config.finish_processing_on_shutdown, "finish_processing_on_shutdown");
 }
 
 KhronosPipeline::KhronosPipeline(ianvs::NodeHandle nh)
     : hydra::HydraRosPipeline(0, 5),
       config(config::checkValid(config::fromContext<Config>())),
       nh_(nh),
-      changes_pub_(nh_.create_publisher<Changes>("changes", rclcpp::QoS(10).transient_local())),
-{}
+      changes_pub_(nh_.create_publisher<ChangeMsg>("changes", rclcpp::QoS(10).transient_local())),
+      khronos_backend_(nullptr),
+      khronos_active_window_(nullptr) {}
 
-void KhronosPipeline::stop() {
-  active_window_->finishMapping();
-  backend_->finishProcessing();
+void KhronosPipeline::init() {
+  HydraRosPipeline::init();
+  khronos_active_window_ = dynamic_cast<ActiveWindow*>(active_window_.get());
+  khronos_backend_ = dynamic_cast<Backend*>(backend_.get());
+
+  backend_->addSink(
+      Backend::Sink::fromCallback([this](uint64_t timestamp_ns, const auto& dsg, const auto& dfg) {
+        backend_evaluation_callback_(timestamp_ns, dsg, dfg);
+      }));
+
+  if (khronos_active_window_) {
+    khronos_active_window_->addSink(std::make_shared<ActiveWindowVisualizer>(
+        config::fromContext<ActiveWindowVisualizer::Config>(RosNs::VISUALIZATION),
+        nh_ / RosNs::VISUALIZATION));
+    khronos_active_window_->addSink(ActiveWindow::Sink::fromCallback(
+        [this](const auto& frame_data, const auto& map, const auto& tracks) {
+          aw_evaluation_callback_(map, frame_data, tracks);
+        }));
+  } else {
+    LOG(ERROR) << "Active window is not khronos::ActiveWindow!";
+  }
+
+  if (khronos_backend_) {
+    khronos_backend_->addChangeSink(
+        Backend::ChangeSink::fromCallback([this](TimeStamp stamp, const Changes& changes) {
+          auto msg = toMsg(changes);
+          msg.header.stamp = rclcpp::Time(stamp);
+          changes_pub_->publish(msg);
+        }));
+  } else {
+    LOG(ERROR) << "Backend is not khronos::Backend!";
+  }
 }
 
 bool KhronosPipeline::save(const hydra::DataDirectory& log_setup, bool save_full_state) {
@@ -94,59 +121,38 @@ bool KhronosPipeline::save(const hydra::DataDirectory& log_setup, bool save_full
 
   // Save state of all modules.
   if (save_full_state) {
-    HydraRosPipeline::save();
+    HydraRosPipeline::save(log_setup);
   }
 
   // Always save evaluation relevant data.
-  backend_->saveProposedMerges(log_setup);
-  DynamicSceneGraph::Ptr dsg = backend_->getDsg().clone();
+  if (khronos_backend_) {
+    khronos_backend_->saveProposedMerges(log_setup);
+  }
+
+  // TODO(nathan) not threadsafe!
+  auto dsg = backend_dsg_->graph->clone();
   const auto backend_path = log_setup.path("backend");
 
-  // Add all objects that are currently in the active window.
-  auto aw_objects = active_window_->extractObjects();
-  size_t current_object_id = 0;
-  for (const auto& [id, attrs] : dsg->getLayer(DsgLayers::OBJECTS).nodes()) {
-    current_object_id = std::max(current_object_id, NodeSymbol(id).categoryId());
+  if (khronos_active_window_) {
+    // Add all objects that are currently in the active window.
+    auto aw_objects = khronos_active_window_->extractObjects();
+    size_t current_object_id = 0;
+    for (const auto& [id, attrs] : dsg->getLayer(DsgLayers::OBJECTS).nodes()) {
+      current_object_id = std::max(current_object_id, NodeSymbol(id).categoryId());
+    }
+
+    for (auto& object : aw_objects) {
+      NodeSymbol object_symbol('O', ++current_object_id);
+      dsg->emplaceNode(DsgLayers::OBJECTS,
+                       object_symbol,
+                       std::make_unique<KhronosObjectAttributes>(std::move(*object)));
+    }
   }
 
-  for (auto& object : aw_objects) {
-    NodeSymbol object_symbol('O', ++current_object_id);
-    dsg->emplaceNode(DsgLayers::OBJECTS,
-                     object_symbol,
-                     std::make_unique<KhronosObjectAttributes>(std::move(*object)));
-  }
   dsg->save(backend_path / "dsg_with_mesh", true);
-
   CLOG(2) << "[Khronos Pipeline] Saved " << (save_full_state ? "full state" : "evaluation DSG")
           << " to '" << log_setup.path() << "'.";
   return true;
-}
-
-void KhronosPipeline::finishMapping() {
-  // Call to stop() to prevent new frames from being added.
-  stop();
-  active_window_->finishMapping();
-  map_visualizer_.visualizeAllMaps(active_window_->getMap());
-}
-
-void KhronosPipeline::setupRos() {
-  // map_visualizer_(nh / RosNs::VISUALIZATION)
-  // map_visualizer_.visualizeAll(map, frame_data, tracks);
-  backend_->addSink(Backend::Sink::fromMethod(&KhronosPipeline::sendChanges, this));
-
-  active_window_->addSink(ActiveWindow::Sink::fromCallback(
-      [this](const auto& frame_data, const auto& map, const auto& tracks) {
-        if (evaluate_aw_) {
-          aw_evaluation_callback_(map, frame_data, tracks);
-        }
-      }));
-
-  backend_->addSink(
-      Backend::Sink::fromCallback([this](uint64_t timestamp_ns, const auto& dsg, const auto& dfg) {
-        if (evaluate_backend_) {
-          backend_evaluation_callback_(timestamp_ns, dsg, dfg);
-        }
-      }));
 }
 
 std::string KhronosPipeline::getConfigInfo() const {
@@ -160,24 +166,12 @@ std::string KhronosPipeline::getConfigInfo() const {
   return ss.str();
 }
 
-void KhronosPipeline::sendChanges(uint64_t timestamp_ns,
-                                  const DynamicSceneGraph&,
-                                  const kimera_pgmo::DeformationGraph&) const {
-  khronos_msgs::msg::Changes msg = toMsg(backend_->getChanges());
-  msg.header.stamp = rclcpp::Time(timestamp_ns);
-  changes_pub_->publish(msg);
+void KhronosPipeline::setActiveWindowEvaluationCallback(const ActiveWindowEvaluationCallback& cb) {
+  aw_evaluation_callback_ = cb;
 }
 
-void KhronosPipeline::setActiveWindowEvaluationCallback(
-    const ActiveWindowEvaluationCallback& callback_function) {
-  aw_evaluation_callback_ = callback_function;
-  evaluate_aw_ = true;
-}
-
-void KhronosPipeline::setBackendEvaluationCallback(
-    const BackendEvaluationCallback& callback_function) {
-  backend_evaluation_callback_ = callback_function;
-  evaluate_backend_ = true;
+void KhronosPipeline::setBackendEvaluationCallback(const BackendEvaluationCallback& callback) {
+  backend_evaluation_callback_ = callback;
 }
 
 }  // namespace khronos

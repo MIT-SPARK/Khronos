@@ -47,9 +47,7 @@
 #include <geometry_msgs/msg/vector3.hpp>
 #include <hydra/common/global_info.h>
 #include <ianvs/node_handle.h>
-#include <khronos/active_window/data/frame_data.h>
-#include <khronos/active_window/data/reconstruction_types.h>
-#include <khronos/active_window/data/track.h>
+#include <khronos/active_window/active_window.h>
 #include <rclcpp/time.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <std_msgs/msg/color_rgba.hpp>
@@ -106,25 +104,25 @@ class ActiveWindowVisualizer : public ActiveWindow::Sink {
    * @param tracks The current tracks in the active window to visualize. If a bounding box for a
    * track is newly computed it will be stored in the track.
    */
-  void call(const VolumetricMap& map, const FrameData& data, const Tracks& tracks) const override;
+  void call(const FrameData& data, const VolumetricMap& map, const Tracks& tracks) const override;
 
   // Aggregated visualizations.
-  void visualizeAllMaps(const VolumetricMap& map);
-  void visualizeAllFrameData(const FrameData& data);
-  void visualizeAllTracks(const Tracks& tracks, const FrameData& data);
+  void visualizeAllMaps(const VolumetricMap& map, float robot_height = 0.0f) const;
+  void visualizeAllFrameData(const FrameData& data) const;
+  void visualizeAllTracks(const Tracks& tracks, const FrameData& data) const;
 
   // Individual visualizations.
-  void visualizeEverFreeSlice(const VolumetricMap& map) const;
-  void visualizeTsdfSlice(const VolumetricMap& map) const;
-  void visualizeTrackingSlice(const VolumetricMap& map) const;
+  void visualizeEverFreeSlice(const VolumetricMap& map, float robot_height = 0.0f) const;
+  void visualizeTsdfSlice(const VolumetricMap& map, float robot_height = 0.0f) const;
+  void visualizeTrackingSlice(const VolumetricMap& map, float robot_height = 0.0f) const;
   void visualizeDynamicPoints(const FrameData& data) const;
   void visualizeDynamicImage(const FrameData& data) const;
   void visualizeObjectImage(const FrameData& data) const;
   void visualizeSemanticImage(const FrameData& data) const;
-  void visualizeObjectBoundingBoxes(const FrameData& data);
-  void visualizeTrackBoundingBoxes(const Tracks& tracks);
-  void visualizeTrackVoxels(const Tracks& tracks);
-  void visualizeTrackPixels(const Tracks& tracks);
+  void visualizeObjectBoundingBoxes(const FrameData& data) const;
+  void visualizeTrackBoundingBoxes(const Tracks& tracks) const;
+  void visualizeTrackVoxels(const Tracks& tracks) const;
+  void visualizeTrackPixels(const Tracks& tracks) const;
   void visualizeTrackingImage(const Tracks& tracks, const FrameData& data) const;
 
  private:
@@ -144,9 +142,8 @@ class ActiveWindowVisualizer : public ActiveWindow::Sink {
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr track_image_pub_;
 
   // Variables.
-  rclcpp::Time stamp_;
-  bool stamp_is_set_ = false;
-  Transform robot_pose_;
+  mutable rclcpp::Time stamp_;
+  mutable bool stamp_is_set_ = false;
   size_t num_previous_object_bbs_ = 0u;
   size_t num_previous_bbox_tracks_ = 0u;
   size_t num_previous_voxel_tracks_ = 0u;

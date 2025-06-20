@@ -90,6 +90,7 @@ class Backend : public hydra::BackendModule {
   // Types.
   using Ptr = std::shared_ptr<Backend>;
   using ConstPtr = std::shared_ptr<const Backend>;
+  using ChangeSink = hydra::OutputSink<TimeStamp, const Changes&>;
 
   // Construction.
   Backend(const Config& config,
@@ -111,6 +112,8 @@ class Backend : public hydra::BackendModule {
    * @brief Run a final optimization after all input data has been received.
    */
   void finishProcessing();
+
+  void addChangeSink(const ChangeSink::Ptr& sink);
 
   // Accessors.
   const RPGOMerges& getProposedMerges() const { return proposed_merges_; }
@@ -153,6 +156,8 @@ class Backend : public hydra::BackendModule {
   uint64_t last_merge_proposal_t_ = 0;
   uint64_t last_timestamp_received_ = 0;
   int num_frames_since_last_change_detection_ = 0;
+
+  ChangeSink::List change_sinks_;
 };
 
 void declare_config(Backend::Config& config);

@@ -44,6 +44,7 @@
 
 #include <khronos/active_window/data/frame_data.h>
 #include <khronos/active_window/data/reconstruction_types.h>
+#include <std_srvs/srv/empty.hpp>
 
 #include "khronos_ros/experiments/experiment_logger.h"
 #include "khronos_ros/khronos_pipeline.h"

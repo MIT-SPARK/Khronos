@@ -206,6 +206,8 @@ void Backend::runChangeDetectionThread(DynamicSceneGraph::Ptr dsg,
       change_detector_->detectChanges(rpgo_merges, last_timestamp_received_, true);
   reconciler_->reconcile(*dsg, changes, stamp);
   map_.update(dsg, stamp);
+
+  ChangeSink::callAll(change_sinks_, last_timestamp_received_, changes);
   CLOG(3) << "Change detection completed: " << map_.numTimeSteps() << " time steps in 4D map.";
 }
 
@@ -216,6 +218,12 @@ void Backend::finishProcessing() {
   optimize(last_timestamp_received_, true);
   if (config.run_change_detection_every_n_frames >= 0) {
     runChangeDetection();
+  }
+}
+
+void Backend::addChangeSink(const ChangeSink::Ptr& sink) {
+  if (sink) {
+    change_sinks_.push_back(sink);
   }
 }
 

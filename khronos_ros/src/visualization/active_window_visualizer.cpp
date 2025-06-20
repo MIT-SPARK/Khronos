@@ -93,22 +93,21 @@ ActiveWindowVisualizer::ActiveWindowVisualizer(const Config& config, ianvs::Node
   track_image_pub_ = nh_.create_publisher<ImageMsg>("tracking/image", config.queue_size);
 }
 
-void ActiveWindowVisualizer::call(const VolumetricMap& map,
-                                  const FrameData& data,
+void ActiveWindowVisualizer::call(const FrameData& data,
+                                  const VolumetricMap& map,
                                   const Tracks& tracks) const {
   stamp_ = rclcpp::Time(data.input.timestamp_ns);
   Timer timer("visualize/active_window/all", data.input.timestamp_ns);
   stamp_is_set_ = true;
-  robot_pose_ = data.input.world_T_body;
 
   // Visualization.
-  visualizeAllMaps(map);
+  visualizeAllMaps(map, data.input.world_T_body.translation().z());
   visualizeAllFrameData(data);
   visualizeAllTracks(tracks, data);
   stamp_is_set_ = false;
 }
 
-void ActiveWindowVisualizer::visualizeAllMaps(const VolumetricMap& map) {
+void ActiveWindowVisualizer::visualizeAllMaps(const VolumetricMap& map, float robot_height) const {
   const bool use_stamp = !stamp_is_set_;
   if (use_stamp) {
     stamp_ = nh_.now();
@@ -116,14 +115,15 @@ void ActiveWindowVisualizer::visualizeAllMaps(const VolumetricMap& map) {
   }
 
   Timer timer("visualize/active_window/map", stamp_.nanoseconds());
-  visualizeEverFreeSlice(map);
-  visualizeTsdfSlice(map);
-  visualizeTrackingSlice(map);
+  visualizeEverFreeSlice(map, robot_height);
+  visualizeTsdfSlice(map, robot_height);
+  visualizeTrackingSlice(map, robot_height);
   if (use_stamp) {
     stamp_is_set_ = false;
   }
 }
-void ActiveWindowVisualizer::visualizeAllFrameData(const FrameData& data) {
+
+void ActiveWindowVisualizer::visualizeAllFrameData(const FrameData& data) const {
   const bool use_stamp = !stamp_is_set_;
   if (use_stamp) {
     stamp_ = rclcpp::Time(data.input.timestamp_ns);
@@ -141,7 +141,7 @@ void ActiveWindowVisualizer::visualizeAllFrameData(const FrameData& data) {
   }
 }
 
-void ActiveWindowVisualizer::visualizeAllTracks(const Tracks& tracks, const FrameData& data) {
+void ActiveWindowVisualizer::visualizeAllTracks(const Tracks& tracks, const FrameData& data) const {
   const bool use_stamp = !stamp_is_set_;
   if (use_stamp) {
     stamp_ = nh_.now();
@@ -158,7 +158,7 @@ void ActiveWindowVisualizer::visualizeAllTracks(const Tracks& tracks, const Fram
   }
 }
 
-void ActiveWindowVisualizer::visualizeTrackBoundingBoxes(const Tracks& tracks) {
+void ActiveWindowVisualizer::visualizeTrackBoundingBoxes(const Tracks& tracks) const {
   if (track_bbox_pub_->get_subscription_count() == 0u || tracks.empty()) {
     return;
   }
@@ -198,7 +198,7 @@ void ActiveWindowVisualizer::visualizeTrackBoundingBoxes(const Tracks& tracks) {
   track_bbox_pub_->publish(msg);
 }
 
-void ActiveWindowVisualizer::visualizeTrackVoxels(const Tracks& tracks) {
+void ActiveWindowVisualizer::visualizeTrackVoxels(const Tracks& tracks) const {
   if (track_voxels_pub_->get_subscription_count() == 0u || tracks.empty()) {
     return;
   }
@@ -234,7 +234,7 @@ void ActiveWindowVisualizer::visualizeTrackVoxels(const Tracks& tracks) {
   track_voxels_pub_->publish(msg);
 }
 
-void ActiveWindowVisualizer::visualizeTrackPixels(const Tracks& tracks) {
+void ActiveWindowVisualizer::visualizeTrackPixels(const Tracks& tracks) const {
   if (track_pixels_pub_->get_subscription_count() == 0u || tracks.empty()) {
     return;
   }
@@ -298,7 +298,7 @@ void ActiveWindowVisualizer::visualizeTrackingImage(const Tracks& tracks,
   track_image_pub_->publish(*msg.toImageMsg());
 }
 
-void ActiveWindowVisualizer::visualizeObjectBoundingBoxes(const FrameData& data) {
+void ActiveWindowVisualizer::visualizeObjectBoundingBoxes(const FrameData& data) const {
   if (object_bb_pub_->get_subscription_count() == 0u) {
     return;
   }
@@ -327,7 +327,7 @@ void ActiveWindowVisualizer::visualizeObjectBoundingBoxes(const FrameData& data)
   }
 }
 
-void ActiveWindowVisualizer::visualizeEverFreeSlice(const VolumetricMap& map) const {
+void ActiveWindowVisualizer::visualizeEverFreeSlice(const VolumetricMap& map, float robot_height) const {
   if (ever_free_slice_pub_->get_subscription_count() == 0) {
     return;
   }
@@ -347,7 +347,7 @@ void ActiveWindowVisualizer::visualizeEverFreeSlice(const VolumetricMap& map) co
   // Setup the slice.
   float slice_height = config.slice_height;
   if (config.slice_height_is_relative) {
-    slice_height += robot_pose_.translation().z();
+    slice_height += robot_height;
   }
   const Point slice_coords(0, 0, slice_height);
   const VoxelKey slice_key = map.getTrackingLayer()->getVoxelKey(slice_coords);
@@ -387,7 +387,7 @@ void ActiveWindowVisualizer::visualizeEverFreeSlice(const VolumetricMap& map) co
   }
 }
 
-void ActiveWindowVisualizer::visualizeTrackingSlice(const VolumetricMap& map) const {
+void ActiveWindowVisualizer::visualizeTrackingSlice(const VolumetricMap& map, float robot_height) const {
   if (tracking_slice_pub_->get_subscription_count() == 0 || !map.getTrackingLayer()) {
     return;
   }
@@ -407,7 +407,7 @@ void ActiveWindowVisualizer::visualizeTrackingSlice(const VolumetricMap& map) co
   // Setup the slice.
   float slice_height = config.slice_height;
   if (config.slice_height_is_relative) {
-    slice_height += robot_pose_.translation().z();
+    slice_height += robot_height;
   }
   const Point slice_coords(0, 0, slice_height);
   const VoxelKey slice_key = layer.getVoxelKey(slice_coords);
@@ -449,7 +449,7 @@ void ActiveWindowVisualizer::visualizeTrackingSlice(const VolumetricMap& map) co
   }
 }
 
-void ActiveWindowVisualizer::visualizeTsdfSlice(const VolumetricMap& map) const {
+void ActiveWindowVisualizer::visualizeTsdfSlice(const VolumetricMap& map, float robot_height) const {
   if (tsdf_slice_pub_->get_subscription_count() == 0) {
     return;
   }
@@ -469,7 +469,7 @@ void ActiveWindowVisualizer::visualizeTsdfSlice(const VolumetricMap& map) const 
   // Setup the slice.
   float slice_height = config.slice_height;
   if (config.slice_height_is_relative) {
-    slice_height += robot_pose_.translation().z();
+    slice_height += robot_height;
   }
   const Point slice_coords(0, 0, slice_height);
   const VoxelKey slice_key = layer.getVoxelKey(slice_coords);

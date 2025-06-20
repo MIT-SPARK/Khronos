@@ -96,17 +96,14 @@ class KhronosPipeline : public hydra::HydraRosPipeline {
   std::string getConfigInfo() const;
 
  private:
-  void sendChanges(uint64_t timestamp_ns,
-                   const DynamicSceneGraph&,
-                   const kimera_pgmo::DeformationGraph&) const;
-
   // ROS.
   ianvs::NodeHandle nh_;
   rclcpp::Publisher<khronos_msgs::msg::Changes>::SharedPtr changes_pub_;
 
+  Backend* khronos_backend_;
+  ActiveWindow* khronos_active_window_;
+
   // Callbacks.
-  bool evaluate_aw_ = false;
-  bool evaluate_backend_ = false;
   ActiveWindowEvaluationCallback aw_evaluation_callback_;
   BackendEvaluationCallback backend_evaluation_callback_;
 };
