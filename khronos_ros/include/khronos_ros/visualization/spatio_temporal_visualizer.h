@@ -60,11 +60,6 @@
 namespace khronos {
 
 struct DynamicVisualizerConfig {
-  enum class BackgroundColorMode : int {
-    Color = 0,
-    FirstSeen = 1,
-    LastSeen = 2
-  } background_color = BackgroundColorMode::Color;
   enum class ObjectColorMode : int {
     Semantic = 0,
     Instance = 1,
@@ -86,7 +81,6 @@ void declare_config(DynamicVisualizerConfig& config);
  */
 class SpatioTemporalVisualizer {
  public:
-  using Coloring = std::optional<KhronosMeshVisualizer::Coloring>;
   using DynamicConfig = hydra::visualizer::ConfigWrapper<DynamicVisualizerConfig>;
   using MarkerArray = visualization_msgs::msg::MarkerArray;
   using Marker = visualization_msgs::msg::Marker;
@@ -116,7 +110,9 @@ class SpatioTemporalVisualizer {
     DynamicVisualizerConfig dynamic_config;
 
     // Config of the mesh visualizer.
-    KhronosMeshVisualizer::Config mesh_visualizer;
+    hydra::MeshPlugin::Config mesh{
+        true,
+        config::VirtualConfig<hydra::MeshColoring>(hydra::SemanticMeshColoring::Config())};
 
     //! Config for underlying scene graph visualizer
     hydra::SceneGraphRenderer::Config scene_graph;
@@ -184,7 +180,7 @@ class SpatioTemporalVisualizer {
   DynamicSceneGraph::Ptr current_dsg_;
 
   // Members.
-  KhronosMeshVisualizer mesh_visualizer_;
+  hydra::MeshPlugin mesh_visualizer_;
   hydra::SceneGraphRenderer dsg_renderer_;
 
   // Loaded data.
@@ -222,7 +218,6 @@ class SpatioTemporalVisualizer {
   void resetAgent();
 
   // Coloring functions.
-  hydra::MeshColoring::Ptr getBackgroundMeshColoring() const;
   void recolorObjectDsgBoundingBoxes();
 
   void visualizeStaticObject(const std_msgs::msg::Header& header,

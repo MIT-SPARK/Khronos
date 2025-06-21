@@ -56,7 +56,6 @@ namespace colormaps = spark_dsg::colormaps;
 void declare_config(DynamicVisualizerConfig& config) {
   using namespace config;
   name("DynamicConfig");
-  enum_field(config.background_color, "background_color", {"Color", "FirstSeen", "LastSeen"});
   enum_field(config.object_bbox_color, "object_bbox_color", {"Semantic", "instance", "Presence"});
   enum_field(config.dynamic_object_color, "dynamic_object_color", {"ID", "Red", "Mixed"});
   field(config.play_rate, "play_rate");
@@ -71,6 +70,7 @@ void declare_config(SpatioTemporalVisualizer::Config& config) {
   field(config.global_frame_name, "global_frame_name");
   field(config.robot_prefix, "robot_prefix");
   field(config.dynamic_config, "dynamic_config");
+  field(config.mesh, "mesh");
   field(config.scene_graph, "scene_graph");
   field(config.initial_robot_time, "initial_robot_time");
   field(config.initial_query_time, "initial_query_time");
@@ -91,7 +91,7 @@ SpatioTemporalVisualizer::SpatioTemporalVisualizer(const Config& config, ianvs::
       layer_ids_({2, 3, 4, 5}),
       min_time_delta_(config.max_frame_rate > 0 ? 1.0 / config.max_frame_rate : 0),
       previous_wall_time_(std::chrono::steady_clock::now()),
-      mesh_visualizer_(config.mesh_visualizer, nh),
+      mesh_visualizer_(config.mesh, nh, "mesh"),
       dsg_renderer_(config.scene_graph, nh),
       map_(SpatioTemporalMap::Config()) {
   // Load all data and setup.
@@ -133,12 +133,9 @@ void SpatioTemporalVisualizer::draw() {
   dsg_renderer_.draw(header, *current_dsg_);
 
   const auto mesh = current_dsg_->mesh();
-  auto mesh_coloring = getBackgroundMeshColoring();
-  if (mesh && mesh_coloring) {
-    mesh_coloring->setMesh(*mesh);
-  }
-  mesh_visualizer_.drawBackground(*current_dsg_, mesh_coloring);
-  mesh_visualizer_.drawObjects(*current_dsg_, {});
+  mesh_visualizer_.draw(header, *current_dsg_);
+  // TODO(nathan) figure out mesh objects
+  //mesh_visualizer_.drawObjects(*current_dsg_, {});
   needs_redraw_ = false;
 }
 
@@ -215,8 +212,8 @@ void SpatioTemporalVisualizer::reset() {
   header.frame_id = config.global_frame_name;
   dsg_renderer_.reset(header);
 
-  mesh_visualizer_.resetBackground();
-  mesh_visualizer_.resetObjects();
+  mesh_visualizer_.reset(header);
+  // TODO(nathan) reset mesh objects
   resetDynamicObjects();
   resetStaticObjects();
   resetAgent();
@@ -532,19 +529,6 @@ void SpatioTemporalVisualizer::resetStaticObjects() {
 }
 
 void SpatioTemporalVisualizer::onConfigUpdate() { needs_redraw_ = true; }
-
-hydra::MeshColoring::Ptr SpatioTemporalVisualizer::getBackgroundMeshColoring() const {
-  const auto& config = dynamic_config_.get();
-  switch (config.background_color) {
-    case DynamicVisualizerConfig::BackgroundColorMode::FirstSeen:
-      return std::make_shared<hydra::FirstSeenMeshColoring>();
-    case DynamicVisualizerConfig::BackgroundColorMode::LastSeen:
-      return std::make_shared<hydra::LastSeenMeshColoring>();
-    case DynamicVisualizerConfig::BackgroundColorMode::Color:
-    default:
-      return nullptr;
-  }
-}
 
 void SpatioTemporalVisualizer::recolorObjectDsgBoundingBoxes() {
   if (!current_dsg_->hasLayer(DsgLayers::OBJECTS)) {

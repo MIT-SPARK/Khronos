@@ -36,27 +36,53 @@
  * -------------------------------------------------------------------------- */
 
 #include <config_utilities/config_utilities.h>
+#include <config_utilities/parsing/context.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
+#include <rclcpp/rclcpp.hpp>
 
 #include "khronos_ros/visualization/spatio_temporal_visualizer.h"
 
+struct NodeSettings {
+  khronos::SpatioTemporalVisualizer::Config config;
+  int glog_verbosity = 1;
+  int glog_level = 0;
+};
+
+void declare_config(NodeSettings& config) {
+  using namespace config;
+  name("NodeSettings");
+  field(config.config, "config", false);
+  field(config.glog_verbosity, "glog_verbosity");
+  field(config.glog_level, "glog_level");
+}
+
 int main(int argc, char** argv) {
-  ros::init(argc, argv, "spatio_temporal_visualizer_node");
+  config::initContext(argc, argv, true);
+  rclcpp::init(argc, argv);
+
+  const auto node_settings = config::fromContext<NodeSettings>();
 
   // Setup logging
+  FLAGS_minloglevel = node_settings.glog_level;
+  FLAGS_v = node_settings.glog_verbosity;
   FLAGS_logtostderr = 1;
   FLAGS_colorlogtostderr = 1;
-  google::ParseCommandLineFlags(&argc, &argv, true);
+
   google::InitGoogleLogging(argv[0]);
   google::InstallFailureSignalHandler();
 
-  // Setup node.
-  ros::NodeHandle nh("~");
-  khronos::SpatioTemporalVisualizer node(nh);
+  auto node = std::make_shared<rclcpp::Node>("hydra_ros_node");
+  ianvs::NodeHandle nh(*node);
 
   // Spin.
-  node.spin();
+  rclcpp::executors::MultiThreadedExecutor executor;
+  {  // start visualizer scope
+    khronos::SpatioTemporalVisualizer viz(node_settings.config, nh);
+    executor.add_node(node);
+    executor.spin();
+  }
 
+  rclcpp::shutdown();
   return 0;
 }

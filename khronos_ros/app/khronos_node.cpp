@@ -35,6 +35,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
+#include <config_utilities/parsing/context.h>
 #include <glog/logging.h>
 
 #include "khronos_ros/experiments/experiment_manager.h"
@@ -42,8 +43,12 @@
 #include "khronos_ros/utils/ros_namespaces.h"
 
 int main(int argc, char** argv) {
+  config::initContext(argc, argv, true);
+  rclcpp::init(argc, argv);
+
   // Start Ros.
-  ros::init(argc, argv, "khronos_active_window");
+  auto node = std::make_shared<rclcpp::Node>("khronos_ros_node");
+  ianvs::NodeHandle nh(*node);
 
   // Setup logging.
   FLAGS_alsologtostderr = true;
@@ -59,15 +64,13 @@ int main(int argc, char** argv) {
   settings.subconfig_indent = 2;
 
   // Setup node.
-  ros::NodeHandle nh("~");
   auto khronos = std::make_shared<khronos::KhronosPipeline>(nh);
-
-  // Setup the experiment manager to do logging and evaluation.
-  auto experiment_nh = ros::NodeHandle(nh, khronos::RosNs::EXPERIMENT);
-  khronos::ExperimentManager manager(experiment_nh, khronos);
+  auto experiment_nh = nh / khronos::RosNs::EXPERIMENT;
+  const auto experiment_config =
+      config::fromContext<khronos::ExperimentManager::Config>(khronos::RosNs::EXPERIMENT);
+  khronos::ExperimentManager manager(experiment_config, experiment_nh, khronos);
 
   // Run the experiment.
   manager.run();
-
   return 0;
 }
