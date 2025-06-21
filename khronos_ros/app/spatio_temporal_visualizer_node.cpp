@@ -36,13 +36,9 @@
  * -------------------------------------------------------------------------- */
 
 #include <config_utilities/config_utilities.h>
-// #include <hydra_ros/visualizer/hydra_visualizer.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <ros/ros.h>
 
-// #include "khronos_ros/visualization/dsg_visualizer_plugins/khronos_mesh_plugin.h"
-// #include "khronos_ros/visualization/dsg_visualizer_plugins/khronos_object_plugin.h"
 #include "khronos_ros/visualization/spatio_temporal_visualizer.h"
 
 int main(int argc, char** argv) {

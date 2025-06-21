@@ -45,11 +45,11 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/robot_prefix_config.h>
+#include <hydra_visualizer/plugins/mesh_plugin.h>
 #include <hydra_visualizer/scene_graph_renderer.h>
 #include <hydra_visualizer/utils/config_wrapper.h>
 #include <khronos/common/common_types.h>
 #include <khronos/spatio_temporal_map/spatio_temporal_map.h>
-// #include <khronos_msgs/msg/khronos_spatio_temporal_vis_config.hpp>
 #include <khronos_msgs/msg/spatio_temporal_visualizer_state.hpp>
 #include <khronos_msgs/srv/spatio_temporal_visualizer_set_state.hpp>
 #include <khronos_msgs/srv/spatio_temporal_visualizer_set_time_mode.hpp>
@@ -59,14 +59,35 @@
 
 namespace khronos {
 
+struct DynamicVisualizerConfig {
+  enum class BackgroundColorMode : int {
+    Color = 0,
+    FirstSeen = 1,
+    LastSeen = 2
+  } background_color = BackgroundColorMode::Color;
+  enum class ObjectColorMode : int {
+    Semantic = 0,
+    Instance = 1,
+    Presence = 2
+  } object_bbox_color = ObjectColorMode::Semantic;
+  enum class DynamicColorMode : int {
+    ID = 0,
+    Red = 1,
+    Mixed = 2
+  } dynamic_object_color = DynamicColorMode::ID;
+  double play_rate = 1.0;
+  double fade_duration = 0.0;
+};
+
+void declare_config(DynamicVisualizerConfig& config);
+
 /**
  * @brief Visualization of a 4D khronos scene belief extracted from an experiment directory via ROS.
  */
 class SpatioTemporalVisualizer {
  public:
   using Coloring = std::optional<KhronosMeshVisualizer::Coloring>;
-  using DynamicConfig =
-      hydra::visualizer::ConfigWrapper<khronos_msgs::KhronosSpatioTemporalVisConfig>;
+  using DynamicConfig = hydra::visualizer::ConfigWrapper<DynamicVisualizerConfig>;
   using MarkerArray = visualization_msgs::msg::MarkerArray;
   using Marker = visualization_msgs::msg::Marker;
   using State = khronos_msgs::msg::SpatioTemporalVisualizerState;
@@ -92,7 +113,7 @@ class SpatioTemporalVisualizer {
     hydra::RobotPrefixConfig robot_prefix;
 
     // Initial config of the dynamic config server.
-    khronos_msgs::KhronosSpatioTemporalVisConfig dynamic_config;
+    DynamicVisualizerConfig dynamic_config;
 
     // Config of the mesh visualizer.
     KhronosMeshVisualizer::Config mesh_visualizer;
@@ -107,24 +128,24 @@ class SpatioTemporalVisualizer {
   } const config;
 
   SpatioTemporalVisualizer(const Config& config, ianvs::NodeHandle nh);
-  virtual ~SpatioTemporalVisualizer() = default;
-
-  void spin();
   void draw();
   void reset();
 
   // Service callbacks.
   void playCb(SetBool::Request::SharedPtr req, SetBool::Response::SharedPtr res);
-  void setPlayForwardCb(SetBool::Request::SharedPtr req, SetBool::Response::SharedPtr& res);
-  void isSetupCb(Setup::Request::SharedPtr& req, Setup::Response::SharedPtr& res);
-  void setTimeModeCb(SetTimeMode::Request::SharedPtr& req, SetTimeMode::Response::SharedPtr& res);
-  void setStateCb(SetState::Request::SharedPtr& req, SetState::Response::SharedPtr& res);
+  void setPlayForwardCb(SetBool::Request::SharedPtr req, SetBool::Response::SharedPtr res);
+  void isSetupCb(Setup::Request::SharedPtr req, Setup::Response::SharedPtr res);
+  void setTimeModeCb(SetTimeMode::Request::SharedPtr req, SetTimeMode::Response::SharedPtr res);
+  void setStateCb(SetState::Request::SharedPtr req, SetState::Response::SharedPtr res);
 
  private:
+  void spinOnce();
+
   DynamicConfig dynamic_config_;
 
   // ROS.
   ianvs::NodeHandle nh_;
+  ianvs::NodeHandle::Timer timer_;
   rclcpp::Publisher<State>::SharedPtr state_pub_;
   rclcpp::Publisher<MarkerArray>::SharedPtr dynamic_obj_pub_;
   rclcpp::Publisher<MarkerArray>::SharedPtr static_obj_pub_;
@@ -154,7 +175,8 @@ class SpatioTemporalVisualizer {
   // Visualizer state tracking for incremental updates.
   size_t prev_robot_time_ = 0;
   size_t prev_query_time_ = 0;
-  double previous_wall_time_ = 0.0;  // Time in s for play increments.
+  std::chrono::time_point<std::chrono::steady_clock>
+      previous_wall_time_;  // Time in s for play increments.
   size_t num_prev_dynamic_objects_ = 0;
   size_t num_prev_static_objects_ = 0;
 
@@ -200,7 +222,6 @@ class SpatioTemporalVisualizer {
   void resetAgent();
 
   // Coloring functions.
-  KhronosMeshVisualizer::ObjectColors getObjectMeshColors() const;
   hydra::MeshColoring::Ptr getBackgroundMeshColoring() const;
   void recolorObjectDsgBoundingBoxes();
 
@@ -217,7 +238,3 @@ class SpatioTemporalVisualizer {
 void declare_config(SpatioTemporalVisualizer::Config& config);
 
 }  // namespace khronos
-
-namespace khronos_msgs {
-void declare_config(KhronosSpatioTemporalVisConfig& config);
-}  // namespace khronos_msgs
