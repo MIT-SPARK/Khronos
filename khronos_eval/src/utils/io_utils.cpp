@@ -40,9 +40,9 @@ bool loadPlyCloud(const std::string& file_path, Points& vertices, std::vector<Co
   return true;
 }
 
-bool savePlyCloud(const std::string& file_path,
-                  const Points& vertices,
-                  const std::vector<Color>& colors) {
+bool savePlyCloud(const std::string& /* file_path */,
+                  const Points& /* vertices */,
+                  const std::vector<Color>& /* colors */) {
   return false;
 }
 

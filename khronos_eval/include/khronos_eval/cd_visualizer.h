@@ -10,17 +10,26 @@
 #include <hydra_visualizer/utils/config_wrapper.h>
 #include <khronos/backend/change_detection/ray_verificator.h>
 #include <khronos/common/common_types.h>
-#include <khronos_msgs/KhronosChangeDetectionVisConfig.h>
-#include <ros/ros.h>
-#include <visualization_msgs/Marker.h>
-#include <visualization_msgs/MarkerArray.h>
+#include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 namespace khronos {
 
 class ChangeDetectionVisualizer {
  public:
+  using Marker = visualization_msgs::msg::Marker;
+
   // configs.
-  using DynamicConfig = khronos_msgs::KhronosChangeDetectionVisConfig;
+  struct DynamicConfig {
+    RayVerificator::Config::RayPolicy ray_policy = RayVerificator::Config::RayPolicy::kMiddle;
+    int object_id = 0;
+    size_t point_id = 0;
+    double points_scale = 0.1;
+    double line_scale = 0.02;
+    double target_scale = 0.3;
+    bool show_missed_rays = false;
+  };
+
   struct StaticConfig {
     int verbosity = 4;
 
@@ -29,12 +38,13 @@ class ChangeDetectionVisualizer {
   };
 
   // Construction.
-  ChangeDetectionVisualizer(const ros::NodeHandle& nh,
+  ChangeDetectionVisualizer(const StaticConfig& config,
+                            ianvs::NodeHandle nh,
                             std::shared_ptr<const DynamicSceneGraph> graph);
-  ~ChangeDetectionVisualizer();
+  ~ChangeDetectionVisualizer() = default;
 
   // Run.
-  void spin();
+  void start();
 
  private:
   // Configs.
@@ -43,11 +53,12 @@ class ChangeDetectionVisualizer {
   const DynamicConfig& dynamic_config_;
 
   // ROS.
-  ros::NodeHandle nh_;
-  ros::Publisher points_pub_;
-  ros::Publisher lines_pub_;
-  ros::Publisher target_pub_;
-  ros::Publisher hash_pub_;
+  ianvs::NodeHandle nh_;
+  ianvs::NodeHandle::Timer timer_;
+  rclcpp::Publisher<Marker>::SharedPtr points_pub_;
+  rclcpp::Publisher<Marker>::SharedPtr lines_pub_;
+  rclcpp::Publisher<Marker>::SharedPtr target_pub_;
+  rclcpp::Publisher<Marker>::SharedPtr hash_pub_;
 
   // data.
   std::shared_ptr<const DynamicSceneGraph> graph_;
@@ -59,7 +70,8 @@ class ChangeDetectionVisualizer {
   std::unique_ptr<KhronosObjectAttributes> object_;
 
   // tracking data.
-  int previous_ray_policy_ = -1;
+  RayVerificator::Config::RayPolicy previous_ray_policy_ =
+      RayVerificator::Config::RayPolicy::kMiddle;
   int previous_object_id_ = -1;
 
   // Helper functions.
@@ -72,13 +84,15 @@ class ChangeDetectionVisualizer {
   void drawHashBlock();
 
   // The cached messages to visualize.
-  std_msgs::Header header_;
-  std::unique_ptr<visualization_msgs::Marker> target_marker_;
-  std::unique_ptr<visualization_msgs::Marker> point_marker_;
-  std::unique_ptr<visualization_msgs::Marker> line_marker_;
-  std::unique_ptr<visualization_msgs::Marker> hash_marker_;
+  std_msgs::msg::Header header_;
+  std::unique_ptr<Marker> target_marker_;
+  std::unique_ptr<Marker> point_marker_;
+  std::unique_ptr<Marker> line_marker_;
+  std::unique_ptr<Marker> hash_marker_;
 };
 
 void declare_config(ChangeDetectionVisualizer::StaticConfig& config);
+
+void declare_config(ChangeDetectionVisualizer::DynamicConfig& config);
 
 }  // namespace khronos

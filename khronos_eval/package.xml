@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<package format="2">
+<package format="3">
   <name>khronos_eval</name>
   <version>0.0.0</version>
   <description>Spatio-temporal Dense Semantic Mapping.</description>
@@ -9,9 +9,8 @@
 
   <license>BSD</license>
 
-  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>khronos</depend>
   <depend>khronos_ros</depend>
 
   <depend>spark_dsg</depend>
@@ -23,5 +22,6 @@
   <depend>config_utilities</depend>
 
   <export>
+      <build_type>ament_cmake</build_type>
   </export>
 </package>

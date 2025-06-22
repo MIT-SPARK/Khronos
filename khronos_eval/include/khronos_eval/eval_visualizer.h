@@ -9,10 +9,8 @@
 
 #include <hydra_visualizer/utils/config_wrapper.h>
 #include <khronos/common/common_types.h>
-#include <khronos_msgs/KhronosEvalVisConfig.h>
-#include <ros/ros.h>
-#include <visualization_msgs/Marker.h>
-#include <visualization_msgs/MarkerArray.h>
+#include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 namespace khronos {
 
@@ -37,28 +35,43 @@ struct VisData {
 
 class EvalVisualizer {
  public:
-  // Dynamic config.
-  using Config = hydra::visualizer::ConfigWrapper<khronos_msgs::KhronosEvalVisConfig>;
+  using Marker = visualization_msgs::msg::Marker;
+  using MarkerArray = visualization_msgs::msg::MarkerArray;
 
-  // Construction.
-  explicit EvalVisualizer(const ros::NodeHandle& nh);
+  struct Config {
+    enum class ColorMode : int {
+      Label = 0,
+      Presence = 1,
+      ChangeState = 2,
+    } object_color = ColorMode::Label;
+    size_t robot_time = 0;
+    size_t query_time = 0;
+    double z_offset = 5.0;
+    double bbox_scale = 0.03;
+    double centroid_scale = 0.3;
+    double id_scale = 0.3;
+    double association_scale = 0.05;
+    std::filesystem::path visualization_directory;
+  };
+
+  EvalVisualizer(const Config& config, ianvs::NodeHandle nh);
   virtual ~EvalVisualizer() = default;
 
-  // Run.
-  void spin();
+  void start();
 
  private:
-  Config config;
+  hydra::visualizer::ConfigWrapper<Config> config;
 
   // ROS.
-  ros::NodeHandle nh_;
-  ros::Publisher centroid_gt_pub_;
-  ros::Publisher centroid_dsg_pub_;
-  ros::Publisher bbox_gt_pub_;
-  ros::Publisher bbox_dsg_pub_;
-  ros::Publisher association_pub_;
-  ros::Publisher object_id_gt_pub_;
-  ros::Publisher object_id_dsg_pub_;
+  ianvs::NodeHandle nh_;
+  ianvs::NodeHandle::Timer timer_;
+  rclcpp::Publisher<Marker>::SharedPtr centroid_gt_pub_;
+  rclcpp::Publisher<Marker>::SharedPtr centroid_dsg_pub_;
+  rclcpp::Publisher<Marker>::SharedPtr bbox_gt_pub_;
+  rclcpp::Publisher<Marker>::SharedPtr bbox_dsg_pub_;
+  rclcpp::Publisher<MarkerArray>::SharedPtr association_pub_;
+  rclcpp::Publisher<MarkerArray>::SharedPtr object_id_gt_pub_;
+  rclcpp::Publisher<MarkerArray>::SharedPtr object_id_dsg_pub_;
 
   // Members.
   std::mutex mutex_;
@@ -70,8 +83,8 @@ class EvalVisualizer {
   std::vector<float> times_seconds_;
 
   // tracking data.
-  int previous_robot_time_idx_ = -1;
-  int previous_query_time_idx_ = -1;
+  size_t previous_robot_time_idx_ = 0;
+  size_t previous_query_time_idx_ = 0;
   size_t num_previous_id_gt_markers_ = 0;
   size_t num_previous_id_dsg_markers_ = 0;
 
@@ -88,14 +101,14 @@ class EvalVisualizer {
   std::function<Color(const VisObject&)> getObjectColoringFunction() const;
 
   // The cached messages to visualize.
-  std_msgs::Header header_;
-  std::unique_ptr<visualization_msgs::Marker> centroid_gt_marker_;
-  std::unique_ptr<visualization_msgs::Marker> centroid_dsg_marker_;
-  std::unique_ptr<visualization_msgs::Marker> bbox_gt_marker_;
-  std::unique_ptr<visualization_msgs::Marker> bbox_dsg_marker_;
-  std::unique_ptr<visualization_msgs::MarkerArray> association_marker_;
-  std::unique_ptr<visualization_msgs::MarkerArray> object_id_gt_marker_;
-  std::unique_ptr<visualization_msgs::MarkerArray> object_id_dsg_marker_;
+  std_msgs::msg::Header header_;
+  std::unique_ptr<Marker> centroid_gt_marker_;
+  std::unique_ptr<Marker> centroid_dsg_marker_;
+  std::unique_ptr<Marker> bbox_gt_marker_;
+  std::unique_ptr<Marker> bbox_dsg_marker_;
+  std::unique_ptr<MarkerArray> association_marker_;
+  std::unique_ptr<MarkerArray> object_id_gt_marker_;
+  std::unique_ptr<MarkerArray> object_id_dsg_marker_;
 };
 
 void declare_config(EvalVisualizer::Config& config);
