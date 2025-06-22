@@ -20,10 +20,22 @@
         <param name="global_frame_name" value="$(arg world_frame)"/>
     </node>
 
+
     <include file="$(find khronos_ros)/launch/gui_4d_visualizer.launch" if="$(arg show_gui)">
         <arg name="visualizer_node_name" value="$(arg visualizer_node_name)"/>
         <arg name="visualizer_config" value="$(arg visualizer_config)"/>
     </include>
+
+    <!-- Args  -->
+    <arg name="visualizer_config" default="4d_visualizer.yaml"/>
+    <arg name="visualizer_node_name" default="spatio_temporal_visualizer"/>
+    <arg name="gui_required" default="true"/>
+
+
+    <node pkg="khronos_ros" type="spatio_temporal_visualizer_gui.py" name="spatio_temporal_visualizer_gui" output="screen" required="$(arg gui_required)">
+        <rosparam file="$(find khronos_ros)/config/visualization/$(arg visualizer_config)" command="load"/>
+        <param name="gui/visualizer_ns" value="$(arg visualizer_node_name)"/>
+    </node>
 
     <node name="rviz" pkg="rviz" type="rviz" output="screen" args="-d $(find khronos_ros)/config/rviz/$(arg rviz_file)"/>
 
