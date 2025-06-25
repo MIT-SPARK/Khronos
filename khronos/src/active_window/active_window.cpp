@@ -68,6 +68,7 @@ void declare_config(ActiveWindow::Config& config) {
   field(config.extraction_worker, "extraction_worker");
   field(config.mesh_integrator, "mesh_integrator");
   field(config.frame_data_buffer, "frame_data_buffer");
+  field(config.khronos_sinks, "khronos_sinks");
 }
 
 ActiveWindow::ActiveWindow(const Config& config, const OutputQueue::Ptr& output_queue)
@@ -77,6 +78,7 @@ ActiveWindow::ActiveWindow(const Config& config, const OutputQueue::Ptr& output_
       tracking_integrator_(config.tracking_integrator),
       mesh_integrator_(config.mesh_integrator),
       extraction_worker_(config.extraction_worker, config.object_extractor.create()),
+      sinks_(KhronosSink::instantiate(config.khronos_sinks)),
       frame_data_buffer_(config.frame_data_buffer) {
   // Create member processors as specified in the configs.
   motion_detector_ = config.motion_detector.create();
@@ -105,10 +107,10 @@ ActiveWindow::ActiveWindow(const Config& config, const OutputQueue::Ptr& output_
 }
 
 std::string ActiveWindow::printInfo() const {
-  return config::toString(config) + "\n" + Sink::printSinks(sinks_);
+  return config::toString(config) + "\n" + KhronosSink::printSinks(sinks_);
 }
 
-void ActiveWindow::addSink(const Sink::Ptr& sink) {
+void ActiveWindow::addKhronosSink(const KhronosSink::Ptr& sink) {
   if (sink) {
     sinks_.push_back(sink);
   }
@@ -149,7 +151,7 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& 
   ++num_frames_processed_;
 
   Timer sink_timer("active_window/sinks", latest_stamp_);
-  Sink::callAll(sinks_, *data, map_, tracker_->getTracks());
+  KhronosSink::callAll(sinks_, *data, map_, tracker_->getTracks());
   sink_timer.stop();
 
   // TODO(lschmid): Double check this does what's intended. Check whether we can move mesh

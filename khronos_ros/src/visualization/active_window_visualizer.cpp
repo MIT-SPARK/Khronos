@@ -39,6 +39,7 @@
 
 #include <config_utilities/config_utilities.h>
 #include <cv_bridge/cv_bridge.hpp>
+#include <hydra_ros/common.h>
 #include <khronos/utils/geometry_utils.h>
 #include <spark_dsg/colormaps.h>
 
@@ -46,6 +47,14 @@
 #include "khronos_ros/visualization/visualization_utils.h"
 
 namespace khronos {
+namespace {
+
+static const auto registration =
+    config::RegistrationWithConfig<ActiveWindow::KhronosSink,
+                                   ActiveWindowVisualizer,
+                                   ActiveWindowVisualizer::Config>("ActiveWindowVisualizer");
+
+}
 
 namespace colormaps = spark_dsg::colormaps;
 
@@ -76,8 +85,9 @@ void declare_config(ActiveWindowVisualizer::Config& config) {
   check(config.bounding_box_line_width, GT, 0, "bounding_box_line_width");
 }
 
-ActiveWindowVisualizer::ActiveWindowVisualizer(const Config& config, ianvs::NodeHandle nh)
-    : config(config::checkValid(config)), nh_(nh) {
+ActiveWindowVisualizer::ActiveWindowVisualizer(const Config& config, const ianvs::NodeHandle* nh)
+    : config(config::checkValid(config)),
+      nh_(nh ? *nh : hydra::getHydraNodeHandle("active_window_visualizer")) {
   // Advertise all visualization topics.
   ever_free_slice_pub_ = nh_.create_publisher<Marker>("ever_free_slice", config.queue_size);
   tsdf_slice_pub_ = nh_.create_publisher<Marker>("tsdf_slice", config.queue_size);

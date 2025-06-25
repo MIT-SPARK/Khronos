@@ -66,7 +66,7 @@ namespace khronos {
 
 class ActiveWindow : public hydra::ActiveWindowModule {
  public:
-  using Sink = hydra::OutputSink<const FrameData&, const VolumetricMap&, const Tracks&>;
+  using KhronosSink = hydra::OutputSink<const FrameData&, const VolumetricMap&, const Tracks&>;
 
   // Config.
   struct Config : hydra::ActiveWindowModule::Config {
@@ -89,6 +89,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     ObjectWorkerPool::Config extraction_worker;
     hydra::MeshIntegratorConfig mesh_integrator;
     FrameDataBuffer::Config frame_data_buffer;
+    std::vector<KhronosSink::Factory> khronos_sinks;
 
     // override layer defaults of Hydra
     Config() : hydra::ActiveWindowModule::Config(false, true) {}
@@ -112,7 +113,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
    * finishes processing a frame.
    * @param sink The sink to add.
    */
-  void addSink(const Sink::Ptr& sink);
+  void addKhronosSink(const KhronosSink::Ptr& sink);
 
   // Interaction.
   /**
@@ -174,7 +175,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   ObjectWorkerPool extraction_worker_;
 
   std::mutex mutex_;
-  Sink::List sinks_;
+  KhronosSink::List sinks_;
 
   // Internal processing.
   // Keep frames in buffer for later extraction of objects.

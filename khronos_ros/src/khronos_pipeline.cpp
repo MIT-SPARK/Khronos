@@ -90,10 +90,10 @@ void KhronosPipeline::init() {
       }));
 
   if (khronos_active_window_) {
-    khronos_active_window_->addSink(std::make_shared<ActiveWindowVisualizer>(
-        config::fromContext<ActiveWindowVisualizer::Config>(RosNs::VISUALIZATION),
-        nh_ / RosNs::VISUALIZATION));
-    khronos_active_window_->addSink(ActiveWindow::Sink::fromCallback(
+    const auto aw_nh = nh_ / RosNs::VISUALIZATION;
+    khronos_active_window_->addKhronosSink(std::make_shared<ActiveWindowVisualizer>(
+        config::fromContext<ActiveWindowVisualizer::Config>(RosNs::VISUALIZATION), &aw_nh));
+    khronos_active_window_->addKhronosSink(ActiveWindow::KhronosSink::fromCallback(
         [this](const auto& frame_data, const auto& map, const auto& tracks) {
           aw_evaluation_callback_(map, frame_data, tracks);
         }));

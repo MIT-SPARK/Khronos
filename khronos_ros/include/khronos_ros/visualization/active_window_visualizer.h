@@ -56,7 +56,7 @@
 
 namespace khronos {
 
-class ActiveWindowVisualizer : public ActiveWindow::Sink {
+class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
  public:
   // Config.
   struct Config {
@@ -93,7 +93,7 @@ class ActiveWindowVisualizer : public ActiveWindow::Sink {
   } const config;
 
   // Construction.
-  ActiveWindowVisualizer(const Config& config, ianvs::NodeHandle nh);
+  explicit ActiveWindowVisualizer(const Config& config, const ianvs::NodeHandle* nh = nullptr);
   virtual ~ActiveWindowVisualizer() = default;
 
   // Visualization.
