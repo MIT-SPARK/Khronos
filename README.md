@@ -111,12 +111,11 @@ source ~/catkin_ws/devel/setup.bash
 roslaunch khronos_ros uhumans2_khronos.launch
 ```
 
-RVIZ will launch automatically for real-time visualization. You should see the method build an incremental background mesh, detect and segment static and dynamic objects, and generate object nodes. The following image shows the human motion detection (left red), a segmented static chair object and associated scene-graph node (right blue), and a segmented dynamic object and associated node (center yellow):
+RVIZ will launch automatically for real-time visualization. You should see the method build an incremental background mesh, detect and segment static and dynamic objects, and generate object nodes. Output will look like this:
 
 <!-- <img src="https://github.com/MIT-SPARK/Khronos/assets/32229998/01c265ac-c2ab-42e7-8a6a-2f9df84fc85b" alt="Khronos Beginning" width="500"/> -->
 
-<img src="https://private-user-images.githubusercontent.com/32229998/443228741-950df183-f045-4c46-ac04-52c7411a224c.gif?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDcxNDMxNTMsIm5iZiI6MTc0NzE0Mjg1MywicGF0aCI6Ii8zMjIyOTk5OC80NDMyMjg3NDEtOTUwZGYxODMtZjA0NS00YzQ2LWFjMDQtNTJjNzQxMWEyMjRjLmdpZj9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA1MTMlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNTEzVDEzMjczM1omWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPWE3ZjVhNTRhZTE4NDEyYmUzNGM4NWJhNjkwOGYyN2RjYjE3NDIzZWNiMzQwZTdlMWZkMDQ5M2FjYzdkYjUyMzgmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.pJ3_yaZrpjUGgFKENNVXRpg9BdBI8S_gv_V9GpPK060" 
-alt = "Khronos Beginning" width="500">
+<img src="https://raw.githubusercontent.com/MIT-SPARK/Khronos/refs/heads/docs/base/docs/khronos_sim.gif" alt = "Khronos Beginning" width="500">
 
 Use the right side panel of rviz to toggle different visualization options to see each component of the method, including inpus, object/motion detection, factor graph, scene graph, and backend visuals. Most of these are disabled by default.
 
@@ -147,8 +146,7 @@ The rosbag will start paused by default, so after you see "Spinning Kimera-VIO" 
 
 Your ouptut will look something like this:
 
-<img src="https://private-user-images.githubusercontent.com/32229998/443228717-e6a89f0a-e321-4e85-922f-6deb7a709923.gif?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDcxNDMxNTMsIm5iZiI6MTc0NzE0Mjg1MywicGF0aCI6Ii8zMjIyOTk5OC80NDMyMjg3MTctZTZhODlmMGEtZTMyMS00ZTg1LTkyMmYtNmRlYjdhNzA5OTIzLmdpZj9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA1MTMlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNTEzVDEzMjczM1omWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTIzYjVkODAyOWIyMDE2ZTdiMTMxNzdkNWFhM2Y1MzUwMWU0ODM3M2JmM2IzMWE2OTcwNjhmZTViNGMwN2Q5ODUmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.LwB98VNkdLw3rtPf6CazfADbNBkgUykIk26A9VJgdHE" 
-alt="Khronos on Real Data" width="500">
+<img src="https://raw.githubusercontent.com/MIT-SPARK/Khronos/refs/heads/docs/base/docs/khronos_real.gif" alt="Khronos on Real Data" width="500">
 
 ## Open-Set Segmentation
 
@@ -166,7 +164,7 @@ The visualizer will load the map located (by default) in [output/tmp](output/tmp
 
 <!-- <img src="https://github.com/MIT-SPARK/Khronos/assets/32229998/d8072aab-a874-483f-aada-24607eb620be" alt="Khronos 4D Map" width="700"> -->
 
-<img src="https://private-user-images.githubusercontent.com/32229998/443236066-302e0a61-d155-4475-9df9-421d640fdafd.gif?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDcxNDQxMzQsIm5iZiI6MTc0NzE0MzgzNCwicGF0aCI6Ii8zMjIyOTk5OC80NDMyMzYwNjYtMzAyZTBhNjEtZDE1NS00NDc1LTlkZjktNDIxZDY0MGZkYWZkLmdpZj9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA1MTMlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNTEzVDEzNDM1NFomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTI3MDg0MjQyYWUyMTNjYWU4NGQ1NWQ2OGU1ODVlMWY3MzQ2MDY0ZGFlY2Q2MmFkNjI0ODA1Mzk2YzFjYzg0YzImWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.AR_ZI7KRdTXMPJBd3kzFfBBm51s_CGm8JpKpvP4Iydg" alt="Khronos 4D Map" width="700">
+<img src="https://raw.githubusercontent.com/MIT-SPARK/Khronos/refs/heads/docs/base/docs/khronos_4d.gif" alt="Khronos 4D Map" width="700">
 
 You can play forward or backward, and see Khronos' estimate of the state of the scene at each timestamp, with current or future knowledge. As an example, fix the query time to 0 and play forward on robot time mode to see how Khronos' understanding of the initial state of the scene evolves over time.
 
