@@ -7,7 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include <hydra_visualizer/utils/config_wrapper.h>
+#include <config_utilities/dynamic_config.h>
+#include <ianvs/node_handle.h>
 #include <khronos/backend/change_detection/ray_verificator.h>
 #include <khronos/common/common_types.h>
 #include <visualization_msgs/msg/marker.hpp>
@@ -49,8 +50,7 @@ class ChangeDetectionVisualizer {
  private:
   // Configs.
   StaticConfig config;
-  hydra::visualizer::ConfigWrapper<DynamicConfig> dynamic_config_manager_;
-  const DynamicConfig& dynamic_config_;
+  config::DynamicConfig<DynamicConfig> dynamic_config_;
 
   // ROS.
   ianvs::NodeHandle nh_;

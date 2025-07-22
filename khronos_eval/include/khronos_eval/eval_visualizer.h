@@ -7,7 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include <hydra_visualizer/utils/config_wrapper.h>
+#include <ianvs/node_handle.h>
+#include <config_utilities/dynamic_config.h>
 #include <khronos/common/common_types.h>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -60,7 +61,7 @@ class EvalVisualizer {
   void start();
 
  private:
-  hydra::visualizer::ConfigWrapper<Config> config;
+  config::DynamicConfig<Config> config;
 
   // ROS.
   ianvs::NodeHandle nh_;

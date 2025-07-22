@@ -44,6 +44,7 @@
 
 int main(int argc, char** argv) {
   config::initContext(argc, argv, true);
+  config::setConfigSettingsFromContext();
   rclcpp::init(argc, argv);
 
   // Start Ros.
@@ -56,12 +57,6 @@ int main(int argc, char** argv) {
   google::ParseCommandLineFlags(&argc, &argv, false);
   google::InitGoogleLogging(argv[0]);
   google::InstallFailureSignalHandler();
-
-  // Global config settings.
-  auto& settings = config::Settings();
-  settings.print_indent = 40;
-  settings.print_width = 100;
-  settings.subconfig_indent = 2;
 
   // Setup node.
   auto khronos = std::make_shared<khronos::KhronosPipeline>(nh);

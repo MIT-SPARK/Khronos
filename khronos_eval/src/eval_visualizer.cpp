@@ -24,7 +24,7 @@ void declare_config(EvalVisualizer::Config& config) {
 }
 
 EvalVisualizer::EvalVisualizer(const Config& _config, ianvs::NodeHandle nh)
-    : config(nh, (nh_ / "khronos/eval_vis").node_name(), _config), nh_(nh) {
+    : config("khronos/eval_vis", _config), nh_(nh) {
   // ROS.
   centroid_gt_pub_ = nh_.create_publisher<Marker>("centroids_gt", 1);
   centroid_dsg_pub_ = nh_.create_publisher<Marker>("centroids_dsg", 1);
@@ -41,7 +41,7 @@ EvalVisualizer::EvalVisualizer(const Config& _config, ianvs::NodeHandle nh)
   loadData();
 
   // Register dynamic reconfigure.
-  config.setUpdateCallback(std::bind(&EvalVisualizer::reset, this));
+  config.setCallback(std::bind(&EvalVisualizer::reset, this));
 }
 
 void EvalVisualizer::start() {

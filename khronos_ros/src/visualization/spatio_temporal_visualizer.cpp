@@ -86,7 +86,7 @@ void declare_config(SpatioTemporalVisualizer::Config& config) {
 // TODO(nathan) fix layer IDs
 SpatioTemporalVisualizer::SpatioTemporalVisualizer(const Config& config, ianvs::NodeHandle nh)
     : config(config::checkValid(config)),
-      dynamic_config_(nh, ""),
+      dynamic_config_("visualizer", config.dynamic_config),
       nh_(nh),
       layer_ids_({2, 3, 4, 5}),
       min_time_delta_(config.max_frame_rate > 0 ? 1.0 / config.max_frame_rate : 0),
@@ -97,7 +97,7 @@ SpatioTemporalVisualizer::SpatioTemporalVisualizer(const Config& config, ianvs::
   // Load all data and setup.
   LOG(INFO) << "Config:\n" << config;
   loadMap();
-  dynamic_config_.setUpdateCallback(std::bind(&SpatioTemporalVisualizer::onConfigUpdate, this));
+  dynamic_config_.setCallback(std::bind(&SpatioTemporalVisualizer::onConfigUpdate, this));
   reset();
   setupRos();
 

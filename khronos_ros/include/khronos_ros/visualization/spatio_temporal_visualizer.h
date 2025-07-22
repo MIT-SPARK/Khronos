@@ -44,10 +44,10 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
+#include <config_utilities/dynamic_config.h>
 #include <hydra/common/robot_prefix_config.h>
 #include <hydra_visualizer/plugins/mesh_plugin.h>
 #include <hydra_visualizer/scene_graph_renderer.h>
-#include <hydra_visualizer/utils/config_wrapper.h>
 #include <khronos/common/common_types.h>
 #include <khronos/spatio_temporal_map/spatio_temporal_map.h>
 #include <khronos_msgs/msg/spatio_temporal_visualizer_state.hpp>
@@ -81,7 +81,7 @@ void declare_config(DynamicVisualizerConfig& config);
  */
 class SpatioTemporalVisualizer {
  public:
-  using DynamicConfig = hydra::visualizer::ConfigWrapper<DynamicVisualizerConfig>;
+  using DynamicConfig = config::DynamicConfig<DynamicVisualizerConfig>;
   using MarkerArray = visualization_msgs::msg::MarkerArray;
   using Marker = visualization_msgs::msg::Marker;
   using State = khronos_msgs::msg::SpatioTemporalVisualizerState;
