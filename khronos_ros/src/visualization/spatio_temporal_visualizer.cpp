@@ -88,7 +88,6 @@ SpatioTemporalVisualizer::SpatioTemporalVisualizer(const Config& config, ianvs::
     : config(config::checkValid(config)),
       dynamic_config_("visualizer", config.dynamic_config),
       nh_(nh),
-      layer_ids_({2, 3, 4, 5}),
       min_time_delta_(config.max_frame_rate > 0 ? 1.0 / config.max_frame_rate : 0),
       previous_wall_time_(std::chrono::steady_clock::now()),
       mesh_visualizer_(config.mesh, nh, "mesh"),
@@ -135,7 +134,7 @@ void SpatioTemporalVisualizer::draw() {
   const auto mesh = current_dsg_->mesh();
   mesh_visualizer_.draw(header, *current_dsg_);
   // TODO(nathan) figure out mesh objects
-  //mesh_visualizer_.drawObjects(*current_dsg_, {});
+  // mesh_visualizer_.drawObjects(*current_dsg_, {});
   needs_redraw_ = false;
 }
 
@@ -205,7 +204,7 @@ void SpatioTemporalVisualizer::updateDsgTime() {
 
 void SpatioTemporalVisualizer::reset() {
   // Create a new empty scene graph.
-  current_dsg_.reset(new DynamicSceneGraph(layer_ids_));
+  current_dsg_.reset(new DynamicSceneGraph());
 
   std_msgs::msg::Header header;
   header.stamp = nh_.now();

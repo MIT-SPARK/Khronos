@@ -153,7 +153,6 @@ class SpatioTemporalVisualizer {
   rclcpp::Service<SetState>::SharedPtr set_state_srv_;
 
   // Stored data.
-  const DynamicSceneGraph::LayerIds layer_ids_;
   const double min_time_delta_;  // Minimum time delta between two frames [s].
 
   // Threading.
