@@ -53,7 +53,6 @@ add_library(${PROJECT_NAME}
         src/backend/update_khronos_objects_functor.cpp
         src/spatio_temporal_map/spatio_temporal_map.cpp
         src/spatio_temporal_map/incremental_mesh.cpp
-        src/utils/data_directory.cpp
         src/utils/geometry_utils.cpp
         src/utils/khronos_attribute_utils.cpp
         src/utils/output_file_utils.cpp

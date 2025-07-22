@@ -71,16 +71,14 @@ void declare_config(KhronosPipeline::Config& config) {
 }
 
 KhronosPipeline::Config initializeConfig(const ros::NodeHandle& nh) {
-  auto config = config::fromRos<KhronosPipeline::Config>(nh);
-  config.enable_places = false;
-  return config;
+  return config::fromRos<KhronosPipeline::Config>(nh);
 }
 
 KhronosPipeline::KhronosPipeline(const ros::NodeHandle& nh)
     : config(config::checkValid(initializeConfig(nh))),
       nh_(nh),
       map_visualizer_(ros::NodeHandle(nh, RosNs::VISUALIZATION)) {
-  hydra::GlobalInfo::init(config, 0, true);
+  hydra::GlobalInfo::init(config, 0);
   setupDsgs();
   setupMembers();
   setupRos();
@@ -131,8 +129,8 @@ void KhronosPipeline::stop() {
   CLOG(1) << "[Khronos Pipeline] Stopped.";
 }
 
-bool KhronosPipeline::save(const hydra::LogSetup& log_setup, bool save_full_state) {
-  if (!log_setup.valid()) {
+bool KhronosPipeline::save(const hydra::DataDirectory& log_setup, bool save_full_state) {
+  if (!log_setup) {
     LOG(WARNING) << "[Khronos Pipeline] Could not save: Invalid log setup.";
     return false;
   }
@@ -150,7 +148,7 @@ bool KhronosPipeline::save(const hydra::LogSetup& log_setup, bool save_full_stat
   // Always save evaluation relevant data.
   backend_->saveProposedMerges(log_setup);
   DynamicSceneGraph::Ptr dsg = backend_->getDsg().clone();
-  const auto backend_path = log_setup.getLogDir("backend");
+  const auto backend_path = log_setup.path("backend");
 
   // Add all objects that are currently in the active window.
   auto aw_objects = active_window_->extractObjects();
@@ -168,7 +166,7 @@ bool KhronosPipeline::save(const hydra::LogSetup& log_setup, bool save_full_stat
   dsg->save(backend_path / "dsg_with_mesh", true);
 
   CLOG(2) << "[Khronos Pipeline] Saved " << (save_full_state ? "full state" : "evaluation DSG")
-          << " to '" << log_setup.getLogDir() << "'.";
+          << " to '" << log_setup.path() << "'.";
   return true;
 }
 

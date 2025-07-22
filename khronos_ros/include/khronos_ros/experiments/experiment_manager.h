@@ -43,10 +43,10 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
+#include <hydra/utils/data_directory.h>
 #include <khronos/active_window/data/frame_data.h>
 #include <khronos/active_window/data/reconstruction_types.h>
 
-#include "khronos/utils/data_directory.h"
 #include "khronos_ros/experiments/experiment_logger.h"
 #include "khronos_ros/khronos_pipeline.h"
 
@@ -119,7 +119,7 @@ class ExperimentManager {
   void addBackendCallback(size_t every_n_frames, BackendEvaluationCallback callback);
 
   // Access.
-  std::string getOutputDir() const { return data_dir_; }
+  std::string getOutputDir() const { return data_dir_.path(); }
   bool evaluationIsOn() const { return data_dir_; }
 
   // Evaluation callbacks.
@@ -131,7 +131,7 @@ class ExperimentManager {
 
  private:
   // Manages the allocation of the output directory.
-  const DataDirectory data_dir_;
+  const hydra::DataDirectory data_dir_;
 
   // Pointer to the khronos pipeline to manage the experiment for.
   const std::shared_ptr<KhronosPipeline> khronos_;

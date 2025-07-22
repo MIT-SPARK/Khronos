@@ -98,8 +98,8 @@ class Backend : public hydra::BackendModule {
   ~Backend();
 
   // Save data.
-  void save(const hydra::LogSetup& log_setup) override;
-  bool saveProposedMerges(const hydra::LogSetup& log_setup);
+  void save(const hydra::DataDirectory& log_setup) override;
+  bool saveProposedMerges(const hydra::DataDirectory& log_setup);
 
   // Spinning.
   void start() override;

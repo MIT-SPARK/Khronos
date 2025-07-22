@@ -119,7 +119,7 @@ void Backend::spin() {
 }
 
 void Backend::spinCallback(const hydra::BackendInput& input) {
-  status_.reset();
+  status_log_.emplace_back(hydra::BackendModuleStatus{});
   std::lock_guard<std::mutex> lock(mutex_);
   const uint64_t timestamp_ns = input.timestamp_ns;
   last_timestamp_received_ = timestamp_ns;
@@ -137,7 +137,7 @@ void Backend::spinCallback(const hydra::BackendInput& input) {
   }
   copyMeshDelta(input);
   updateFromLcdQueue();
-  status_.total_loop_closures = num_loop_closures_;
+  status_log_.back().total_loop_closures = num_loop_closures_;
 
   // TODO(lschmid): Update the hydra logic to not just drop packages in the counting.
   if (!updatePrivateDsg(timestamp_ns, false)) {
@@ -175,9 +175,7 @@ void Backend::spinCallback(const hydra::BackendInput& input) {
     }
   }
 
-  if (logs_) {
-    logStatus();
-  }
+  logStatus();
 
   timer.reset("backend/sinks");
   Sink::callAll(sinks_, timestamp_ns, *private_dsg_->graph, *deformation_graph_);
@@ -236,14 +234,14 @@ size_t Backend::findClosestNode(size_t timestamp_ns) {
   return it - timestamps_.begin();
 }
 
-bool Backend::saveProposedMerges(const hydra::LogSetup& log_setup) {
-  const auto backend_path = log_setup.getLogDir("backend");
+bool Backend::saveProposedMerges(const hydra::DataDirectory& log_setup) {
+  const auto backend_path = log_setup.path("backend");
   std::lock_guard<std::mutex> lock(proposed_merges_mutex_);
   return proposed_merges_.save(backend_path / "proposed_merge.csv");
 }
 
-void Backend::save(const hydra::LogSetup& log_setup) {
-  const auto path = log_setup.getLogDir();
+void Backend::save(const hydra::DataDirectory& log_setup) {
+  const auto path = log_setup.path();
   unmerged_graph_->save(path / "shared_dsg.json", false);
   private_dsg_->graph->save(path / "dsg.json", false);
   const auto mesh = private_dsg_->graph->mesh();
@@ -281,7 +279,7 @@ void Backend::save(const hydra::LogSetup& log_setup) {
 void Backend::fixInputPoses(const hydra::BackendInput& input) {
   std::vector<std::pair<gtsam::Key, gtsam::Pose3>> prior_measurements;
   for (const auto& msg : input.agent_updates.pose_graphs) {
-    status_.new_factors += msg.edges.size();
+    status_log_.back().new_factors += msg.edges.size();
 
     for (const auto& node : msg.nodes) {
       if (node.key == 0) {

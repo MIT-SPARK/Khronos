@@ -112,7 +112,7 @@ class KhronosPipeline {
    * backend DSG.
    * @returns True if the save was successful, false otherwise.
    */
-  bool save(const hydra::LogSetup& log_setup, bool save_full_state = true);
+  bool save(const hydra::DataDirectory& log_setup, bool save_full_state = true);
 
   /**
    * @brief Extracts all data currently in the active window and adds it to the
