@@ -100,20 +100,25 @@ class MaxIoUTracker : public Tracker {
   virtual ~MaxIoUTracker() = default;
 
   // Inputs.
-  void processInput(FrameData& data) override;
+  void processInput(FrameData& data, Tracks& tracks) override;
 
   // Processing.
   void setup();
   void setupTrackMeasurements(FrameData& data) const;
-  void associateTracks(const FrameData& data);
-  void associateSemanticTracks(const FrameData& data);
-  void associateDynamicTracks(const FrameData& data);
+  void associateTracks(const FrameData& data, Tracks& tracks);
+  void associateSemanticTracks(const FrameData& data, Tracks& tracks);
+  void associateDynamicTracks(const FrameData& data, Tracks& tracks);
   void assignStaticTracksToCluster(const FrameData& data,
+                                   Tracks& tracks,
                                    std::unordered_set<int>& associated_objects);
   void assignClustersToStaticTrack(const FrameData& data,
+                                   Tracks& tracks,
                                    std::unordered_set<int>& associated_objects);
-  void updateTrackingDuration();
-  Track& addNewTrack(const FrameData& data, const MeasurementCluster& observation, bool is_dynamic);
+  void updateTrackingDuration(Tracks& tracks);
+  Track& addNewTrack(const FrameData& data,
+                     const MeasurementCluster& observation,
+                     Tracks& tracks,
+                     bool is_dynamic);
   void updateTrack(const FrameData& data,
                    const MeasurementCluster& observation,
                    Track& track,

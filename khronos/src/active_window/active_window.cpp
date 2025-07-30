@@ -47,6 +47,18 @@
 
 namespace khronos {
 
+void declare_config(SensorProcessor::Config& config) {
+  using namespace config;
+  name("SensorProcessor::Config");
+  field(config.projective_integrator, "projective_integrator");
+  config.motion_detector.setOptional();
+  field(config.motion_detector, "motion_detector");
+  config.object_detector.setOptional();
+  field(config.object_detector, "object_detector");
+  config.tracker.setOptional();
+  field(config.tracker, "tracker");
+}
+
 void declare_config(ActiveWindow::Config& config) {
   using namespace config;
   name("ActiveWindow::Config");
@@ -54,14 +66,10 @@ void declare_config(ActiveWindow::Config& config) {
   field(config.verbosity, "verbosity");
   field(config.detach_object_extraction, "detach_object_extraction");
   field(config.min_output_separation, "min_output_separation", "s");
-  field(config.projective_integrator, "projective_integrator");
+
+  // intentionally avoid descend into namespace to keep backwards compatability
+  field(config.processors, "processors", false);
   field(config.tracking_integrator, "tracking_integrator");
-  config.motion_detector.setOptional();
-  field(config.motion_detector, "motion_detector");
-  config.object_detector.setOptional();
-  field(config.object_detector, "object_detector");
-  config.tracker.setOptional();
-  field(config.tracker, "tracker");
   config.object_extractor.setOptional();
   field(config.object_extractor, "object_extractor");
   field(config.extraction_worker, "extraction_worker");
@@ -70,34 +78,28 @@ void declare_config(ActiveWindow::Config& config) {
   field(config.khronos_sinks, "khronos_sinks");
 }
 
+SensorProcessor::SensorProcessor(const Config& config)
+    : config(config::checkValid(config)),
+      integrator(config.projective_integrator),
+      motion_detector(config.motion_detector.create()),
+      object_detector(config.object_detector.create()),
+      tracker(config.tracker.create()) {
+  if (!tracker && (config.motion_detector || config.object_detector)) {
+    LOG(WARNING)
+        << "[Khronos Active Window] Tracker was not specified but motion and/or object detector "
+           "is present. These detections will not be tracked or extracted.";
+  }
+}
+
 ActiveWindow::ActiveWindow(const Config& config, const OutputQueue::Ptr& output_queue)
     : hydra::ActiveWindowModule(config, output_queue),
       config(config::checkValid(config)),
-      integrator_(config.projective_integrator),
+      processors_(config.processors),
       tracking_integrator_(config.tracking_integrator),
       mesh_integrator_(config.mesh_integrator),
       extraction_worker_(config.extraction_worker, config.object_extractor.create()),
       sinks_(KhronosSink::instantiate(config.khronos_sinks)),
       frame_data_buffer_(config.frame_data_buffer) {
-  // Create member processors as specified in the configs.
-  motion_detector_ = config.motion_detector.create();
-  if (!motion_detector_) {
-    motion_detector_ = std::make_unique<MotionDetector>();
-  }
-  object_detector_ = config.object_detector.create();
-  if (!object_detector_) {
-    object_detector_ = std::make_unique<ObjectDetector>();
-  }
-  tracker_ = config.tracker.create();
-  if (!tracker_) {
-    tracker_ = std::make_unique<Tracker>();
-    if (config.motion_detector || config.object_detector) {
-      LOG(WARNING)
-          << "[Khronos Active Window] Tracker was not specified but motion and/or object detector "
-             "is present. These detections will not be tracked or extracted.";
-    }
-  }
-
   if (!map_.config.with_tracking) {
     LOG(WARNING) << "[Khronos Active Window] Tracking layer disabled for volumetric map! Tracking "
                     "layer is strongly recommended as block archival and motion detection may not "
@@ -122,22 +124,28 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& 
 
   // Create a data package for the given input.
   std::shared_ptr<FrameData> data = createData(input);
+  const auto sensor_name = data->input.getSensor().name;
+  const auto processor = processors_.get(sensor_name);
+  if (!processor) {
+    VLOG(1) << "Unknown sensor '" << sensor_name << "'";
+    return nullptr;
+  }
 
   // Detect dynamic points.
-  motion_detector_->processInput(map_, *data);
+  processor->motion_detector->processInput(map_, *data);
 
   // Extract semantic objects.
-  object_detector_->processInput(map_, *data);
+  processor->object_detector->processInput(map_, *data);
 
   // Initialize tracking for new detections and track and associate objects
   // throughout frames.
-  tracker_->processInput(*data);
+  processor->tracker->processInput(*data, tracks_);
 
   // Volumetric reconstruction in active window map.
-  updateMap(*data);
+  updateMap(*processor, *data);
 
   // Save the frame for later use and free-up memory of frames no longer used.
-  frame_data_buffer_.trimBuffer(tracker_->getTracks());
+  frame_data_buffer_.trimBuffer(tracks_);
   frame_data_buffer_.storeData(data);
 
   CLOG(4) << "[Khronos Active Window] Frame data buffer size: " << frame_data_buffer_.size()
@@ -150,7 +158,7 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& 
   ++num_frames_processed_;
 
   Timer sink_timer("active_window/sinks", latest_stamp_);
-  KhronosSink::callAll(sinks_, *data, map_, tracker_->getTracks());
+  KhronosSink::callAll(sinks_, *data, map_, tracks_);
   sink_timer.stop();
 
   // TODO(lschmid): Double check this does what's intended. Check whether we can move mesh
@@ -181,7 +189,7 @@ void ActiveWindow::finishMapping() {
   for (auto& block : *map_.getTrackingLayer()) {
     block.has_active_data = false;
   }
-  for (Track& track : tracker_->getTracks()) {
+  for (Track& track : tracks_) {
     track.is_active = false;
   }
   // Extract objects and wait for them to finish extraction.
@@ -191,7 +199,7 @@ void ActiveWindow::finishMapping() {
 std::vector<std::shared_ptr<KhronosObjectAttributes>> ActiveWindow::extractObjects() {
   std::vector<std::shared_ptr<KhronosObjectAttributes>> result;
   std::lock_guard<std::mutex> lock(mutex_);
-  for (const auto& track : tracker_->getTracks()) {
+  for (const auto& track : tracks_) {
     auto output_object = extraction_worker_.runBlocking(track, frame_data_buffer_);
     if (output_object) {
       result.emplace_back(std::move(output_object));
@@ -200,14 +208,14 @@ std::vector<std::shared_ptr<KhronosObjectAttributes>> ActiveWindow::extractObjec
   return result;
 }
 
-void ActiveWindow::updateMap(const FrameData& data) {
+void ActiveWindow::updateMap(const SensorProcessor& processor, const FrameData& data) {
   Timer timer("active_window/update_map", latest_stamp_);
 
   // Perform projective TSDF integration for all potentially visible blocks.
   // TODO(nathan) also add semantic masking
   cv::Mat integration_mask;
   hydra::maskNonZero(data.dynamic_image, integration_mask);
-  integrator_.updateMap(data.input, map_, true, integration_mask);
+  processor.integrator.updateMap(data.input, map_, true, integration_mask);
 
   // Update the tracking information for all touched blocks. This resets
   // deactivated voxels so needs to come after meshing.
@@ -251,8 +259,8 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::extractOutputData(const FrameData& 
 void ActiveWindow::extractInactiveObjects() {
   // Extract all inactive objects to the output and remove the track from the
   // tracker.
-  auto it = tracker_->getTracks().begin();
-  while (it != tracker_->getTracks().end()) {
+  auto it = tracks_.begin();
+  while (it != tracks_.end()) {
     if (it->is_active) {
       it++;
       continue;
@@ -261,7 +269,7 @@ void ActiveWindow::extractInactiveObjects() {
     // NOTE(lschmid) Move the track and copy the frame data buffer to the thread. The buffer will
     // keep relevant frames alive while the AW updates.
     extraction_worker_.submit(latest_stamp_, std::move(*it), frame_data_buffer_);
-    it = tracker_->getTracks().erase(it);
+    it = tracks_.erase(it);
   }
 }
 
