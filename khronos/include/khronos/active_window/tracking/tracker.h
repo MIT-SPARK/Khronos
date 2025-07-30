@@ -57,15 +57,9 @@ class Tracker {
    * @brief Use the motion and semantic detections each frame and associate them between
    * frames and between each other.
    * @param data The current frame data.
+   * @param tracks The object tracks to populate
    */
-  virtual void processInput(FrameData& /* data */) {}
-
-  // Access.
-  Tracks& getTracks() { return tracks_; }
-  const Tracks& getTracks() const { return tracks_; }
-
- protected:
-  Tracks tracks_;
+  virtual void processInput(FrameData& /* data */, Tracks& /*tracks*/) {}
 };
 
 }  // namespace khronos

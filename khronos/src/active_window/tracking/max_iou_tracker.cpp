@@ -195,7 +195,7 @@ void MaxIoUTracker::setup() {
   }
 }
 
-void MaxIoUTracker::processInput(FrameData& data) {
+void MaxIoUTracker::processInput(FrameData& data, Tracks& tracks) {
   processing_stamp_ = data.input.timestamp_ns;
   Timer timer("tracking/all", processing_stamp_);
 
@@ -206,34 +206,34 @@ void MaxIoUTracker::processInput(FrameData& data) {
   // Associate current objects to existing tracks and create new tracks for
   // unassociated objects.
   // TODO(lschmid): Handle objects splitting or merging explicitly at some point.
-  associateTracks(data);
+  associateTracks(data, tracks);
 
   // Update which tracks are still active. Tracks labeled inactive will be removed by
   // the active window.
-  updateTrackingDuration();
+  updateTrackingDuration(tracks);
 }
 
-void MaxIoUTracker::associateTracks(const FrameData& data) {
+void MaxIoUTracker::associateTracks(const FrameData& data, Tracks& tracks) {
   Timer timer("tracking/associate", processing_stamp_);
 
-  const auto prev_num_tracks = tracks_.size();
+  const auto prev_num_tracks = tracks.size();
   // Associate dynamic tracks first, allocating new dynamic tracks if no match is found.
-  associateDynamicTracks(data);
+  associateDynamicTracks(data, tracks);
 
   // Then associate semantic tracks to all other tracks
-  associateSemanticTracks(data);
+  associateSemanticTracks(data, tracks);
 
   CLOG(3) << "[IoU Tracker] Previous tracks: " << prev_num_tracks
-          << " Current tracks: " << tracks_.size();
+          << " Current tracks: " << tracks.size();
 }
 
-void MaxIoUTracker::associateDynamicTracks(const FrameData& data) {
+void MaxIoUTracker::associateDynamicTracks(const FrameData& data, Tracks& tracks) {
   // Assign dynamic tracks to the closest dynamic clusters that moved less than the
   // allowed maximum.
   CLOG(4) << "[IoU Tracker] Associating " << data.dynamic_clusters.size()
           << " dynamic detections to tracks";
   std::unordered_set<int> associated_objects;
-  for (auto& track : tracks_) {
+  for (auto& track : tracks) {
     if (!track.is_dynamic) {
       continue;
     }
@@ -273,19 +273,19 @@ void MaxIoUTracker::associateDynamicTracks(const FrameData& data) {
       continue;
     }
 
-    auto& track = addNewTrack(data, cluster, true);
+    auto& track = addNewTrack(data, cluster, tracks, true);
     track.last_centroid = computeCentroid(data, cluster);
   }
 }
 
-void MaxIoUTracker::associateSemanticTracks(const FrameData& data) {
+void MaxIoUTracker::associateSemanticTracks(const FrameData& data, Tracks& tracks) {
   CLOG(4) << "[IoU Tracker] Associating " << data.semantic_clusters.size()
           << " semantic clusters to tracks";
 
   // First assign all semantic tracks to dynamic tracks where possible to avoid
   // allocating many semantic tracks for moving objects.
   std::unordered_set<int> associated_objects;
-  for (Track& track : tracks_) {
+  for (Track& track : tracks) {
     if (!track.is_dynamic) {
       continue;
     }
@@ -322,20 +322,21 @@ void MaxIoUTracker::associateSemanticTracks(const FrameData& data) {
 
   switch (config.semantic_association) {
     case Config::SemanticAssociation::kAssignCluster: {
-      assignClustersToStaticTrack(data, associated_objects);
+      assignClustersToStaticTrack(data, tracks, associated_objects);
       break;
     }
     case Config::SemanticAssociation::kAssignTrack: {
-      assignStaticTracksToCluster(data, associated_objects);
+      assignStaticTracksToCluster(data, tracks, associated_objects);
       break;
     }
   }
 }
 
 void MaxIoUTracker::assignClustersToStaticTrack(const FrameData& data,
+                                                Tracks& tracks,
                                                 std::unordered_set<int>& associated_objects) {
   // Greedily associate semantic tracks to highest IoU objects.
-  for (Track& track : tracks_) {
+  for (Track& track : tracks) {
     if (track.is_dynamic) {
       continue;
     }
@@ -381,11 +382,12 @@ void MaxIoUTracker::assignClustersToStaticTrack(const FrameData& data,
       continue;
     }
 
-    addNewTrack(data, cluster, false);
+    addNewTrack(data, cluster, tracks, false);
   }
 }
 
 void MaxIoUTracker::assignStaticTracksToCluster(const FrameData& data,
+                                                Tracks& tracks,
                                                 std::unordered_set<int>& associated_objects) {
   for (const auto& cluster : data.semantic_clusters) {
     if (associated_objects.find(cluster.id) != associated_objects.end()) {
@@ -393,7 +395,7 @@ void MaxIoUTracker::assignStaticTracksToCluster(const FrameData& data,
     }
 
     bool assigned = false;
-    for (Track& track : tracks_) {
+    for (Track& track : tracks) {
       if (track.is_dynamic) {
         continue;
       }
@@ -423,7 +425,7 @@ void MaxIoUTracker::assignStaticTracksToCluster(const FrameData& data,
     }
 
     if (!assigned) {
-      addNewTrack(data, cluster, false);
+      addNewTrack(data, cluster, tracks, false);
     }
   }
 
@@ -460,8 +462,9 @@ void MaxIoUTracker::setupTrackMeasurementVoxels(const FrameData& data,
 
 Track& MaxIoUTracker::addNewTrack(const FrameData& data,
                                   const MeasurementCluster& observation,
+                                  Tracks& tracks,
                                   bool is_dynamic) {
-  auto& track = tracks_.emplace_back();
+  auto& track = tracks.emplace_back();
   track.is_dynamic = is_dynamic;
   track.id = current_track_id_++;
   track.first_seen = processing_stamp_;
@@ -515,10 +518,10 @@ void MaxIoUTracker::updateTrack(const FrameData& data,
       static_cast<float>(track.observations.size()) / (config.min_num_observations * 2), 1.f);
 }
 
-void MaxIoUTracker::updateTrackingDuration() {
+void MaxIoUTracker::updateTrackingDuration(Tracks& tracks) {
   // Label tracks that exit the temporal window as inactive.
   const TimeStamp min_time = processing_stamp_ - fromSeconds(config.temporal_window);
-  for (Track& track : tracks_) {
+  for (Track& track : tracks) {
     track.is_active = track.last_seen >= min_time;
   }
 }

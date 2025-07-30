@@ -67,13 +67,13 @@ class ExternalTracker : public Tracker {
   virtual ~ExternalTracker() = default;
 
   // Inputs.
-  void processInput(FrameData& data) override;
+  void processInput(FrameData& data, Tracks& tracks) override;
 
  protected:
   // Processing.
-  void associateTracks(const FrameData& data);
-  void updateTrackingDuration();
-  void addNewTrack(const MeasurementCluster& observation);
+  void associateTracks(const FrameData& data, Tracks& tracks);
+  void updateTrackingDuration(Tracks& tracks);
+  void addNewTrack(const MeasurementCluster& observation, Tracks& tracks);
   void updateTrack(const MeasurementCluster& observation, Track& track) const;
 
  private:
