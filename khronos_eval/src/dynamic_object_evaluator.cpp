@@ -197,7 +197,7 @@ DynamicObjectEvaluator::RawMetrics DynamicObjectEvaluator::computeAssociationsCe
 }
 
 DynamicObjectEvaluator::DetectionMetrics DynamicObjectEvaluator::computeDetectionMetrics(
-    const uint64_t query_time) const {
+    const uint64_t /* query_time */) const {
   DetectionMetrics result;
   int already_visited = 0;
 
