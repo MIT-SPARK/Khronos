@@ -132,14 +132,20 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& 
   }
 
   // Detect dynamic points.
-  processor->motion_detector->processInput(map_, *data);
+  if (processor->motion_detector) {
+    processor->motion_detector->processInput(map_, *data);
+  }
 
   // Extract semantic objects.
-  processor->object_detector->processInput(map_, *data);
+  if (processor->object_detector) {
+    processor->object_detector->processInput(map_, *data);
+  }
 
   // Initialize tracking for new detections and track and associate objects
   // throughout frames.
-  processor->tracker->processInput(*data, tracks_);
+  if (processor->tracker) {
+    processor->tracker->processInput(*data, tracks_);
+  }
 
   // Volumetric reconstruction in active window map.
   updateMap(*processor, *data);
