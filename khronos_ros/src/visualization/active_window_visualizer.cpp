@@ -39,7 +39,6 @@
 
 #include <config_utilities/config_utilities.h>
 #include <cv_bridge/cv_bridge.hpp>
-#include <hydra_ros/common.h>
 #include <khronos/utils/geometry_utils.h>
 #include <spark_dsg/colormaps.h>
 
@@ -87,7 +86,7 @@ void declare_config(ActiveWindowVisualizer::Config& config) {
 
 ActiveWindowVisualizer::ActiveWindowVisualizer(const Config& config, const ianvs::NodeHandle* nh)
     : config(config::checkValid(config)),
-      nh_(nh ? *nh : hydra::getHydraNodeHandle("active_window_visualizer")) {
+      nh_(nh ? *nh : ianvs::NodeHandle::this_node("active_window_visualizer")) {
   // Advertise all visualization topics.
   ever_free_slice_pub_ = nh_.create_publisher<Marker>("ever_free_slice", config.queue_size);
   tsdf_slice_pub_ = nh_.create_publisher<Marker>("tsdf_slice", config.queue_size);
