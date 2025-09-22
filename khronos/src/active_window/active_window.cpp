@@ -218,8 +218,7 @@ void ActiveWindow::updateMap(const SensorProcessor& processor, const FrameData& 
   Timer timer("active_window/update_map", latest_stamp_);
 
   // Perform projective TSDF integration for all potentially visible blocks.
-  // TODO(nathan) also add semantic masking
-  cv::Mat integration_mask;
+  cv::Mat integration_mask = getDefaultIntegrationMask(data.input);
   hydra::maskNonZero(data.dynamic_image, integration_mask);
   processor.integrator.updateMap(data.input, map_, true, integration_mask);
 
