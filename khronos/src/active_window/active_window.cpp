@@ -293,8 +293,8 @@ std::unique_ptr<FrameData> ActiveWindow::createData(const hydra::InputPacket& in
 
   // Allocate other data internally carried by Khronos.
   std::unique_ptr<FrameData> result = std::make_unique<FrameData>(std::move(*input_data));
-  result->dynamic_image = cv::Mat::zeros(result->input.depth_image.size(), CV_32SC1);
-  result->object_image = cv::Mat::zeros(result->input.depth_image.size(), CV_32SC1);
+  result->dynamic_image = cv::Mat::zeros(result->input.range_image.size(), CV_32SC1);
+  result->object_image = cv::Mat::zeros(result->input.range_image.size(), CV_32SC1);
   return result;
 }
 
