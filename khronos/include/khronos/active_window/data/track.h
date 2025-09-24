@@ -102,7 +102,7 @@ struct Track {
   bool is_dynamic = false;
 
   // Probability estimate [0-1] the object exists.
-  float confidence;
+  float confidence = 0.0f;
 
   // Whether this object is still active.
   bool is_active = true;

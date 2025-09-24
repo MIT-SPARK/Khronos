@@ -512,10 +512,11 @@ void MaxIoUTracker::updateTrack(const FrameData& data,
                                   !is_observation_dynamic ? observation.id : -1,
                                   is_observation_dynamic ? observation.id : -1);
 
+  // NOTE(nathan) sensors may have different confidence weights, so we add confidence for each obs
   // Simple existence probability estimate: count number of observations. We multiply by
   // two so that the minimum observations yield 50% confidence.
-  track.confidence = std::min(
-      static_cast<float>(track.observations.size()) / (config.min_num_observations * 2), 1.f);
+  track.confidence += 1.0f / (config.min_num_observations * 2.0f);
+  track.confidence = std::min(track.confidence, 1.0f);
 }
 
 void MaxIoUTracker::updateTrackingDuration(Tracks& tracks) {
