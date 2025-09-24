@@ -46,7 +46,10 @@
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
 #include <hydra/common/global_info.h>
+#include <hydra/input/sensor_map.h>
+#include <hydra_ros/utils/input_data_to_messages.h>
 #include <hydra_visualizer/utils/marker_tracker.h>
+#include <ianvs/lazy_publisher_group.h>
 #include <ianvs/node_handle.h>
 #include <khronos/active_window/active_window.h>
 #include <rclcpp/time.hpp>
@@ -58,6 +61,13 @@ namespace khronos {
 
 class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
  public:
+  // wrapper struct to handle type inference for sensor map
+  struct SensorDisplay {
+    using Config = hydra::DisplayConfig;
+    const Config config;
+    SensorDisplay(const Config& config) : config(config) {}
+  };
+
   // Config.
   struct Config {
     int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
@@ -85,11 +95,11 @@ class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
     // Number of color revolutions used to recolor integer IDs.
     int id_color_revolutions = 12;
 
-    // Overlay of detections on the color image for visualization in [0, 1].
-    float detection_visualization_alpha = 0.7f;
-
     // Width in meters of lines indicating bounding boxes.
     float bounding_box_line_width = 0.03f;
+
+    // Map of configs for display sensor information.
+    hydra::SensorMap<SensorDisplay>::Config sensor_displays;
   } const config;
 
   // Construction.
@@ -111,36 +121,37 @@ class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
   void visualizeAllMaps(const VolumetricMap& map, float robot_height = 0.0f) const;
   void visualizeAllFrameData(const FrameData& data) const;
   void visualizeAllTracks(const Tracks& tracks, const FrameData& data) const;
+  void visualizeFrameImages(const FrameData& data) const;
 
   // Individual visualizations.
   void visualizeEverFreeSlice(const VolumetricMap& map, float robot_height = 0.0f) const;
   void visualizeTsdfSlice(const VolumetricMap& map, float robot_height = 0.0f) const;
   void visualizeTrackingSlice(const VolumetricMap& map, float robot_height = 0.0f) const;
   void visualizeDynamicPoints(const FrameData& data) const;
-  void visualizeDynamicImage(const FrameData& data) const;
-  void visualizeObjectImage(const FrameData& data) const;
-  void visualizeSemanticImage(const FrameData& data) const;
   void visualizeObjectBoundingBoxes(const FrameData& data) const;
   void visualizeTrackBoundingBoxes(const Tracks& tracks) const;
   void visualizeTrackVoxels(const Tracks& tracks) const;
   void visualizeTrackPixels(const Tracks& tracks) const;
   void visualizeTrackingImage(const Tracks& tracks, const FrameData& data) const;
 
+  // Colormap utility.
+  spark_dsg::Color getIdColor(int id) const;
+
  private:
   // ROS.
   ianvs::NodeHandle nh_;
+  ianvs::RosPublisherGroup<sensor_msgs::msg::Image> image_pubs_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr ever_free_slice_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tsdf_slice_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tracking_slice_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr dynamic_points_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr dynamic_image_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr object_image_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr semantic_image_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr object_bb_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr track_bbox_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr track_voxels_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr track_pixels_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr track_image_pub_;
+
+  // Sensor-dependent config.
+  hydra::SensorMap<SensorDisplay> sensor_displays_;
 
   // Variables.
   mutable rclcpp::Time stamp_;

@@ -72,35 +72,31 @@ void declare_config(ActiveWindowVisualizer::Config& config) {
   field(config.slice_height_is_relative, "slice_height_is_relative");
   field(config.show_unknown_voxels, "show_unknown_voxels");
   field(config.dynamic_point_scale, "dynamic_point_scale", "m");
-  field(config.detection_visualization_alpha, "detection_visualization_alpha");
   field(config.id_color_revolutions, "id_color_revolutions");
   field(config.bounding_box_line_width, "bounding_box_line_width");
+  field(config.sensor_displays, "sensor_displays");
 
   check(config.queue_size, GT, 0, "queue_size");
   check(config.dynamic_point_scale, GT, 0, "dynamic_point_scale");
   checkCondition(!config.global_frame_name.empty(), "param 'global_frame_name' must not be empty");
-  checkInRange(
-      config.detection_visualization_alpha, 0.f, 1.f, "detection_visualization_alpha", false, true);
   check(config.id_color_revolutions, GT, 0, "id_color_revolutions");
   check(config.bounding_box_line_width, GT, 0, "bounding_box_line_width");
 }
 
 ActiveWindowVisualizer::ActiveWindowVisualizer(const Config& config, const ianvs::NodeHandle* nh)
     : config(config::checkValid(config)),
-      nh_(nh ? *nh : ianvs::NodeHandle::this_node("active_window_visualizer")) {
+      nh_(nh ? *nh : ianvs::NodeHandle::this_node("active_window_visualizer")),
+      image_pubs_(nh_),
+      sensor_displays_(config.sensor_displays) {
   // Advertise all visualization topics.
   ever_free_slice_pub_ = nh_.create_publisher<Marker>("ever_free_slice", config.queue_size);
   tsdf_slice_pub_ = nh_.create_publisher<Marker>("tsdf_slice", config.queue_size);
   tracking_slice_pub_ = nh_.create_publisher<Marker>("tracking_slice", config.queue_size);
   dynamic_points_pub_ = nh_.create_publisher<Marker>("dynamic_points", config.queue_size);
-  dynamic_image_pub_ = nh_.create_publisher<ImageMsg>("dynamic_image", config.queue_size);
-  object_image_pub_ = nh_.create_publisher<ImageMsg>("object_image", config.queue_size);
-  semantic_image_pub_ = nh_.create_publisher<ImageMsg>("semantic_image", config.queue_size);
   object_bb_pub_ = nh_.create_publisher<MarkerArray>("object_bounding_boxes", config.queue_size);
   track_bbox_pub_ = nh_.create_publisher<MarkerArray>("tracking/bounding_box", config.queue_size);
   track_voxels_pub_ = nh_.create_publisher<MarkerArray>("tracking/voxels", config.queue_size);
   track_pixels_pub_ = nh_.create_publisher<MarkerArray>("tracking/pixels", config.queue_size);
-  track_image_pub_ = nh_.create_publisher<ImageMsg>("tracking/image", config.queue_size);
 }
 
 void ActiveWindowVisualizer::call(const FrameData& data,
@@ -142,10 +138,9 @@ void ActiveWindowVisualizer::visualizeAllFrameData(const FrameData& data) const 
 
   Timer timer("visualize/active_window/frame_data", stamp_.nanoseconds());
   visualizeDynamicPoints(data);
-  visualizeDynamicImage(data);
-  visualizeObjectImage(data);
-  visualizeSemanticImage(data);
   visualizeObjectBoundingBoxes(data);
+  visualizeFrameImages(data);
+
   if (use_stamp) {
     stamp_is_set_ = false;
   }
@@ -283,32 +278,36 @@ void ActiveWindowVisualizer::visualizeTrackPixels(const Tracks& tracks) const {
 
 void ActiveWindowVisualizer::visualizeTrackingImage(const Tracks& tracks,
                                                     const FrameData& data) const {
-  if (track_image_pub_->get_subscription_count() == 0) {
-    return;
-  }
-  // Overlay tracking confidence pixels on the color image.
-  cv_bridge::CvImage msg(std_msgs::msg::Header(), "rgb8", data.input.color_image.clone());
-  const Transform sensor_T_world = data.input.getSensorPose();
-  const Sensor& sensor = data.input.getSensor();
-  for (const auto& track : tracks) {
-    std::set<Pixel> reprojected_pixels;
+  std_msgs::msg::Header header;
+  header.stamp = rclcpp::Time(data.input.timestamp_ns);
 
-    for (const Point& point : track.last_points) {
-      int u, v;
-      const auto p_sensor = sensor_T_world * Eigen::Vector3d(point[0], point[1], point[2]);
-      if (sensor.projectPointToImagePlane(p_sensor.cast<float>(), u, v)) {
-        reprojected_pixels.emplace(u, v);
+  const auto sensor_name = data.input.getSensor().name;
+  const auto display = sensor_displays_.get(sensor_name);
+  const auto display_config = display ? display->config : hydra::DisplayConfig{};
+
+  image_pubs_.publish("tracking/image/" + sensor_name, [&]() {
+    // Overlay tracking confidence pixels on the color image.
+    auto img = data.input.color_image.clone();
+    const auto sensor_T_world = data.input.getSensorPose();
+    const auto& sensor = data.input.getSensor();
+    for (const auto& track : tracks) {
+      std::set<Pixel> reprojected_pixels;
+
+      for (const auto& p : track.last_points) {
+        int u, v;
+        const Eigen::Vector3d p_sensor = sensor_T_world * Eigen::Vector3d(p[0], p[1], p[2]);
+        if (sensor.projectPointToImagePlane(p_sensor.cast<float>(), u, v)) {
+          reprojected_pixels.emplace(u, v);
+        }
+      }
+      const auto color = colormaps::quality(track.confidence);
+      for (const auto& pixel : reprojected_pixels) {
+        applyColor(color, img.at<cv::Vec3b>(pixel.v, pixel.u), display_config.overlay_alpha);
       }
     }
-    const Color color = colormaps::quality(track.confidence);
-    for (const auto& pixel : reprojected_pixels) {
-      applyColor(
-          color, msg.image.at<cv::Vec3b>(pixel.v, pixel.u), config.detection_visualization_alpha);
-    }
-  }
 
-  msg.header.stamp = rclcpp::Time(data.input.timestamp_ns);
-  track_image_pub_->publish(*msg.toImageMsg());
+    return hydra::convertImage(header, img, display_config);
+  });
 }
 
 void ActiveWindowVisualizer::visualizeObjectBoundingBoxes(const FrameData& data) const {
@@ -550,71 +549,56 @@ void ActiveWindowVisualizer::visualizeDynamicPoints(const FrameData& data) const
   dynamic_points_pub_->publish(msg);
 }
 
-void ActiveWindowVisualizer::visualizeDynamicImage(const FrameData& data) const {
-  if (dynamic_image_pub_->get_subscription_count() == 0) {
-    return;
-  }
-  Timer timer("visualize/dynamioc_image", stamp_.nanoseconds());
-  // Overlay dynamic pixels as red on the color image.
-  cv_bridge::CvImage msg(std_msgs::msg::Header(), "rgb8", data.input.color_image.clone());
-  for (int u = 0; u < msg.image.cols; ++u) {
-    for (int v = 0; v < msg.image.rows; ++v) {
-      const int id = data.dynamic_image.at<FrameData::DynamicImageType>(v, u);
-      if (id != 0) {
-        applyColor(colormaps::rainbowId(id, config.id_color_revolutions),
-                   msg.image.at<cv::Vec3b>(v, u),
-                   config.detection_visualization_alpha);
-      }
-    }
-  }
-  msg.header.stamp = rclcpp::Time(data.input.timestamp_ns);
-  dynamic_image_pub_->publish(*msg.toImageMsg());
-}
-
-void ActiveWindowVisualizer::visualizeObjectImage(const FrameData& data) const {
-  if (object_image_pub_->get_subscription_count() == 0) {
-    return;
-  }
-  Timer timer("visualize/object_iamge", stamp_.nanoseconds());
+void ActiveWindowVisualizer::visualizeFrameImages(const FrameData& data) const {
+  std_msgs::msg::Header header;
+  header.stamp = rclcpp::Time(data.input.timestamp_ns);
+  const auto sensor_name = data.input.getSensor().name;
+  const auto display = sensor_displays_.get(sensor_name);
+  const auto display_config = display ? display->config : hydra::DisplayConfig{};
 
   // Overlay dynamic pixels colored by id on the color image.
-  cv_bridge::CvImage msg(std_msgs::msg::Header(), "rgb8", data.input.color_image.clone());
-  std::set<int> ids;
-  for (int u = 0; u < msg.image.cols; ++u) {
-    for (int v = 0; v < msg.image.rows; ++v) {
-      const int id = data.object_image.at<FrameData::ObjectImageType>(v, u);
-      ids.emplace(id);
-      if (id != 0) {
-        applyColor(colormaps::rainbowId(id, config.id_color_revolutions),
-                   msg.image.at<cv::Vec3b>(v, u),
-                   config.detection_visualization_alpha);
-      }
-    }
-  }
-  msg.header.stamp = rclcpp::Time(data.input.timestamp_ns);
-  object_image_pub_->publish(*msg.toImageMsg());
+  image_pubs_.publish("dynamic_image/" + sensor_name, [&]() {
+    Timer timer("visualize/dynamic_image", stamp_.nanoseconds());
+    return hydra::makeOverlayImage(
+        header,
+        data.dynamic_image,
+        data.input.color_image,
+        [this](const cv::Mat& img, int r, int c) {
+          return getIdColor(img.at<FrameData::DynamicImageType>(r, c));
+        },
+        display_config);
+  });
+
+  // Overlay static object pixels colored by id on the color image.
+  image_pubs_.publish("object_image/" + sensor_name, [&]() {
+    Timer timer("visualize/object_image", stamp_.nanoseconds());
+    return hydra::makeOverlayImage(
+        header,
+        data.object_image,
+        data.input.color_image,
+        [this](const cv::Mat& img, int r, int c) {
+          return getIdColor(img.at<FrameData::ObjectImageType>(r, c));
+        },
+        display_config);
+  });
+
+  // Overlay original semantic labels colored by category on the color image
+  image_pubs_.publish("semantic_image/" + sensor_name, [&]() {
+    Timer timer("visualize_semantic_image", stamp_.nanoseconds());
+    return hydra::makeOverlayImage(
+        header,
+        data.input.label_image,
+        data.input.color_image,
+        [this](const cv::Mat& img, int r, int c) {
+          return getIdColor(img.at<InputData::LabelType>(r, c));
+        },
+        display_config);
+  });
 }
 
-void ActiveWindowVisualizer::visualizeSemanticImage(const FrameData& data) const {
-  if (semantic_image_pub_->get_subscription_count() == 0) {
-    return;
-  }
-  Timer timer("visualize_semantic_image", stamp_.nanoseconds());
-
-  // Overlay semantic pixels colored by id on the color image.
-  cv_bridge::CvImage msg(std_msgs::msg::Header(), "rgb8", data.input.color_image.clone());
-  for (int u = 0; u < msg.image.cols; ++u) {
-    for (int v = 0; v < msg.image.rows; ++v) {
-      const int id = data.input.label_image.at<InputData::LabelType>(v, u);
-      if (id != 0) {
-        applyColor(colormaps::rainbowId(id, config.id_color_revolutions),
-                   msg.image.at<cv::Vec3b>(v, u),
-                   config.detection_visualization_alpha);
-      }
-    }
-  }
-  msg.header.stamp = rclcpp::Time(data.input.timestamp_ns);
-  semantic_image_pub_->publish(*msg.toImageMsg());
+spark_dsg::Color ActiveWindowVisualizer::getIdColor(int id) const {
+  return id != 0 ? colormaps::rainbowId(id, config.id_color_revolutions)
+                 : spark_dsg::Color::black();
 }
 
 }  // namespace khronos

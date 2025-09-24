@@ -49,8 +49,10 @@ void declare_config(ConnectedSemantics::Config& config) {
   field(config.use_full_connectivity, "use_full_connectivity");
   field(config.min_cluster_size, "min_cluster_size");
   field(config.max_cluster_size, "max_cluster_size");
-  field(config.max_range, "max_range", "m");
   field(config.use_3d, "use_3d");
+  field(config.grid_size, "grid_size", "m");
+  field(config.max_range, "max_range", "m");
+  check(config.grid_size, GT, 0.0, "grid_size");
 }
 
 ConnectedSemantics::ConnectedSemantics(const Config& config)
