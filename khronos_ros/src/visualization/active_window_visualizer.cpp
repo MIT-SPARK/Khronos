@@ -38,8 +38,8 @@
 #include "khronos_ros/visualization/active_window_visualizer.h"
 
 #include <config_utilities/config_utilities.h>
-#include <config_utilities/parsing/ros.h>
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
+#include <ianvs/node_handle.h>
 #include <khronos/utils/geometry_utils.h>
 #include <spark_dsg/colormaps.h>
 
@@ -47,8 +47,20 @@
 #include "khronos_ros/visualization/visualization_utils.h"
 
 namespace khronos {
+namespace {
+
+static const auto registration =
+    config::RegistrationWithConfig<ActiveWindow::KhronosSink,
+                                   ActiveWindowVisualizer,
+                                   ActiveWindowVisualizer::Config>("ActiveWindowVisualizer");
+
+}
 
 namespace colormaps = spark_dsg::colormaps;
+
+using visualization_msgs::msg::Marker;
+using visualization_msgs::msg::MarkerArray;
+using ImageMsg = sensor_msgs::msg::Image;
 
 void declare_config(ActiveWindowVisualizer::Config& config) {
   using namespace config;
@@ -73,69 +85,62 @@ void declare_config(ActiveWindowVisualizer::Config& config) {
   check(config.bounding_box_line_width, GT, 0, "bounding_box_line_width");
 }
 
-ActiveWindowVisualizer::ActiveWindowVisualizer(const ros::NodeHandle& nh)
-    : ActiveWindowVisualizer(config::fromRos<ActiveWindowVisualizer::Config>(nh), nh) {}
-
-ActiveWindowVisualizer::ActiveWindowVisualizer(const Config& config, const ros::NodeHandle& nh)
-    : config(config::checkValid(config)), nh_(nh) {
+ActiveWindowVisualizer::ActiveWindowVisualizer(const Config& config, const ianvs::NodeHandle* nh)
+    : config(config::checkValid(config)),
+      nh_(nh ? *nh : ianvs::NodeHandle::this_node("active_window_visualizer")) {
   // Advertise all visualization topics.
-  ever_free_slice_pub_ =
-      nh_.advertise<visualization_msgs::Marker>("ever_free_slice", config.queue_size);
-  tsdf_slice_pub_ = nh_.advertise<visualization_msgs::Marker>("tsdf_slice", config.queue_size);
-  tracking_slice_pub_ =
-      nh_.advertise<visualization_msgs::Marker>("tracking_slice", config.queue_size);
-  dynamic_points_pub_ =
-      nh_.advertise<visualization_msgs::Marker>("dynamic_points", config.queue_size);
-  dynamic_image_pub_ = nh_.advertise<sensor_msgs::Image>("dynamic_image", config.queue_size);
-  object_image_pub_ = nh_.advertise<sensor_msgs::Image>("object_image", config.queue_size);
-  semantic_image_pub_ = nh_.advertise<sensor_msgs::Image>("semantic_image", config.queue_size);
-  object_bb_pub_ =
-      nh_.advertise<visualization_msgs::MarkerArray>("object_bounding_boxes", config.queue_size);
-  track_bbox_pub_ =
-      nh_.advertise<visualization_msgs::MarkerArray>("tracking/bounding_box", config.queue_size);
-  track_voxels_pub_ =
-      nh_.advertise<visualization_msgs::MarkerArray>("tracking/voxels", config.queue_size);
-  track_pixels_pub_ =
-      nh_.advertise<visualization_msgs::MarkerArray>("tracking/pixels", config.queue_size);
-  track_image_pub_ = nh_.advertise<sensor_msgs::Image>("tracking/image", config.queue_size);
+  ever_free_slice_pub_ = nh_.create_publisher<Marker>("ever_free_slice", config.queue_size);
+  tsdf_slice_pub_ = nh_.create_publisher<Marker>("tsdf_slice", config.queue_size);
+  tracking_slice_pub_ = nh_.create_publisher<Marker>("tracking_slice", config.queue_size);
+  dynamic_points_pub_ = nh_.create_publisher<Marker>("dynamic_points", config.queue_size);
+  dynamic_image_pub_ = nh_.create_publisher<ImageMsg>("dynamic_image", config.queue_size);
+  object_image_pub_ = nh_.create_publisher<ImageMsg>("object_image", config.queue_size);
+  semantic_image_pub_ = nh_.create_publisher<ImageMsg>("semantic_image", config.queue_size);
+  object_bb_pub_ = nh_.create_publisher<MarkerArray>("object_bounding_boxes", config.queue_size);
+  track_bbox_pub_ = nh_.create_publisher<MarkerArray>("tracking/bounding_box", config.queue_size);
+  track_voxels_pub_ = nh_.create_publisher<MarkerArray>("tracking/voxels", config.queue_size);
+  track_pixels_pub_ = nh_.create_publisher<MarkerArray>("tracking/pixels", config.queue_size);
+  track_image_pub_ = nh_.create_publisher<ImageMsg>("tracking/image", config.queue_size);
 }
 
-void ActiveWindowVisualizer::visualizeAll(const VolumetricMap& map,
-                                          const FrameData& data,
-                                          const Tracks& tracks) {
-  stamp_.fromNSec(data.input.timestamp_ns);
-  Timer timer("visualize/active_window/all", stamp_.toNSec());
+void ActiveWindowVisualizer::call(const FrameData& data,
+                                  const VolumetricMap& map,
+                                  const Tracks& tracks) const {
+  stamp_ = rclcpp::Time(data.input.timestamp_ns);
+  Timer timer("visualize/active_window/all", data.input.timestamp_ns);
   stamp_is_set_ = true;
-  robot_pose_ = data.input.world_T_body;
 
   // Visualization.
-  visualizeAllMaps(map);
+  visualizeAllMaps(map, data.input.world_T_body.translation().z());
   visualizeAllFrameData(data);
   visualizeAllTracks(tracks, data);
   stamp_is_set_ = false;
 }
 
-void ActiveWindowVisualizer::visualizeAllMaps(const VolumetricMap& map) {
+void ActiveWindowVisualizer::visualizeAllMaps(const VolumetricMap& map, float robot_height) const {
   const bool use_stamp = !stamp_is_set_;
   if (use_stamp) {
-    stamp_ = ros::Time::now();
+    stamp_ = nh_.now();
     stamp_is_set_ = true;
   }
-  Timer timer("visualize/active_window/map", stamp_.toNSec());
-  visualizeEverFreeSlice(map);
-  visualizeTsdfSlice(map);
-  visualizeTrackingSlice(map);
+
+  Timer timer("visualize/active_window/map", stamp_.nanoseconds());
+  visualizeEverFreeSlice(map, robot_height);
+  visualizeTsdfSlice(map, robot_height);
+  visualizeTrackingSlice(map, robot_height);
   if (use_stamp) {
     stamp_is_set_ = false;
   }
 }
-void ActiveWindowVisualizer::visualizeAllFrameData(const FrameData& data) {
+
+void ActiveWindowVisualizer::visualizeAllFrameData(const FrameData& data) const {
   const bool use_stamp = !stamp_is_set_;
   if (use_stamp) {
-    stamp_.fromNSec(data.input.timestamp_ns);
+    stamp_ = rclcpp::Time(data.input.timestamp_ns);
     stamp_is_set_ = true;
   }
-  Timer timer("visualize/active_window/frame_data", stamp_.toNSec());
+
+  Timer timer("visualize/active_window/frame_data", stamp_.nanoseconds());
   visualizeDynamicPoints(data);
   visualizeDynamicImage(data);
   visualizeObjectImage(data);
@@ -146,13 +151,14 @@ void ActiveWindowVisualizer::visualizeAllFrameData(const FrameData& data) {
   }
 }
 
-void ActiveWindowVisualizer::visualizeAllTracks(const Tracks& tracks, const FrameData& data) {
+void ActiveWindowVisualizer::visualizeAllTracks(const Tracks& tracks, const FrameData& data) const {
   const bool use_stamp = !stamp_is_set_;
   if (use_stamp) {
-    stamp_ = ros::Time::now();
+    stamp_ = nh_.now();
     stamp_is_set_ = true;
   }
-  Timer timer("visualize/active_window/tracking", stamp_.toNSec());
+
+  Timer timer("visualize/active_window/tracking", stamp_.nanoseconds());
   visualizeTrackBoundingBoxes(tracks);
   visualizeTrackVoxels(tracks);
   visualizeTrackPixels(tracks);
@@ -162,14 +168,14 @@ void ActiveWindowVisualizer::visualizeAllTracks(const Tracks& tracks, const Fram
   }
 }
 
-void ActiveWindowVisualizer::visualizeTrackBoundingBoxes(const Tracks& tracks) {
-  if (track_bbox_pub_.getNumSubscribers() == 0u || tracks.empty()) {
+void ActiveWindowVisualizer::visualizeTrackBoundingBoxes(const Tracks& tracks) const {
+  if (track_bbox_pub_->get_subscription_count() == 0u || tracks.empty()) {
     return;
   }
 
-  visualization_msgs::MarkerArray msg;
+  MarkerArray new_markers;
   size_t id = 0u;
-  std_msgs::Header header;
+  std_msgs::msg::Header header;
   header.frame_id = config.global_frame_name;
   header.stamp = getStamp();
   for (const Track& track : tracks) {
@@ -190,37 +196,38 @@ void ActiveWindowVisualizer::visualizeTrackBoundingBoxes(const Tracks& tracks) {
       }
     }
 
-    auto& marker = msg.markers.emplace_back(setBoundingBox(
+    auto& marker = new_markers.markers.emplace_back(setBoundingBox(
         bbox, colormaps::quality(track.confidence), header, config.bounding_box_line_width));
     marker.id = id++;
   }
-  deletePreviousMarkers(msg, num_previous_bbox_tracks_);
-  num_previous_bbox_tracks_ = id;
-  if (msg.markers.empty()) {
-    return;
+
+  MarkerArray msg;
+  bbox_tracks_tracker_.add(new_markers, msg);
+  bbox_tracks_tracker_.clearPrevious(header, msg);
+  if (!msg.markers.empty()) {
+    track_bbox_pub_->publish(msg);
   }
-  track_bbox_pub_.publish(msg);
 }
 
-void ActiveWindowVisualizer::visualizeTrackVoxels(const Tracks& tracks) {
-  if (track_voxels_pub_.getNumSubscribers() == 0u || tracks.empty()) {
+void ActiveWindowVisualizer::visualizeTrackVoxels(const Tracks& tracks) const {
+  if (track_voxels_pub_->get_subscription_count() == 0u || tracks.empty()) {
     return;
   }
 
-  visualization_msgs::MarkerArray msg;
+  MarkerArray new_markers;
   size_t id = 0u;
-  std_msgs::Header header;
+  std_msgs::msg::Header header;
   header.frame_id = config.global_frame_name;
   header.stamp = getStamp();
   for (const Track& track : tracks) {
     if (track.last_voxels.empty()) {
       continue;
     }
-    auto& marker = msg.markers.emplace_back();
-    marker.action = visualization_msgs::Marker::ADD;
+    auto& marker = new_markers.markers.emplace_back();
+    marker.action = Marker::ADD;
     marker.id = id++;
     marker.header = header;
-    marker.type = visualization_msgs::Marker::CUBE_LIST;
+    marker.type = Marker::CUBE_LIST;
     marker.scale = setScale(track.last_voxel_size);
     marker.color = setColor(colormaps::quality(track.confidence));
     marker.points.reserve(track.last_voxels.size());
@@ -230,33 +237,34 @@ void ActiveWindowVisualizer::visualizeTrackVoxels(const Tracks& tracks) {
           setPoint(spatial_hash::centerPointFromIndex(voxel, track.last_voxel_size)));
     }
   }
-  deletePreviousMarkers(msg, num_previous_voxel_tracks_);
-  num_previous_voxel_tracks_ = id;
-  if (msg.markers.empty()) {
-    return;
+
+  MarkerArray msg;
+  voxel_tracks_tracker_.add(new_markers, msg);
+  voxel_tracks_tracker_.clearPrevious(header, msg);
+  if (!msg.markers.empty()) {
+    track_voxels_pub_->publish(msg);
   }
-  track_voxels_pub_.publish(msg);
 }
 
-void ActiveWindowVisualizer::visualizeTrackPixels(const Tracks& tracks) {
-  if (track_pixels_pub_.getNumSubscribers() == 0u || tracks.empty()) {
+void ActiveWindowVisualizer::visualizeTrackPixels(const Tracks& tracks) const {
+  if (track_pixels_pub_->get_subscription_count() == 0u || tracks.empty()) {
     return;
   }
 
-  visualization_msgs::MarkerArray msg;
+  MarkerArray new_markers;
   size_t id = 0u;
-  std_msgs::Header header;
+  std_msgs::msg::Header header;
   header.frame_id = config.global_frame_name;
   header.stamp = getStamp();
   for (const Track& track : tracks) {
     if (track.last_points.empty()) {
       continue;
     }
-    auto& marker = msg.markers.emplace_back();
-    marker.action = visualization_msgs::Marker::ADD;
+    auto& marker = new_markers.markers.emplace_back();
+    marker.action = Marker::ADD;
     marker.id = id++;
     marker.header = header;
-    marker.type = visualization_msgs::Marker::POINTS;
+    marker.type = Marker::POINTS;
     marker.scale = setScale(config.dynamic_point_scale);
     marker.color = setColor(colormaps::quality(track.confidence));
     marker.points.reserve(track.last_points.size());
@@ -264,21 +272,22 @@ void ActiveWindowVisualizer::visualizeTrackPixels(const Tracks& tracks) {
       marker.points.emplace_back(setPoint(point));
     }
   }
-  deletePreviousMarkers(msg, num_previous_pixel_tracks_);
-  num_previous_pixel_tracks_ = id;
-  if (msg.markers.empty()) {
-    return;
+
+  MarkerArray msg;
+  pixel_tracks_tracker_.add(new_markers, msg);
+  pixel_tracks_tracker_.clearPrevious(header, msg);
+  if (!msg.markers.empty()) {
+    track_pixels_pub_->publish(msg);
   }
-  track_pixels_pub_.publish(msg);
 }
 
 void ActiveWindowVisualizer::visualizeTrackingImage(const Tracks& tracks,
                                                     const FrameData& data) const {
-  if (track_image_pub_.getNumSubscribers() == 0) {
+  if (track_image_pub_->get_subscription_count() == 0) {
     return;
   }
   // Overlay tracking confidence pixels on the color image.
-  cv_bridge::CvImage msg(std_msgs::Header(), "rgb8", data.input.color_image.clone());
+  cv_bridge::CvImage msg(std_msgs::msg::Header(), "rgb8", data.input.color_image.clone());
   const Transform sensor_T_world = data.input.getSensorPose();
   const Sensor& sensor = data.input.getSensor();
   for (const auto& track : tracks) {
@@ -298,25 +307,25 @@ void ActiveWindowVisualizer::visualizeTrackingImage(const Tracks& tracks,
     }
   }
 
-  msg.header.stamp.fromNSec(data.input.timestamp_ns);
-  track_image_pub_.publish(msg.toImageMsg());
+  msg.header.stamp = rclcpp::Time(data.input.timestamp_ns);
+  track_image_pub_->publish(*msg.toImageMsg());
 }
 
-void ActiveWindowVisualizer::visualizeObjectBoundingBoxes(const FrameData& data) {
-  if (object_bb_pub_.getNumSubscribers() == 0u) {
+void ActiveWindowVisualizer::visualizeObjectBoundingBoxes(const FrameData& data) const {
+  if (object_bb_pub_->get_subscription_count() == 0u) {
     return;
   }
-  Timer timer("visualize/object_bb", stamp_.toNSec());
+  Timer timer("visualize/object_bb", stamp_.nanoseconds());
 
-  visualization_msgs::MarkerArray msg;
-  msg.markers.reserve(data.semantic_clusters.size());
+  MarkerArray new_markers;
+  new_markers.markers.reserve(data.semantic_clusters.size());
   size_t id = 0u;
-  std_msgs::Header header;
+  std_msgs::msg::Header header;
   header.frame_id = config.global_frame_name;
   header.stamp = getStamp();
   for (const auto& cluster : data.semantic_clusters) {
     if (cluster.bounding_box.isValid()) {
-      auto& marker = msg.markers.emplace_back(
+      auto& marker = new_markers.markers.emplace_back(
           setBoundingBox(cluster.bounding_box,
                          colormaps::rainbowId(cluster.id, config.id_color_revolutions),
                          header,
@@ -324,34 +333,37 @@ void ActiveWindowVisualizer::visualizeObjectBoundingBoxes(const FrameData& data)
       marker.id = id++;
     }
   }
-  deletePreviousMarkers(msg, num_previous_object_bbs_);
-  if (msg.markers.size() > 0) {
-    num_previous_object_bbs_ = id;
-    object_bb_pub_.publish(msg);
+
+  MarkerArray msg;
+  object_bbs_tracker_.add(new_markers, msg);
+  object_bbs_tracker_.clearPrevious(header, msg);
+  if (!msg.markers.empty()) {
+    object_bb_pub_->publish(msg);
   }
 }
 
-void ActiveWindowVisualizer::visualizeEverFreeSlice(const VolumetricMap& map) const {
-  if (ever_free_slice_pub_.getNumSubscribers() == 0) {
+void ActiveWindowVisualizer::visualizeEverFreeSlice(const VolumetricMap& map,
+                                                    float robot_height) const {
+  if (ever_free_slice_pub_->get_subscription_count() == 0) {
     return;
   }
-  Timer timer("visualize_ever_free_slice", stamp_.toNSec());
+  Timer timer("visualize_ever_free_slice", stamp_.nanoseconds());
   const TrackingLayer& layer = *map.getTrackingLayer();
-  visualization_msgs::Marker msg;
+  Marker msg;
 
   // Common properties.
-  msg.action = visualization_msgs::Marker::ADD;
+  msg.action = Marker::ADD;
   msg.id = 0;
   msg.header.stamp = getStamp();
   msg.header.frame_id = config.global_frame_name;
-  msg.type = visualization_msgs::Marker::CUBE_LIST;
+  msg.type = Marker::CUBE_LIST;
   msg.scale = setScale(map.config.voxel_size);
   msg.pose.orientation.w = 1.f;
 
   // Setup the slice.
   float slice_height = config.slice_height;
   if (config.slice_height_is_relative) {
-    slice_height += robot_pose_.translation().z();
+    slice_height += robot_height;
   }
   const Point slice_coords(0, 0, slice_height);
   const VoxelKey slice_key = map.getTrackingLayer()->getVoxelKey(slice_coords);
@@ -387,31 +399,32 @@ void ActiveWindowVisualizer::visualizeEverFreeSlice(const VolumetricMap& map) co
     }
   }
   if (!msg.points.empty()) {
-    ever_free_slice_pub_.publish(msg);
+    ever_free_slice_pub_->publish(msg);
   }
 }
 
-void ActiveWindowVisualizer::visualizeTrackingSlice(const VolumetricMap& map) const {
-  if (tracking_slice_pub_.getNumSubscribers() == 0 || !map.getTrackingLayer()) {
+void ActiveWindowVisualizer::visualizeTrackingSlice(const VolumetricMap& map,
+                                                    float robot_height) const {
+  if (tracking_slice_pub_->get_subscription_count() == 0 || !map.getTrackingLayer()) {
     return;
   }
-  Timer timer("visualize_tracking_slice", stamp_.toNSec());
+  Timer timer("visualize_tracking_slice", stamp_.nanoseconds());
   const TrackingLayer& layer = *map.getTrackingLayer();
-  visualization_msgs::Marker msg;
+  Marker msg;
 
   // Common properties.
-  msg.action = visualization_msgs::Marker::ADD;
+  msg.action = Marker::ADD;
   msg.id = 0;
   msg.header.stamp = getStamp();
   msg.header.frame_id = config.global_frame_name;
-  msg.type = visualization_msgs::Marker::CUBE_LIST;
+  msg.type = Marker::CUBE_LIST;
   msg.scale = setScale(map.config.voxel_size);
   msg.pose.orientation.w = 1.f;
 
   // Setup the slice.
   float slice_height = config.slice_height;
   if (config.slice_height_is_relative) {
-    slice_height += robot_pose_.translation().z();
+    slice_height += robot_height;
   }
   const Point slice_coords(0, 0, slice_height);
   const VoxelKey slice_key = layer.getVoxelKey(slice_coords);
@@ -437,7 +450,7 @@ void ActiveWindowVisualizer::visualizeTrackingSlice(const VolumetricMap& map) co
         if (is_unknown) {
           msg.colors.emplace_back(setColor(Color::gray()));
         } else {
-          const float age = stamp_.toSec() - toSeconds(voxel.last_observed);
+          const float age = stamp_.seconds() - toSeconds(voxel.last_observed);
           constexpr float max_age = 3;  // TMP: should be the param.
           if (age > max_age) {
             msg.colors.emplace_back(setColor(Color::black()));
@@ -449,31 +462,32 @@ void ActiveWindowVisualizer::visualizeTrackingSlice(const VolumetricMap& map) co
     }
   }
   if (!msg.points.empty()) {
-    tracking_slice_pub_.publish(msg);
+    tracking_slice_pub_->publish(msg);
   }
 }
 
-void ActiveWindowVisualizer::visualizeTsdfSlice(const VolumetricMap& map) const {
-  if (tsdf_slice_pub_.getNumSubscribers() == 0) {
+void ActiveWindowVisualizer::visualizeTsdfSlice(const VolumetricMap& map,
+                                                float robot_height) const {
+  if (tsdf_slice_pub_->get_subscription_count() == 0) {
     return;
   }
-  Timer timer("visualize_tsdf_slice", stamp_.toNSec());
+  Timer timer("visualize_tsdf_slice", stamp_.nanoseconds());
   const TsdfLayer& layer = map.getTsdfLayer();
-  visualization_msgs::Marker msg;
+  Marker msg;
 
   // Common properties.
-  msg.action = visualization_msgs::Marker::ADD;
+  msg.action = Marker::ADD;
   msg.id = 0;
   msg.header.stamp = getStamp();
   msg.header.frame_id = config.global_frame_name;
-  msg.type = visualization_msgs::Marker::CUBE_LIST;
+  msg.type = Marker::CUBE_LIST;
   msg.scale = setScale(map.config.voxel_size);
   msg.pose.orientation.w = 1.f;
 
   // Setup the slice.
   float slice_height = config.slice_height;
   if (config.slice_height_is_relative) {
-    slice_height += robot_pose_.translation().z();
+    slice_height += robot_height;
   }
   const Point slice_coords(0, 0, slice_height);
   const VoxelKey slice_key = layer.getVoxelKey(slice_coords);
@@ -501,22 +515,22 @@ void ActiveWindowVisualizer::visualizeTsdfSlice(const VolumetricMap& map) const 
     }
   }
   if (!msg.points.empty()) {
-    tsdf_slice_pub_.publish(msg);
+    tsdf_slice_pub_->publish(msg);
   }
 }
 
 void ActiveWindowVisualizer::visualizeDynamicPoints(const FrameData& data) const {
-  if (dynamic_points_pub_.getNumSubscribers() == 0) {
+  if (dynamic_points_pub_->get_subscription_count() == 0) {
     return;
   }
-  Timer timer("visualize/dynamic_points", stamp_.toNSec());
+  Timer timer("visualize/dynamic_points", stamp_.nanoseconds());
 
-  visualization_msgs::Marker msg;
-  msg.action = visualization_msgs::Marker::ADD;
+  Marker msg;
+  msg.action = Marker::ADD;
   msg.id = 0;
-  msg.header.stamp.fromNSec(data.input.timestamp_ns);
+  msg.header.stamp = rclcpp::Time(data.input.timestamp_ns);
   msg.header.frame_id = config.global_frame_name;
-  msg.type = visualization_msgs::Marker::POINTS;
+  msg.type = Marker::POINTS;
 
   // Get all cluster points.
   for (const auto& cluster : data.dynamic_clusters) {
@@ -528,21 +542,21 @@ void ActiveWindowVisualizer::visualizeDynamicPoints(const FrameData& data) const
   }
 
   if (msg.points.empty()) {
-    msg.action = visualization_msgs::Marker::DELETE;
+    msg.action = Marker::DELETE;
   } else {
     msg.scale = setScale(config.dynamic_point_scale);
     msg.color = setColor(Color::red());
   }
-  dynamic_points_pub_.publish(msg);
+  dynamic_points_pub_->publish(msg);
 }
 
 void ActiveWindowVisualizer::visualizeDynamicImage(const FrameData& data) const {
-  if (dynamic_image_pub_.getNumSubscribers() == 0) {
+  if (dynamic_image_pub_->get_subscription_count() == 0) {
     return;
   }
-  Timer timer("visualize/dynamioc_image", stamp_.toNSec());
+  Timer timer("visualize/dynamioc_image", stamp_.nanoseconds());
   // Overlay dynamic pixels as red on the color image.
-  cv_bridge::CvImage msg(std_msgs::Header(), "rgb8", data.input.color_image.clone());
+  cv_bridge::CvImage msg(std_msgs::msg::Header(), "rgb8", data.input.color_image.clone());
   for (int u = 0; u < msg.image.cols; ++u) {
     for (int v = 0; v < msg.image.rows; ++v) {
       const int id = data.dynamic_image.at<FrameData::DynamicImageType>(v, u);
@@ -553,18 +567,18 @@ void ActiveWindowVisualizer::visualizeDynamicImage(const FrameData& data) const 
       }
     }
   }
-  msg.header.stamp.fromNSec(data.input.timestamp_ns);
-  dynamic_image_pub_.publish(msg.toImageMsg());
+  msg.header.stamp = rclcpp::Time(data.input.timestamp_ns);
+  dynamic_image_pub_->publish(*msg.toImageMsg());
 }
 
 void ActiveWindowVisualizer::visualizeObjectImage(const FrameData& data) const {
-  if (object_image_pub_.getNumSubscribers() == 0) {
+  if (object_image_pub_->get_subscription_count() == 0) {
     return;
   }
-  Timer timer("visualize/object_iamge", stamp_.toNSec());
+  Timer timer("visualize/object_iamge", stamp_.nanoseconds());
 
   // Overlay dynamic pixels colored by id on the color image.
-  cv_bridge::CvImage msg(std_msgs::Header(), "rgb8", data.input.color_image.clone());
+  cv_bridge::CvImage msg(std_msgs::msg::Header(), "rgb8", data.input.color_image.clone());
   std::set<int> ids;
   for (int u = 0; u < msg.image.cols; ++u) {
     for (int v = 0; v < msg.image.rows; ++v) {
@@ -577,18 +591,18 @@ void ActiveWindowVisualizer::visualizeObjectImage(const FrameData& data) const {
       }
     }
   }
-  msg.header.stamp.fromNSec(data.input.timestamp_ns);
-  object_image_pub_.publish(msg.toImageMsg());
+  msg.header.stamp = rclcpp::Time(data.input.timestamp_ns);
+  object_image_pub_->publish(*msg.toImageMsg());
 }
 
 void ActiveWindowVisualizer::visualizeSemanticImage(const FrameData& data) const {
-  if (semantic_image_pub_.getNumSubscribers() == 0) {
+  if (semantic_image_pub_->get_subscription_count() == 0) {
     return;
   }
-  Timer timer("visualize_semantic_image", stamp_.toNSec());
+  Timer timer("visualize_semantic_image", stamp_.nanoseconds());
 
   // Overlay semantic pixels colored by id on the color image.
-  cv_bridge::CvImage msg(std_msgs::Header(), "rgb8", data.input.color_image.clone());
+  cv_bridge::CvImage msg(std_msgs::msg::Header(), "rgb8", data.input.color_image.clone());
   for (int u = 0; u < msg.image.cols; ++u) {
     for (int v = 0; v < msg.image.rows; ++v) {
       const int id = data.input.label_image.at<InputData::LabelType>(v, u);
@@ -599,23 +613,8 @@ void ActiveWindowVisualizer::visualizeSemanticImage(const FrameData& data) const
       }
     }
   }
-  msg.header.stamp.fromNSec(data.input.timestamp_ns);
-  semantic_image_pub_.publish(msg.toImageMsg());
-}
-
-void ActiveWindowVisualizer::deletePreviousMarkers(visualization_msgs::MarkerArray& msg,
-                                                   size_t num_previous_markers) {
-  // Unfortunately this is needed by some rviz versions as the DELETE_ALL action
-  // does not work.
-  if (msg.markers.size() >= num_previous_markers) {
-    return;
-  }
-  msg.markers.reserve(num_previous_markers);
-  for (size_t i = msg.markers.size(); i < num_previous_markers; ++i) {
-    auto& marker = msg.markers.emplace_back();
-    marker.action = visualization_msgs::Marker::DELETE;
-    marker.id = i;
-  }
+  msg.header.stamp = rclcpp::Time(data.input.timestamp_ns);
+  semantic_image_pub_->publish(*msg.toImageMsg());
 }
 
 }  // namespace khronos

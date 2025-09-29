@@ -8,9 +8,9 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/semantic_color_map.h>
-#include <ros/ros.h>
-#include <sensor_msgs/Image.h>
-#include <tf/tfMessage.h>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <tf2_msgs/msg/tf_message.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
@@ -53,19 +53,19 @@ class TesseDynamicObjectGroundTruthBuilder {
  protected:
   void setupDsg();
   void processRosbag();
-  Point get3DPointFromDepth(const ros::Time& timestamp,
+  Point get3DPointFromDepth(const rclcpp::Time& timestamp,
                             const int x,
                             const int y,
                             const float depth);
-  float getDistance(const ros::Time& timestamp, const Point& pixel_point);
+  float getDistance(const rclcpp::Time& timestamp, const Point& pixel_point);
   KhronosObjectAttributes::Ptr getKhronosAttributesFromObjectMap(
       const std::vector<std::pair<TimeStamp, Points>>& object_map);
   Point getCentroidFromPoints(const Points& points);
   void extractImagesFromBag(const std::string& bag_file,
                             const std::string& topic,
-                            std::vector<sensor_msgs::ImageConstPtr>* images);
+                            std::vector<std::shared_ptr<sensor_msgs::msg::Image>>* images);
   void extractTfsFromBag(const std::string& bag_file);
-  ros::Time findClosestTimestamp(const ros::Time& query_time);
+  rclcpp::Time findClosestTimestamp(const rclcpp::Time& query_time);
   void saveOutput();
 
  private:
@@ -74,7 +74,7 @@ class TesseDynamicObjectGroundTruthBuilder {
   hydra::SemanticColorMap label_map_;
   size_t num_objects_ = 0;
   tf2_ros::Buffer tfBuffer_;
-  std::set<ros::Time> transform_timestamps_;
+  std::set<rclcpp::Time> transform_timestamps_;
 };
 
 void declare_config(TesseDynamicObjectGroundTruthBuilder::Config& config);

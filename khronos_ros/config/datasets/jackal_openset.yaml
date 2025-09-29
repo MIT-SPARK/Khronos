@@ -8,11 +8,11 @@ inputs:
     receiver:
       # TODO(marcus): overwrite in launch file or use a separate config file for each
       type: OpenSetImageReceiver
-      input_separation_s: 0.099 # Limit Input rate to max 10 Hz
+      input_separation_s: 0.04 # Limit Input rate to max 10 Hz
     sensor:
       type: camera_info
-      min_range: $(arg sensor_min_range)
-      max_range: $(arg sensor_max_range)
+      min_range: $(var sensor_min_range)
+      max_range: $(var sensor_max_range)
       extrinsics:
         type: ros
-        sensor_frame: $(arg sensor_frame)
+        sensor_frame: $(var sensor_frame)

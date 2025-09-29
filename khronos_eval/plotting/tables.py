@@ -1,7 +1,9 @@
 #! /usr/bin/python3
 
-import os
+import pathlib
+import sys
 import numpy as np
+import argparse
 from matplotlib import pyplot as plt
 from utils import (
     get_4d_data_slice,
@@ -9,9 +11,7 @@ from utils import (
     augment_dynamic_metrics,
     augment_bg_metrics,
     read_map_names,
-    parse_table_data,
     parse_table_data_simple,
-    detect_methods,
     read_map_timestamps,
 )
 
@@ -20,20 +20,11 @@ Plot reconstruction metrics for different thresholds and different ground-truths
 """
 
 # Params:
-DATA_DIR = "/home/marcus/code/khronos_ws/src/khronos/output"
 PRINT_NAMES = True
 PRINT_STD = False
 PRINT_NAN = False
 PRINT_MODE = "human"  # 'human', 'latex', 'csv'
 DATA_SLICE = "4D"  # '4D', 'Robot', 'Query', 'Online'
-
-
-# ---- Specific Method ----
-# Put all methods you want to evaluate over here, and provide labels for them.
-METHODS = [
-    f"tmp",
-]
-METHOD_LABELS = ["tmp"]
 
 # Put all metrics you want to evaluate over here.
 METRICS = [
@@ -69,32 +60,45 @@ def all_methods(include_method=[True, True, True, True]):
     return methods, names
 
 
-def exp_dir(exp_dir):
-    methods = []
-    names = []
-    for cd, rec in detect_methods(DATA_DIR + "/" + exp_dir):
-        methods.append(f"{exp_dir}/results/{cd}/{rec}")
-        names.append(f"{cd}/{rec}")
-    return methods, names
-
-
 def main():
+    parser = argparse.ArgumentParser(description="Show table of results")
+    parser.add_argument("data_dir", help="top-level directory containing results")
+    parser.add_argument(
+        "-m",
+        "--methods",
+        nargs="+",
+        help="methods to evaluate (optional label via method:label)",
+        default=None,
+    )
+    args = parser.parse_args()
+
+    data_dir = pathlib.Path(args.data_dir).expanduser().absolute()
+    if not data_dir.exists():
+        print(f"Invalid data_dir: '{data_dir}'")
+        sys.exit(1)
+
+    methods = []
+    method_labels = []
+    if args.methods is None:
+        methods.append("tmp")
+        method_labels.append("tmp")
+    else:
+        for x in args.methods:
+            parts = x.split(":")
+            if len(parts) == 1:
+                methods.append(parts[0])
+                method_labels.append(parts[0])
+            else:
+                methods.append(parts[0])
+                method_labels.append(parts[1])
+
     # data[method_index][metric][map_no][timestamp]=value.
-    print(f"Loading data.")
-    data = parse_table_data_simple(DATA_DIR, METHODS)
+    print("Loading data.")
+    data = parse_table_data_simple(str(data_dir), methods)
 
     # Get common data
-    timestamps = [
-        read_map_timestamps(os.path.join(DATA_DIR, m, "results"))
-        for m in METHODS
-    ]
-    map_names = [
-        [
-            int(x)
-            for x in read_map_names(os.path.join(DATA_DIR, m).split("/results/")[0])
-        ]
-        for m in METHODS
-    ]
+    timestamps = [read_map_timestamps(str(data_dir / m / "results")) for m in methods]
+    map_names = [[int(x) for x in read_map_names(str(data_dir / m))] for m in methods]
 
     has_dynamic = any([m.startswith("Dynamic") for m in METRICS])
     has_objects = any(
@@ -110,7 +114,7 @@ def main():
             augment_bg_metrics(d)
 
     # Plot
-    table(data, map_names, timestamps, METHOD_LABELS, METRICS)
+    table(data, map_names, timestamps, method_labels, METRICS)
 
 
 def table(data, map_names, timestamps, method_labels, metrics):

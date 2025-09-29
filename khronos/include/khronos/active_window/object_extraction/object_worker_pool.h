@@ -37,56 +37,70 @@
 
 #pragma once
 
-#include <map>
+#include <list>
 #include <memory>
-#include <set>
+#include <thread>
 
-#include <config_utilities/config_utilities.h>
-#include <gtsam/nonlinear/Values.h>
-#include <hydra/backend/update_functions.h>
-#include <khronos/common/common_types.h>
+#include <hydra/common/global_info.h>
+#include <hydra/common/graph_update.h>
+#include <hydra/common/message_queue.h>
+
+#include "khronos/active_window/object_extraction/object_extractor.h"
 
 namespace khronos {
 
-using hydra::SharedDsgInfo;
-using hydra::UpdateInfo;
-using spark_dsg::SemanticLabel;
-using spark_dsg::SemanticNodeAttributes;
-
 /**
- * @brief Specific object updater for Khronos.
+ * @brief Thread pool for object extraction
  */
-struct UpdateObjectsFunctor : public hydra::UpdateFunctor {
-  // Config.
+class ObjectWorkerPool {
+ public:
   struct Config {
-    bool merge_require_same_label = true;
-    bool merge_require_no_co_visibility = true;
-    float merge_min_iou = 0.5;
+    //! Total number of workers. If 0, use unlimited workers (not recommended).
+    size_t num_workers = 2;
+    //! Poll period
+    size_t poll_time_us = 1000;
+    //! Verbosity for worker pool
+    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
   } const config;
 
-  // Constructor.
-  UpdateObjectsFunctor(const Config& config, hydra::MergeList& new_proposed_merges)
-      : config(config::checkValid(config)), new_proposed_merges_(new_proposed_merges) {}
+  struct Request {
+    using Ptr = std::shared_ptr<Request>;
+    Request(TimeStamp stamp, const Track& track, const FrameDataBuffer& frame_data);
 
-  // Implement Hydra interfaces.
-  Hooks hooks() const override;
-  void call(const DynamicSceneGraph& unmerged,
-            SharedDsgInfo& dsg,
-            const UpdateInfo::ConstPtr& info) const override;
+    TimeStamp stamp;
+    Track track;
+    FrameDataBuffer frame_data;
+  };
 
-  // Functionality.
-  void updateObject(const gtsam::Values& objects_values,
-                    NodeId node_id,
-                    KhronosObjectAttributes& attrs) const;
+  ObjectWorkerPool(const Config& config, std::unique_ptr<ObjectExtractor>&& extractor);
+  ~ObjectWorkerPool();
 
-  bool shouldMerge(const KhronosObjectAttributes& from_attrs,
-                   const KhronosObjectAttributes& to_attrs) const;
+  void stop();
+  void join();
+  size_t numRunning() const;
 
-  // Reference to the output variable where this object functor stores proposed merges.
-  // TODO(lschmid): This needs clean up, not the most elegant solution.
-  hydra::MergeList& new_proposed_merges_;
+  void submit(TimeStamp stamp, const Track& track, const FrameDataBuffer& frame_data);
+  KhronosObjectAttributes::Ptr runBlocking(const Track& track,
+                                           const FrameDataBuffer& frame_data) const;
+
+  void fill(hydra::LayerUpdate& update);
+
+ private:
+  void spin();
+  void runOnce(Request::Ptr request) const;
+
+  std::atomic<bool> should_shutdown_;
+  std::unique_ptr<std::thread> spin_thread_;
+  mutable std::atomic<size_t> curr_workers_;
+
+  std::unique_ptr<ObjectExtractor> extractor_;
+  hydra::MessageQueue<Request::Ptr> work_queue_;
+
+  mutable std::mutex output_mutex_;
+  std::unique_ptr<std::thread> thread_;
+  mutable std::list<spark_dsg::NodeAttributes::Ptr> output_;
 };
 
-void declare_config(UpdateObjectsFunctor::Config& config);
+void declare_config(ObjectWorkerPool::Config& config);
 
 }  // namespace khronos

@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <future>
 #include <vector>
+#include <fstream>
 
 #include <pcl/io/ply_io.h>
 

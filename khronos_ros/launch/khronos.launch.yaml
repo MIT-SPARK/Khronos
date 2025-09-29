@@ -1,0 +1,88 @@
+---
+launch:
+  # Configs
+  - arg: {name: input_config, default: $(find-pkg-share khronos_ros)/config/datasets/uHumans2.yaml}
+  - arg: {name: mapper_config, default: $(find-pkg-share khronos_ros)/config/mapper/uHumans2.yaml}
+  - arg: {name: rviz_path, default: $(find-pkg-share khronos_ros)/config/rviz/uHumans2.rviz}
+  - arg: {name: labelspace_config}
+  - arg: {name: extra_yaml, default: '{}'}
+  # System Args
+  - arg: {name: sensor_min_range, default: '0.1'}
+  - arg: {name: sensor_max_range, default: '5.0'}
+  - arg: {name: sensor_frame, default: 'left_cam'}
+  # Experiment
+  - arg: {name: evaluate, default: 'false'}
+  - arg: {name: output_dir, default: '$(find-pkg-share khronos_ros)/../output'}
+  - arg: {name: use_gt_frame, default: 'true'}
+  # Launch
+  - arg: {name: start_visualizer, default: 'true'}
+  # Debug
+  - arg: {name: debug, default: 'false'}
+  - arg: {name: min_glog_level, default: '0'}
+  - arg: {name: verbosity, default: '0'}
+  - arg: {name: rviz_verbose, default: 'false'}
+ # Robot Frames
+  - arg: {name: robot_id, default: '0'}
+  - arg: {name: robot_frame, default: robot_$(var robot_id)}
+  - arg: {name: odom_frame, default: odom}
+  - arg: {name: map_frame, default: map}
+  - arg: {name: world_frame, default: world}
+  # Input Topics
+  - arg: {name: rgb_topic, default: /tesse/left_cam/rgb/image_raw}
+  - arg: {name: rgb_info_topic, default: /tesse/left_cam/camera_info}
+  - arg: {name: depth_topic, default: /tesse/depth_cam/mono/image_raw}
+  - arg: {name: label_topic, default: /tesse/seg_cam/converted/image_raw}
+  # Khronos
+  - node:
+      pkg: khronos_ros
+      exec: khronos_node
+      name: khronos_node
+      launch-prefix: $(if $(var debug) 'gdbserver localhost:3000')
+      on_exit: shutdown
+      remap:
+        # Input remappings
+        - {from: ~/input/left_cam/depth_registered/image_rect, to: $(var depth_topic)}
+        - {from: ~/input/left_cam/rgb/image_raw, to: $(var rgb_topic)}
+        - {from: ~/input/left_cam/rgb/image_raw/compressed, to: $(var rgb_topic)/compressed}
+        - {from: ~/input/left_cam/rgb/camera_info, to: $(var rgb_info_topic)}
+        - {from: ~/input/left_cam/semantic/image_raw, to: $(var label_topic)}
+        - {from: ~/bow_vectors, to: /kimera_vio_ros/bow_query}
+      args: >
+        --config-utilities-file $(var input_config)@input
+        --config-utilities-file $(var mapper_config)
+        --config-utilities-file $(var labelspace_config)
+        --config-utilities-yaml {robot_id: $(var robot_id), odom_frame: $(var odom_frame), robot_frame: $(var robot_frame), map_frame: $(var map_frame)}
+        --config-utilities-yaml {glog_level: $(var min_glog_level), glog_verbosity: $(var verbosity)}
+        --config-utilities-yaml {experiment: {output_dir: $(var output_dir)}}
+        --config-utilities-yaml $(var extra_yaml)
+        --config-utilities-yaml {backend: {fix_input_poses: $(var use_gt_frame)}}
+        --config-utilities-yaml {input: {inputs: {left_cam: {sensor: {min_range: $(var sensor_min_range), max_range: $(var sensor_max_range), extrinsics: {sensor_frame: $(var sensor_frame)}}}}}}
+        --config-utilities-yaml {sensor_frame: $(var sensor_frame)}
+  # Visualization - Launch hydra_visualizer with custom topic remapping
+  - node:
+      if: $(var start_visualizer)
+      pkg: hydra_visualizer
+      exec: hydra_visualizer_node
+      name: hydra_visualizer
+      remap:
+        - {from: ~/dsg, to: /khronos_node/backend/dsg}
+      args: >
+        --config-utilities-file $(find-pkg-share khronos_ros)/config/visualization/visualizer_config.yaml
+        --config-utilities-file $(find-pkg-share khronos_ros)/config/visualization/visualizer_plugins.yaml
+        --config-utilities-yaml {glog_level: 1, glog_verbosity: 0}
+        --config-utilities-yaml {graph: {type: GraphFromRos, frame_id: map}}
+  # Launch rviz separately
+  - node: 
+      if: $(var start_visualizer)
+      name: rviz
+      pkg: rviz2
+      exec: rviz2
+      args: -d $(var rviz_path)
+  - arg: {name: start_pose_graph_viewer, default: 'false'}
+  - include:
+      file: $(find-pkg-share pose_graph_tools_ros)/launch/posegraph_view.launch
+      if: $(and $(var start_visualizer) $(var start_pose_graph_viewer))
+      arg:
+        - {name: frame_id, value: $(var world_frame)}
+        - {name: graph_topic, value: pose_graph}
+        - {name: ns, value: khronos_node/backend}

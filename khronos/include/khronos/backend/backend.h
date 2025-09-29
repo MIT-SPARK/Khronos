@@ -51,7 +51,7 @@
 #include "khronos/backend/change_detection/sequential_change_detector.h"
 #include "khronos/backend/change_state.h"
 #include "khronos/backend/reconciliation/reconciler.h"
-#include "khronos/backend/update_functions.h"
+#include "khronos/backend/update_khronos_objects_functor.h"
 #include "khronos/common/common_types.h"
 #include "khronos/spatio_temporal_map/spatio_temporal_map.h"
 
@@ -81,7 +81,7 @@ class Backend : public hydra::BackendModule {
     int run_change_detection_every_n_frames = 0;
 
     // Member configs.
-    UpdateObjectsFunctor::Config update_objects;
+    UpdateKhronosObjectsFunctor::Config update_objects;
     SpatioTemporalMap::Config spatio_temporal_map;
     SequentialChangeDetector::Config change_detection;
     Reconciler::Config reconciler;
@@ -90,6 +90,7 @@ class Backend : public hydra::BackendModule {
   // Types.
   using Ptr = std::shared_ptr<Backend>;
   using ConstPtr = std::shared_ptr<const Backend>;
+  using ChangeSink = hydra::OutputSink<TimeStamp, const Changes&>;
 
   // Construction.
   Backend(const Config& config,
@@ -98,9 +99,8 @@ class Backend : public hydra::BackendModule {
   ~Backend();
 
   // Save data.
-  void save(const hydra::LogSetup& log_setup) override;
-  bool saveProposedMerges(const hydra::LogSetup& log_setup);
-  bool save4DMap(const std::string& path);
+  void save(const hydra::DataDirectory& log_setup) override;
+  bool saveProposedMerges(const hydra::DataDirectory& log_setup);
 
   // Spinning.
   void start() override;
@@ -112,6 +112,8 @@ class Backend : public hydra::BackendModule {
    * @brief Run a final optimization after all input data has been received.
    */
   void finishProcessing();
+
+  void addChangeSink(const ChangeSink::Ptr& sink);
 
   // Accessors.
   const RPGOMerges& getProposedMerges() const { return proposed_merges_; }
@@ -125,12 +127,6 @@ class Backend : public hydra::BackendModule {
   size_t findClosestNode(size_t timestamp_ns);
 
   void fixInputPoses(const hydra::BackendInput& input);
-
-  void addObjectsToDeformationGraph(size_t timestamp_ns);
-
-  void addProposedMergeToDeformationGraph(size_t timestamp_ns);
-
-  void extractProposedMergeResults(size_t timestamp_ns);
 
   void runChangeDetection();
 
@@ -154,11 +150,22 @@ class Backend : public hydra::BackendModule {
   // All merge proposals generated and to be used in the optimization.
   hydra::MergeList new_proposed_merges_;
   // Validated result of 'new_proposed_merges_' after optimization, ready to be used in change
-  // detection.
+  // detection. TODO: Since we no longer get merges from optimization (or add objects directly to
+  // optimization), this is currently broken (nothing is proposing merges).
   RPGOMerges proposed_merges_;
   uint64_t last_merge_proposal_t_ = 0;
   uint64_t last_timestamp_received_ = 0;
   int num_frames_since_last_change_detection_ = 0;
+
+  ChangeSink::List change_sinks_;
+  
+  // Registration for factory
+  inline static const auto registration_ = config::RegistrationWithConfig<
+      hydra::BackendModule,
+      Backend,
+      Config,
+      hydra::SharedDsgInfo::Ptr,
+      hydra::SharedModuleState::Ptr>("Backend");
 };
 
 void declare_config(Backend::Config& config);

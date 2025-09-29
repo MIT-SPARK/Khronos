@@ -164,6 +164,10 @@ class SpatioTemporalMap {
   void moveAgentBackward();
   void moveObjectsBackward();
   void moveDynamicObjectAttributesBackward();
+  void trimDsgToTime(TimeStamp target_time);
+  uint64_t getObjectEffectiveTime(const KhronosObjectAttributes& attrs,
+                                  const Mesh& mesh) const;
+  void updateMeshFaces(Mesh& mesh, const Mesh& src_mesh) const;
 
   std::string printTime(TimeStamp time) const {
     std::stringstream ss;

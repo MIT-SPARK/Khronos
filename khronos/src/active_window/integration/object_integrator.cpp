@@ -35,49 +35,49 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#pragma once
-
-#include <hydra/reconstruction/projective_integrator.h>
-
-#include "khronos/active_window/data/frame_data.h"
-#include "khronos/active_window/data/reconstruction_types.h"
+#include "khronos/active_window/integration/object_integrator.h"
 
 namespace khronos {
 
-/**
- * @brief Retain khronos-specific data and interfaces for the projective integrator after it was
- * moved to hydra.
- */
-class ProjectiveIntegrator : protected hydra::ProjectiveIntegrator {
- public:
-  // Construction.
-  explicit ProjectiveIntegrator(const hydra::ProjectiveIntegrator::Config& config,
-                                SemanticIntegratorPtr&& semantic_integrator = nullptr);
-  ~ProjectiveIntegrator() = default;
+using IntegratorConfig = hydra::ProjectiveIntegrator::Config;
 
-  // Interfaces to perform integration of a frame.
-  /**
-   * @brief Update all blocks in the background map with the given data in
-   * parallel.
-   * @param data Input data to use for the update.
-   * @param map Map to update.
-   */
-  void updateBackgroundMap(const FrameData& data, VolumetricMap& map) const;
+IntegratorConfig forceBinaryIntegrator(const IntegratorConfig& config) {
+  auto new_config = config;
+  new_config.semantic_integrator = hydra::BinarySemanticIntegrator::Config();
+  return new_config;
+}
 
-  /**
-   * @brief Update all blocks in the object map with the given data in parallel.
-   * @param data Input data to use for the update.
-   * @param map Map to update.
-   * estimation.
-   */
-  void updateObjectMap(const FrameData& data, VolumetricMap& map) const;
+ObjectIntegrator::ObjectIntegrator(const IntegratorConfig& config)
+    : hydra::ProjectiveIntegrator(forceBinaryIntegrator(config)) {}
 
- private:
-  bool computeLabel(const VolumetricMap::Config& map_config,
-                    const InputData& data,
-                    VoxelMeasurement& measurement) const override;
+void ObjectIntegrator::setFrameData(FrameData* frame_data, int target_object_id) {
+  current_data_ = frame_data;
+  current_object_id_ = target_object_id;
+}
 
-  mutable const FrameData* current_data_ = nullptr;
-};
+bool ObjectIntegrator::computeLabel(const VolumetricMap::Config& map_config,
+                                    const InputData& /* data */,
+                                    const cv::Mat& integration_mask,
+                                    VoxelMeasurement& measurement) const {
+  if (std::abs(measurement.sdf) >= map_config.truncation_distance) {
+    // If SDF value is beyond the truncation band, we don't need to
+    // compute a label and the point is always valid for integration
+    return true;
+  }
+
+  // the formatting here is a little ugly, but if an integration mask is supplied and it
+  // is non-zero for the best pixel, we skip integrating the current voxel
+  if (!integration_mask.empty() &&
+      interpolator_->interpolateID(integration_mask, measurement.interpolation_weights)) {
+    return false;
+  }
+
+  // If the semantic integrator is set, we assume this is used for object extraction. We thus set
+  // the label to the object id.
+  measurement.label =
+      interpolator_->interpolateID(current_data_->object_image,
+                                   measurement.interpolation_weights) == current_object_id_;
+  return true;
+}
 
 }  // namespace khronos

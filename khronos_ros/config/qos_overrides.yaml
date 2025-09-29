@@ -1,0 +1,6 @@
+# QoS overrides for rosbag2 playback to match tf2_ros expectations
+/tf_static:
+  durability: transient_local
+  reliability: reliable
+  history: keep_last
+  depth: 1

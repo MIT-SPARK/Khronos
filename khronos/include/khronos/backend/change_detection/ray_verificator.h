@@ -175,15 +175,14 @@ class RayVerificator {
  private:
   struct Ray {
     Ray() = default;
-    Ray(const uint64_t timestamp, const size_t source_index, const size_t target_index)
-        : timestamp(timestamp), source_index(source_index), target_index(target_index) {}
+    Ray(const uint64_t timestamp, const NodeId source_node, const size_t target_index)
+        : timestamp(timestamp), source_node(source_node), target_index(target_index) {}
 
     // Time stamp of the measurement.
     uint64_t timestamp;
 
-    // NOTE(lschmid): Because of how DSGs and PCL store the points, these need to be an indices.
-    // Index to the position of the sensor at the measurement (ray source point).
-    size_t source_index;
+    // Node ID of the agent node associated with this measurement (ray source point).
+    NodeId source_node;
 
     // Index of the vertex associated with this measurement (ray target points).
     size_t target_index;
@@ -194,6 +193,8 @@ class RayVerificator {
 
   // Time stamps and pointers to all source points. These are sorted by timestamp.
   std::vector<uint64_t> timestamps_;
+  // Node IDs for each timestamp
+  std::vector<NodeId> node_ids_;
 
   // Spatial Hash.
   spatial_hash::Grid<BlockIndex> grid_;
@@ -208,7 +209,7 @@ class RayVerificator {
 
   // Variables.
   // The index of the last incrementally added measurement to add all new indices.
-  size_t previous_node_index_ = 0;
+  size_t previous_node_id_ = 0;
   size_t previous_vertex_index_ = 0;
   size_t previous_object_index_ = 0;
 
@@ -237,10 +238,11 @@ class RayVerificator {
   struct RayLookup {
     RayLookup(const DynamicSceneGraph& dsg, const Config& config)
         : vertices_(dsg.mesh()->points),
-          nodes_(dsg.getLayer(DsgLayers::AGENTS, config.prefix.key).nodes()) {}
+          nodes_(
+              dsg.getLayer(dsg.getLayerKey(DsgLayers::AGENTS)->layer, config.prefix.key).nodes()) {}
 
     Point getSource(const Ray& ray) const {
-      return nodes_.at(ray.source_index)
+      return nodes_.at(ray.source_node)
           ->attributes<spark_dsg::NodeAttributes>()
           .position.cast<float>();
     }
@@ -249,7 +251,7 @@ class RayVerificator {
 
    private:
     const std::vector<spark_dsg::Mesh::Pos>& vertices_;
-    const spark_dsg::DynamicSceneGraphLayer::Nodes& nodes_;
+    const spark_dsg::SceneGraphLayer::Nodes& nodes_;
   };
 };
 

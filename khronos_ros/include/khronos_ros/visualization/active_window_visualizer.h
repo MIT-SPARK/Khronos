@@ -43,20 +43,20 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <geometry_msgs/Point.h>
-#include <geometry_msgs/Vector3.h>
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/vector3.hpp>
 #include <hydra/common/global_info.h>
-#include <khronos/active_window/data/frame_data.h>
-#include <khronos/active_window/data/reconstruction_types.h>
-#include <khronos/active_window/data/track.h>
-#include <ros/node_handle.h>
-#include <std_msgs/ColorRGBA.h>
-#include <visualization_msgs/Marker.h>
-#include <visualization_msgs/MarkerArray.h>
+#include <hydra_visualizer/utils/marker_tracker.h>
+#include <ianvs/node_handle.h>
+#include <khronos/active_window/active_window.h>
+#include <rclcpp/time.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <std_msgs/msg/color_rgba.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 namespace khronos {
 
-class ActiveWindowVisualizer {
+class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
  public:
   // Config.
   struct Config {
@@ -93,8 +93,7 @@ class ActiveWindowVisualizer {
   } const config;
 
   // Construction.
-  explicit ActiveWindowVisualizer(const ros::NodeHandle& nh);
-  ActiveWindowVisualizer(const Config& config, const ros::NodeHandle& nh);
+  explicit ActiveWindowVisualizer(const Config& config, const ianvs::NodeHandle* nh = nullptr);
   virtual ~ActiveWindowVisualizer() = default;
 
   // Visualization.
@@ -106,58 +105,53 @@ class ActiveWindowVisualizer {
    * @param tracks The current tracks in the active window to visualize. If a bounding box for a
    * track is newly computed it will be stored in the track.
    */
-  void visualizeAll(const VolumetricMap& map, const FrameData& data, const Tracks& tracks);
+  void call(const FrameData& data, const VolumetricMap& map, const Tracks& tracks) const override;
 
   // Aggregated visualizations.
-  void visualizeAllMaps(const VolumetricMap& map);
-  void visualizeAllFrameData(const FrameData& data);
-  void visualizeAllTracks(const Tracks& tracks, const FrameData& data);
+  void visualizeAllMaps(const VolumetricMap& map, float robot_height = 0.0f) const;
+  void visualizeAllFrameData(const FrameData& data) const;
+  void visualizeAllTracks(const Tracks& tracks, const FrameData& data) const;
 
   // Individual visualizations.
-  void visualizeEverFreeSlice(const VolumetricMap& map) const;
-  void visualizeTsdfSlice(const VolumetricMap& map) const;
-  void visualizeTrackingSlice(const VolumetricMap& map) const;
+  void visualizeEverFreeSlice(const VolumetricMap& map, float robot_height = 0.0f) const;
+  void visualizeTsdfSlice(const VolumetricMap& map, float robot_height = 0.0f) const;
+  void visualizeTrackingSlice(const VolumetricMap& map, float robot_height = 0.0f) const;
   void visualizeDynamicPoints(const FrameData& data) const;
   void visualizeDynamicImage(const FrameData& data) const;
   void visualizeObjectImage(const FrameData& data) const;
   void visualizeSemanticImage(const FrameData& data) const;
-  void visualizeObjectBoundingBoxes(const FrameData& data);
-  void visualizeTrackBoundingBoxes(const Tracks& tracks);
-  void visualizeTrackVoxels(const Tracks& tracks);
-  void visualizeTrackPixels(const Tracks& tracks);
+  void visualizeObjectBoundingBoxes(const FrameData& data) const;
+  void visualizeTrackBoundingBoxes(const Tracks& tracks) const;
+  void visualizeTrackVoxels(const Tracks& tracks) const;
+  void visualizeTrackPixels(const Tracks& tracks) const;
   void visualizeTrackingImage(const Tracks& tracks, const FrameData& data) const;
 
  private:
   // ROS.
-  ros::NodeHandle nh_;
-  ros::Publisher ever_free_slice_pub_;
-  ros::Publisher tsdf_slice_pub_;
-  ros::Publisher tracking_slice_pub_;
-  ros::Publisher dynamic_points_pub_;
-  ros::Publisher dynamic_image_pub_;
-  ros::Publisher object_image_pub_;
-  ros::Publisher semantic_image_pub_;
-  ros::Publisher object_bb_pub_;
-  ros::Publisher track_bbox_pub_;
-  ros::Publisher track_voxels_pub_;
-  ros::Publisher track_pixels_pub_;
-  ros::Publisher track_image_pub_;
+  ianvs::NodeHandle nh_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr ever_free_slice_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tsdf_slice_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr tracking_slice_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr dynamic_points_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr dynamic_image_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr object_image_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr semantic_image_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr object_bb_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr track_bbox_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr track_voxels_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr track_pixels_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr track_image_pub_;
 
   // Variables.
-  ros::Time stamp_;
-  bool stamp_is_set_ = false;
-  Transform robot_pose_;
-  size_t num_previous_object_bbs_ = 0u;
-  size_t num_previous_bbox_tracks_ = 0u;
-  size_t num_previous_voxel_tracks_ = 0u;
-  size_t num_previous_pixel_tracks_ = 0u;
+  mutable rclcpp::Time stamp_;
+  mutable bool stamp_is_set_ = false;
+  mutable hydra::MarkerTracker object_bbs_tracker_;
+  mutable hydra::MarkerTracker bbox_tracks_tracker_;
+  mutable hydra::MarkerTracker voxel_tracks_tracker_;
+  mutable hydra::MarkerTracker pixel_tracks_tracker_;
 
   // Time stamp caching for synchronization of multiple visualizations.
-  ros::Time getStamp() const { return stamp_is_set_ ? stamp_ : ros::Time::now(); }
-
-  // Visualization Utility.
-  static void deletePreviousMarkers(visualization_msgs::MarkerArray& msg,
-                                    size_t num_previous_markers);
+  rclcpp::Time getStamp() const { return stamp_is_set_ ? stamp_ : nh_.now(); }
 };
 
 void declare_config(ActiveWindowVisualizer::Config& config);

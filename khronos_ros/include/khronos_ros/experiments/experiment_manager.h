@@ -42,11 +42,10 @@
 #include <utility>
 #include <vector>
 
-#include <config_utilities/config_utilities.h>
 #include <khronos/active_window/data/frame_data.h>
 #include <khronos/active_window/data/reconstruction_types.h>
+#include <std_srvs/srv/empty.hpp>
 
-#include "khronos/utils/data_directory.h"
 #include "khronos_ros/experiments/experiment_logger.h"
 #include "khronos_ros/khronos_pipeline.h"
 
@@ -80,6 +79,9 @@ class ExperimentManager {
 
     // If true save the full state of Khronos every N frames. Otherwise only save the backend DSG.
     bool save_full_state = false;
+
+    // If true, finish and save pipeline after clock stops publishing
+    bool exit_after_clock = false;
   } const config;
 
   // Types.
@@ -87,15 +89,17 @@ class ExperimentManager {
   using BackendEvaluationCallback = KhronosPipeline::BackendEvaluationCallback;
 
   // Construction.
-  ExperimentManager(const ros::NodeHandle& nh, std::shared_ptr<KhronosPipeline> khronos);
+  ExperimentManager(const Config& config,
+                    ianvs::NodeHandle nh,
+                    std::shared_ptr<KhronosPipeline> khronos);
   virtual ~ExperimentManager();
 
   // Run the experiment.
   void run();
 
   // Service for clean termination.
-  bool finishMappingAndSaveCallback(std_srvs::Empty::Request& /* req */,
-                                    std_srvs::Empty::Response& /* res */);
+  void finishMappingAndSaveCallback(const std_srvs::srv::Empty::Request::SharedPtr& req,
+                                    std_srvs::srv::Empty::Response::SharedPtr res);
 
   /**
    * @brief To be called after an experiment to write all collected data to disk.
@@ -119,7 +123,7 @@ class ExperimentManager {
   void addBackendCallback(size_t every_n_frames, BackendEvaluationCallback callback);
 
   // Access.
-  std::string getOutputDir() const { return data_dir_; }
+  std::string getOutputDir() const { return data_dir_.path(); }
   bool evaluationIsOn() const { return data_dir_; }
 
   // Evaluation callbacks.
@@ -127,18 +131,18 @@ class ExperimentManager {
 
   // Utility tools.
   // Execute a shell command and return the output.
-  bool exec(const char* cmd, std::string& output);
+  bool exec(const std::string& cmd, std::string& output);
 
  private:
   // Manages the allocation of the output directory.
-  const DataDirectory data_dir_;
+  const hydra::DataDirectory data_dir_;
 
   // Pointer to the khronos pipeline to manage the experiment for.
   const std::shared_ptr<KhronosPipeline> khronos_;
 
   // ROS members.
-  ros::NodeHandle nh_;
-  ros::ServiceServer finish_mapping_and_save_srv_;
+  ianvs::NodeHandle nh_;
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr finish_mapping_and_save_srv_;
 
   // Experiment logger to write experiment progress to disk.
   ExperimentLogger::Ptr logger_;

@@ -39,9 +39,12 @@
 
 #include <fstream>
 #include <numeric>
+#include <set>
+#include <unordered_set>
 
 #include <config_utilities/config.h>
 #include <config_utilities/validation.h>
+#include <glog/logging.h>
 #include <spark_dsg/serialization/binary_serialization.h>
 #include <spark_dsg/serialization/graph_binary_serialization.h>
 #include <spark_dsg/serialization/versioning.h>
@@ -98,6 +101,13 @@ void SpatioTemporalMap::update(const DynamicSceneGraph::Ptr& dsg, TimeStamp stam
   stamps_.push_back(stamp);
   // TODO(lschmid): Consider hard copies here.
   dsgs_.push_back(dsg);
+  
+  if (stamp < earliest_) {
+    earliest_ = stamp;
+  }
+  if (stamp > latest_) {
+    latest_ = stamp;
+  }
 
   if (config.finalize_incrementally) {
     finalizeDsg(*dsg);
@@ -148,7 +158,9 @@ DynamicSceneGraph::Ptr SpatioTemporalMap::getDsgPtr(TimeStamp robot_time) {
   if (current_dsg_idx_ != new_dsg_idx) {
     current_dsg_idx_ = new_dsg_idx;
     current_dsg_ = dsgs_[current_dsg_idx_]->clone();
-    previous_time_ = stamps_[current_dsg_idx_];
+
+    // Trim mesh and other components
+    trimDsgToTime(previous_time_);
   }
 
   // Update the DSG based on robot time.
@@ -177,40 +189,55 @@ void SpatioTemporalMap::moveMeshForward() {
   auto& mesh = *current_dsg_->mesh();
   const auto& src_mesh = *dsgs_[current_dsg_idx_]->mesh();
 
-  // Add vertices up to the robot time.
+  if (src_mesh.first_seen_stamps.empty()) {
+    return;
+  }
+
+  // Find how many vertices should be visible at current_time
   const auto vertex_it = std::upper_bound(src_mesh.first_seen_stamps.begin(),
                                           src_mesh.first_seen_stamps.end(),
                                           current_time_,
                                           std::less<uint64_t>());
 
-  const size_t num_new_vertices = vertex_it - src_mesh.first_seen_stamps.begin();
-  const size_t num_old_vertices = mesh.numVertices();
-  mesh.resizeVertices(num_new_vertices);
-  for (size_t i = num_old_vertices; i < num_new_vertices; ++i) {
-    mesh.setPos(i, src_mesh.pos(i));
-    mesh.setColor(i, src_mesh.color(i));
-    mesh.setFirstSeenTimestamp(i, src_mesh.firstSeenTimestamp(i));
-    mesh.setTimestamp(i, src_mesh.timestamp(i));
-  }
-}
-
-void SpatioTemporalMap::moveAgentForward() {
-  if (!current_dsg_->hasLayer(DsgLayers::AGENTS, robot_prefix_.key)) {
+  const size_t target_vertices = vertex_it - src_mesh.first_seen_stamps.begin();
+  const size_t current_vertices = mesh.numVertices();
+  
+  // Only proceed if we need to add more vertices
+  if (target_vertices <= current_vertices) {
     return;
   }
 
+  // Copy vertex data from source mesh
+  mesh.resizeVertices(target_vertices);
+  for (size_t i = current_vertices; i < target_vertices; ++i) {
+      mesh.setPos(i, src_mesh.pos(i));
+      mesh.setColor(i, src_mesh.color(i));
+    mesh.setFirstSeenTimestamp(i, src_mesh.firstSeenTimestamp(i));
+        mesh.setTimestamp(i, src_mesh.timestamp(i));
+  }
+  
+  updateMeshFaces(mesh, src_mesh);
+}
+
+void SpatioTemporalMap::moveAgentForward() {
   // Add nodes starting from the current one.
-  const auto& src_layer = dsgs_[current_dsg_idx_]->getLayer(DsgLayers::AGENTS, robot_prefix_.key);
-  const size_t num_current_nodes =
-      current_dsg_->getLayer(DsgLayers::AGENTS, robot_prefix_.key).numNodes();
-  for (auto it = src_layer.nodes().begin() + num_current_nodes; it != src_layer.nodes().end();
-       ++it) {
-    const auto& node = **it;
-    if (static_cast<size_t>(node.timestamp->count()) > current_time_) {
+  const auto src_layer = dsgs_[current_dsg_idx_]->findLayer(
+      dsgs_[current_dsg_idx_]->getLayerKey(DsgLayers::AGENTS)->layer, robot_prefix_.key);
+  if (!src_layer) {
+    return;
+  }
+
+  for (const auto& [node_id, node] : src_layer->nodes()) {
+    if (current_dsg_->hasNode(node_id)) {
+      continue;
+    }
+
+    const auto& attrs = node->attributes<spark_dsg::AgentNodeAttributes>();
+    if (static_cast<size_t>(attrs.timestamp.count()) > current_time_) {
       return;
     }
-    current_dsg_->emplacePrevDynamicNode(
-        src_layer.id, node.id, node.timestamp.value(), node.attributes().clone());
+
+    current_dsg_->emplaceNode(node->layer, node_id, attrs.clone());
   }
 }
 
@@ -220,21 +247,48 @@ void SpatioTemporalMap::moveObjectsForward() {
   }
 
   const auto& src_layer = dsgs_[current_dsg_idx_]->getLayer(DsgLayers::OBJECTS);
+
+  // Get source mesh for timing information
+  if (!dsgs_[current_dsg_idx_]->hasMesh()) {
+    LOG(WARNING) << "[moveObjectsForward] No mesh available for object timing";
+    return;
+  }
+  const auto& src_mesh = *dsgs_[current_dsg_idx_]->mesh();
+
+  std::vector<NodeId> objects_to_add;
+  size_t static_objects = 0;
+  size_t dynamic_objects = 0;
+
   for (const auto& [id, node] : src_layer.nodes()) {
     if (current_dsg_->hasNode(id)) {
       continue;
     }
-    auto& attrs = node->attributes<KhronosObjectAttributes>();
-    if (attrs.details["AW_time"].front() > current_time_) {
-      continue;
+
+    const auto& attrs = node->attributes<KhronosObjectAttributes>();
+    uint64_t effective_time = getObjectEffectiveTime(attrs, src_mesh);
+
+    // Count object types for logging
+    if (!attrs.first_observed_ns.empty() && attrs.first_observed_ns.front() == 0) {
+      static_objects++;
+    } else if (!attrs.first_observed_ns.empty() && attrs.first_observed_ns.front() > 0) {
+      dynamic_objects++;
     }
+
+    if (effective_time <= current_time_) {
+      objects_to_add.push_back(id);
+    }
+  }
+
+  for (const auto& id : objects_to_add) {
+    const auto& node = src_layer.nodes().at(id);
+    const auto& attrs = node->attributes<KhronosObjectAttributes>();
     auto new_attrs = attrs.clone();
     // NOTE(lschmid): Clear dynamic attrs, these will be updated separately.
     auto& new_khronos_attrs = reinterpret_cast<KhronosObjectAttributes&>(*new_attrs);
     new_khronos_attrs.trajectory_timestamps.clear();
     new_khronos_attrs.trajectory_positions.clear();
     new_khronos_attrs.dynamic_object_points.clear();
-    current_dsg_->emplaceNode(src_layer.id, id, std::move(new_attrs));
+    current_dsg_->emplaceNode(src_layer.id.layer, id, std::move(new_attrs));
   }
 }
 
@@ -275,37 +329,45 @@ void SpatioTemporalMap::moveMeshBackward() {
     return;
   }
 
+  auto& mesh = *current_dsg_->mesh();
+  const auto& src_mesh = *dsgs_[current_dsg_idx_]->mesh();
+  
+  if (mesh.first_seen_stamps.empty()) {
+    return;
+  }
+
   // Prune all vertices that are newer than the robot time.
   // NOTE(lschmid): Vertices and faces are sorted by timestamp in pre-processing.
-  auto& mesh = *current_dsg_->mesh();
+
   const auto vertex_it = std::lower_bound(mesh.first_seen_stamps.begin(),
                                           mesh.first_seen_stamps.end(),
                                           current_time_,
                                           std::less<uint64_t>());
   const size_t new_vertices = vertex_it - mesh.first_seen_stamps.begin();
   mesh.resizeVertices(new_vertices);
+  
+  updateMeshFaces(mesh, src_mesh);
 }
 
 void SpatioTemporalMap::moveAgentBackward() {
-  if (!current_dsg_->hasLayer(DsgLayers::AGENTS, robot_prefix_.key)) {
+  const auto agent_layer = current_dsg_->findLayer(
+      current_dsg_->getLayerKey(DsgLayers::AGENTS)->layer, robot_prefix_.key);
+  if (!agent_layer) {
     return;
   }
 
   // Remove all nodes that are newer than the robot time.
   std::unordered_set<NodeId> nodes_to_remove;
-  auto& agent_layer = current_dsg_->getLayer(DsgLayers::AGENTS, robot_prefix_.key);
-  for (auto it = agent_layer.nodes().rbegin(); it != agent_layer.nodes().rend(); ++it) {
-    const auto& node = *it;
-    if (!node) {
-      continue;
-    }
-    if (static_cast<size_t>(node->timestamp->count()) > current_time_) {
-      nodes_to_remove.insert(node->id);
+  for (const auto& [node_id, node] : agent_layer->nodes()) {
+    if (static_cast<size_t>(node->attributes<spark_dsg::AgentNodeAttributes>().timestamp.count()) >
+        current_time_) {
+      nodes_to_remove.insert(node_id);
     } else {
       // NOTE(lschmid): The agent nodes are ordered by timestamp.
       break;
     }
   }
+
   for (const auto& node_id : nodes_to_remove) {
     current_dsg_->removeNode(node_id);
   }
@@ -316,16 +378,97 @@ void SpatioTemporalMap::moveObjectsBackward() {
     return;
   }
 
-  // Remove all nodes that are newer than the robot time.
+  // Get source mesh for timing information
+  if (!dsgs_[current_dsg_idx_]->hasMesh()) {
+    LOG(WARNING) << "[moveObjectsBackward] No mesh available for object timing";
+    return;
+  }
+  const auto& src_mesh = *dsgs_[current_dsg_idx_]->mesh();
+
   std::unordered_set<NodeId> nodes_to_remove;
+
   for (auto& [id, node] : current_dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
-    auto& attrs = node->attributes<KhronosObjectAttributes>();
-    if (!attrs.details["AW_time"].empty() && attrs.details["AW_time"].front() > current_time_) {
+    const auto& attrs = node->attributes<KhronosObjectAttributes>();
+    uint64_t effective_time = getObjectEffectiveTime(attrs, src_mesh);
+
+    if (effective_time > current_time_) {
       nodes_to_remove.insert(id);
     }
   }
   for (const auto& node_id : nodes_to_remove) {
     current_dsg_->removeNode(node_id);
+  }
+}
+
+void SpatioTemporalMap::trimDsgToTime(TimeStamp target_time) {
+  if (!current_dsg_) {
+    LOG(WARNING) << "[SpatioTemporalMap] No current_dsg_ in trimDsgToTime";
+    return;
+  }
+
+  // Note: Object trimming is now handled separately in DSG switching
+  // to maintain incremental reveal continuity
+
+  if (current_dsg_->hasMesh()) {
+    auto& mesh = *current_dsg_->mesh();
+    const auto& src_mesh = *dsgs_[current_dsg_idx_]->mesh();
+    
+    if (!src_mesh.first_seen_stamps.empty()) {
+      const auto vertex_it = std::upper_bound(src_mesh.first_seen_stamps.begin(),
+                                              src_mesh.first_seen_stamps.end(),
+                                              target_time,
+                                              std::less<uint64_t>());
+      const size_t num_vertices = vertex_it - src_mesh.first_seen_stamps.begin();      
+      mesh.resizeVertices(num_vertices);
+    } else {
+      LOG(WARNING) << "[SpatioTemporalMap] Mesh first_seen_stamps is empty or not available! "
+                      "Cannot perform time-based trimming. Keeping all vertices.";
+    }
+    
+    updateMeshFaces(mesh, src_mesh);
+  }
+  
+  const auto agent_layer = current_dsg_->findLayer(
+      current_dsg_->getLayerKey(DsgLayers::AGENTS)->layer, robot_prefix_.key);
+  if (agent_layer) {
+    std::unordered_set<NodeId> nodes_to_remove;
+    for (const auto& [node_id, node] : agent_layer->nodes()) {
+      const auto& attrs = node->attributes<spark_dsg::AgentNodeAttributes>();
+      if (static_cast<size_t>(attrs.timestamp.count()) > target_time) {
+        nodes_to_remove.insert(node_id);
+      }
+    }
+    for (const auto& node_id : nodes_to_remove) {
+      current_dsg_->removeNode(node_id);
+    }
+  }
+
+  // Objects appear based on their effective timestamps
+  if (current_dsg_->hasLayer(DsgLayers::OBJECTS)) {
+    const auto& objects_layer = current_dsg_->getLayer(DsgLayers::OBJECTS);
+    const auto& mesh = current_dsg_->mesh();
+
+    std::vector<NodeId> objects_to_remove;
+    size_t visible_count = 0;
+    size_t total_count = 0;
+
+    for (const auto& [id, node] : objects_layer.nodes()) {
+      total_count++;
+      const auto& attrs = node->attributes<KhronosObjectAttributes>();
+
+      // Get the effective time when this object should appear
+      uint64_t effective_time = getObjectEffectiveTime(attrs, *mesh);
+
+      // Remove object if it hasn't appeared yet
+      if (effective_time > target_time) {
+        objects_to_remove.push_back(id);
+      } else {
+        visible_count++;
+      }
+    }
+    for (const auto& id : objects_to_remove) {
+      current_dsg_->removeNode(id);
+    }
   }
 }
 
@@ -355,31 +498,46 @@ void SpatioTemporalMap::moveDynamicObjectAttributesBackward() {
 }
 
 void SpatioTemporalMap::updateTimingInfo(const DynamicSceneGraph& dsg) {
-  // Compute the prensence time based on the mesh.
-  earliest_ = std::min(earliest_, dsg.mesh()->first_seen_stamps.front());
-  latest_ = std::max(latest_, dsg.mesh()->stamps.back());
+  // Compute the presence time based on the mesh.
+  if (!dsg.hasMesh() || dsg.mesh()->numVertices() == 0) {
+    return;
+  }
+  
+  if (!dsg.mesh()->first_seen_stamps.empty()) {
+    earliest_ = std::min(earliest_, dsg.mesh()->first_seen_stamps.front());
+    latest_ = std::max(latest_, dsg.mesh()->first_seen_stamps.back());
+  }
 }
 
 void SpatioTemporalMap::finalizeMesh(Mesh& mesh) {
-  // Sort the mesh vertices and indices for easier addition and removal.
-  const Mesh old_mesh = mesh;
-
-  // Sort the vertices.
-  const auto sorted_indices = sortIndices(old_mesh.first_seen_stamps);
-  std::unordered_map<size_t, size_t> old_to_new;
-  old_to_new.reserve(mesh.numVertices());
-  for (size_t i = 0; i < mesh.numVertices(); ++i) {
-    mesh.setPos(i, old_mesh.pos(sorted_indices[i]));
-    mesh.setColor(i, old_mesh.color(sorted_indices[i]));
-    mesh.setFirstSeenTimestamp(i, old_mesh.firstSeenTimestamp(sorted_indices[i]));
-    mesh.setTimestamp(i, old_mesh.timestamp(sorted_indices[i]));
-    old_to_new[sorted_indices[i]] = i;
+  if (mesh.numVertices() == 0) {
+    return;
   }
+  
+  // Sort by stamps if available
+  if (!mesh.first_seen_stamps.empty() && mesh.first_seen_stamps.size() == mesh.numVertices()) {
+    const auto sorted_indices = sortIndices(mesh.first_seen_stamps);
+    
+    // Sort the mesh vertices and indices for easier addition and removal.
+    const Mesh old_mesh = mesh;
+    std::unordered_map<size_t, size_t> old_to_new;
+    old_to_new.reserve(mesh.numVertices());
+    
+    for (size_t i = 0; i < mesh.numVertices(); ++i) {
+      mesh.setPos(i, old_mesh.pos(sorted_indices[i]));
+      mesh.setColor(i, old_mesh.color(sorted_indices[i]));
+      mesh.setTimestamp(i, old_mesh.timestamp(sorted_indices[i]));
+      if (mesh.has_first_seen_stamps) {
+        mesh.setFirstSeenTimestamp(i, old_mesh.firstSeenTimestamp(sorted_indices[i]));
+      }
+      old_to_new[sorted_indices[i]] = i;
+    }
 
-  // Update the face indices of the old mesh to the new indices.
-  for (auto& face : mesh.faces) {
-    for (auto& vertex : face) {
-      vertex = old_to_new[vertex];
+    // Update the face indices of the old mesh to the new indices.
+    for (auto& face : mesh.faces) {
+      for (auto& vertex : face) {
+        vertex = old_to_new[vertex];
+      }
     }
   }
 }
@@ -463,6 +621,17 @@ std::unique_ptr<SpatioTemporalMap> SpatioTemporalMap::load(std::string filepath)
     deserializer.read(dsg_buffer);
     result->dsgs_.push_back(spark_dsg::io::binary::readGraph(dsg_buffer));
   }
+  
+  // Fix timing info if it wasn't properly saved
+  if (result->earliest_ == std::numeric_limits<TimeStamp>::max() && !result->stamps_.empty()) {
+    LOG(WARNING) << "Fixing invalid earliest timestamp in loaded map";
+    result->earliest_ = *std::min_element(result->stamps_.begin(), result->stamps_.end());
+  }
+  if (result->latest_ == 0 && !result->stamps_.empty()) {
+    LOG(WARNING) << "Fixing invalid latest timestamp in loaded map";
+    result->latest_ = *std::max_element(result->stamps_.begin(), result->stamps_.end());
+  }
+  
   return result;
 }
 
@@ -472,6 +641,62 @@ std::vector<size_t> sortIndices(const std::vector<uint64_t>& values) {
   std::stable_sort(
       idx.begin(), idx.end(), [&values](size_t i1, size_t i2) { return values[i1] < values[i2]; });
   return idx;
+}
+
+void SpatioTemporalMap::updateMeshFaces(Mesh& mesh, const Mesh& src_mesh) const {
+  const size_t current_num_vertices = mesh.numVertices();
+  mesh.faces.clear();
+  for (const auto& face : src_mesh.faces) {
+    bool all_vertices_present = true;
+    for (const auto& vertex_idx : face) {
+      if (vertex_idx >= current_num_vertices) {
+        all_vertices_present = false;
+        break;
+      }
+    }
+    if (all_vertices_present) {
+      mesh.faces.push_back(face);
+    }
+  }
+}
+
+uint64_t SpatioTemporalMap::getObjectEffectiveTime(const KhronosObjectAttributes& attrs,
+                                                    const Mesh& mesh) const {
+  // If object has an explicit timestamp > 0, use it
+  if (!attrs.first_observed_ns.empty() && attrs.first_observed_ns.front() > 0) {
+    return attrs.first_observed_ns.front();
+  }
+
+  // Static object (timestamp 0 or missing) - find when mesh in this area first appeared
+  if (!mesh.has_first_seen_stamps || mesh.first_seen_stamps.empty()) {
+    // No mesh timing info available, hide until we have mesh data
+    return std::numeric_limits<uint64_t>::max();
+  }
+
+  const auto& bbox = attrs.bounding_box;
+  uint64_t min_time = std::numeric_limits<uint64_t>::max();
+
+  // Check mesh vertices within/near the bounding box
+  const float margin = 0.5f;  // meters - look slightly beyond bbox
+  // Calculate bounding box corners
+  Eigen::Vector3f min_corner = bbox.world_P_center - bbox.dimensions * 0.5f;
+  Eigen::Vector3f max_corner = bbox.world_P_center + bbox.dimensions * 0.5f;
+
+  for (size_t i = 0; i < mesh.numVertices() && i < mesh.first_seen_stamps.size(); ++i) {
+    const auto& pos = mesh.pos(i);
+    // Check if vertex is near the object
+    if (pos.x() >= min_corner.x() - margin && pos.x() <= max_corner.x() + margin &&
+        pos.y() >= min_corner.y() - margin && pos.y() <= max_corner.y() + margin &&
+        pos.z() >= min_corner.z() - margin && pos.z() <= max_corner.z() + margin) {
+      if (mesh.first_seen_stamps[i] < min_time && mesh.first_seen_stamps[i] > 0) {
+        min_time = mesh.first_seen_stamps[i];
+      }
+    }
+  }
+
+  // Return the earliest time mesh vertices appeared near this object
+  // If no vertices found, object remains hidden (max timestamp)
+  return min_time;
 }
 
 }  // namespace khronos

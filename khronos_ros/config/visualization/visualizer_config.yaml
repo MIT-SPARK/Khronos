@@ -1,130 +1,49 @@
 ---
-layer_z_step: 5.5  # unit separation between layers
-collapse_layers: false  # whether or not to apply offsets to each of the layers
-layer2:
-  z_offset_scale: 2.0
-  visualize: true
-  # node
-  marker_scale: 0.40
-  marker_color_mode: LabelColorAdaptor
-  marker_alpha: 0.8
-  use_sphere_marker: false
-  use_label: true
-  use_collapsed_label: true
-  label_height: 0.5
-  label_scale: 0.45
-  use_bounding_box: true
-  collapse_bounding_box: true
-  bounding_box_scale: 0.05
-  bounding_box_edge_scale: 0.05
-  bounding_box_alpha: 0.9
-  mesh_edge_break_ratio: 0.5
-  # edge
-  edge_scale: 0.03
-  edge_alpha: 0.6
-  edge_use_color: false
-  interlayer_edge_use_source: true
-  interlayer_edge_scale: 0.08
-  interlayer_edge_alpha: 0.9
-  interlayer_edge_use_color: true
-layer3:
-  z_offset_scale: 3.0
-  visualize: true
-  # nodes
-  marker_scale: 0.2
-  marker_color_mode: ParentColorAdaptor
-  color_settings:
-    colormap:
-      palette: colorbrewer
-  marker_alpha: 0.9
-  use_sphere_marker: true
-  # edges
-  edge_scale: 0.01
-  edge_alpha: 0.5
-  edge_use_color: false
-  interlayer_edge_use_source: false
-  interlayer_edge_scale: 0.08
-  interlayer_edge_alpha: 0.4
-  interlayer_edge_use_color: true
-  interlayer_edge_insertion_skip: 0
-layer4:
-  z_offset_scale: 4.2
-  visualize: true
-  # nodes
-  marker_scale: 0.6
-  marker_color_mode: IdColorAdaptor
-  color_settings:
-    colormap:
-      palette: colorbrewer
-  marker_alpha: 0.8
-  use_sphere_marker: false
-  use_label: true
-  label_height: 1.25
-  label_scale: 1.0
-  # edges
-  edge_scale: 0.1
-  edge_alpha: 0.2
-  edge_use_color: false
-  interlayer_edge_use_source: true
-  interlayer_edge_scale: 0.08
-  interlayer_edge_alpha: 0.4
-  interlayer_edge_use_color: true
-  interlayer_edge_insertion_skip: 0
-layer5:
-  z_offset_scale: 5.5
-  visualize: false
-  # nodes
-  marker_scale: 1.0
-  marker_alpha: 1.0
-  use_sphere_marker: false
-  use_label: true
-  label_height: 1.5
-  label_scale: 1.25
-  # edges
-  edge_scale: 0.05
-  edge_alpha: 1.0
-  edge_use_color: false
-  interlayer_edge_use_source: false
-  interlayer_edge_scale: 0.10
-  interlayer_edge_alpha: 0.5
-  interlayer_edge_use_color: false
-  interlayer_edge_insertion_skip: 0
-layer20:
-  z_offset_scale: 3.0
-  visualize: true
-  # nodes
-  marker_scale: 0.2
-  marker_color_mode: LabelColorAdaptor
-  marker_alpha: 0.9
-  use_sphere_marker: true
-  draw_boundaries: true
-  collapse_boundary: false
-  boundary_wireframe_scale: 0.1
-  boundary_use_node_color: true
-  boundary_alpha: 1.0
-  # edges
-  edge_scale: 0.01
-  edge_alpha: 0.5
-  edge_use_color: false
-  interlayer_edge_use_source: false
-  interlayer_edge_scale: 0.08
-  interlayer_edge_alpha: 0.4
-  interlayer_edge_use_color: true
-  interlayer_edge_insertion_skip: 0
-dynamic_layers:
-  layer2:
-    z_offset_scale: 0.0
-    visualize: true
-    # nodes
-    node_scale: 0.2
-    node_alpha: 0.9
-    node_use_sphere: true
-    # edges
-    edge_scale: 0.05
-    edge_alpha: 0.9
-    # label
-    label_height: 0.9
-    label_scale: 0.8
-    # interlayer
-    interlayer_edge_insertion_skip: 10
-    visualize_interlayer_edges: false
+renderer:
+  layer_z_step: 5.5  # unit separation between layers
+  collapse_layers: false  # whether or not to apply offsets to each of the layers
+  layers:
+    1:  # Agents layer
+      z_offset_scale: 0.0
+      visualize: true
+      nodes: {scale: 0.3, alpha: 0.9, use_sphere: true}
+      text: {draw: false}  # Disable agent name labels
+      edges: {scale: 0.05, alpha: 0.8}
+    2:  # Objects layer
+      z_offset_scale: 2.0
+      visualize: true
+      nodes: {scale: 0.40, color: {type: LabelColorAdapter}, alpha: 0.8, use_sphere: false}
+      text: {draw: true, collapse: true, height: 0.5, scale: 0.45}
+      bounding_boxes: {draw: true, collapse: true, scale: 0.05, edge_scale: 0.05, alpha: 0.9}
+      edges: {scale: 0.03, alpha: 0.6, interlayer_use_source: true, interlayer_scale: 0.08, interlayer_alpha: 0.9}
+    3:  # Places layer
+      z_offset_scale: 3.0
+      visualize: true
+      nodes: {scale: 0.2, color: {type: ParentColorAdapter}, alpha: 0.9, use_sphere: true}
+      edges: {scale: 0.01, alpha: 0.5, interlayer_scale: 0.08, interlayer_alpha: 0.4}
+    4:  # Rooms layer
+      z_offset_scale: 4.2
+      visualize: true
+      nodes: {scale: 0.6, color: {type: IdColorAdapter}, alpha: 0.8, use_sphere: false}
+      text: {draw: true, height: 1.25, scale: 1.0}
+      edges: {scale: 0.1, alpha: 0.2, interlayer_scale: 0.08, interlayer_alpha: 0.4}
+    5:  # Buildings layer
+      z_offset_scale: 5.5
+      visualize: true
+      nodes: {scale: 1.0, alpha: 1.0, use_sphere: false}
+      text: {draw: true, height: 1.5, scale: 1.25}
+      edges: {scale: 0.05, alpha: 1.0}
+    20:  # Mesh/Voxel layer
+      z_offset_scale: 3.0
+      visualize: true
+      nodes: {scale: 0.2, color: {type: LabelColorAdapter}, alpha: 0.9, use_sphere: true}
+      boundaries: {draw: true, wireframe_scale: 0.1, use_node_color: true, alpha: 1.0}
+      edges: {scale: 0.01, alpha: 0.5, interlayer_scale: 0.08, interlayer_alpha: 0.4}
+  # Dynamic layers configuration
+  partitions:
+    2:  # Dynamic objects/agents
+      z_offset_scale: 0.0
+      visualize: true
+      nodes: {scale: 0.2, alpha: 0.9, use_sphere: true}
+      edges: {scale: 0.05, alpha: 0.9}
+      text: {draw: false}  # Disable text labels for dynamic agents

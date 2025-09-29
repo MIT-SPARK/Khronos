@@ -39,9 +39,9 @@
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
-#include <config_utilities/config_utilities.h>
 #include <hydra/common/global_info.h>
 #include <spatial_hash/grid.h>
 
@@ -136,10 +136,6 @@ class MaxIoUTracker : public Tracker {
   Point computeCentroid(const FrameData& data, const MeasurementCluster& cluster) const;
 
  private:
-  inline static const auto registration_ =
-      config::RegistrationWithConfig<Tracker, MaxIoUTracker, MaxIoUTracker::Config>(
-          "MaxIouTracker");
-
   // Members.
   const spatial_hash::Grid<GlobalIndex> grid_;
 

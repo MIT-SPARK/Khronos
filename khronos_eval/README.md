@@ -5,7 +5,7 @@ Download ground-truth files to evaluate relevant datasets [here](https://drive.g
 
 > The most relevant file is [scripts/evaluate_pipeline.sh](scripts/evaluate_pipeline.sh), following that script should point you at all relevant files (mostly [src/pipeline_evaluator.cpp](src/pipeline_evaluator.cpp) that runs all evaluations).
 
-After setting the script parameters and associated config file parameters properly, run the script to generate the `results` subdirectory with all relevant evaluation results in the output directory. To get a quick overview of the results, run `python3 plotting/tables.py`. Note that you will have to manually set filepaths and provide a list of `method`s, which are all of the runs you want to evaluate over, in that file as well. 
+After setting the script parameters and associated config file parameters properly, run the script to generate the `results` subdirectory with all relevant evaluation results in the output directory. To get a quick overview of the results, run `python3 plotting/tables.py`. Note that you will have to manually set filepaths and provide a list of `method`s, which are all of the runs you want to evaluate over, in that file as well.
 
 Once you run [tables.py](plotting/tables.py), you should see something like this (with rows for every dataset you're evaluating):
 
@@ -18,22 +18,25 @@ Once you run [tables.py](plotting/tables.py), you should see something like this
 You can change output format in `tables.py`, with parameter `PRINT_MODE`.
 
 ## Current output directory structure
-The **core** structure is governed by the [experiment_manager](https://github.com/MIT-SPARK/Khronos/blob/main/khronos_ros/include/khronos_ros/experiments/experiment_manager.h) and created when running `khronos.launch`:
+The **core** structure is governed by the [experiment_manager](https://github.com/MIT-SPARK/Khronos/blob/main/khronos_ros/include/khronos_ros/experiments/experiment_manager.h) and created when running `khronos.launch.yaml`:
 ```bash
-├── config.txt      # Human readable config of khronos that was run.
-├── experiment_log.txt  # Meta iformaton about the experiment and future evaluations. This file should say "[FLAG] [Experiment Finished Cleanly]" somewhere if the data is complete.
-├── maps        # Periodically saved states of khronos for further evaluation. This is OPTIONAL, activated by setting `save_every_n_frames` to > 0 in the config.
-│   ├── 00000
-│   │   ├── backend
-│   │   │   ├── dsg.sparkdsg
-│   │   │   ├── dsg_with_mesh.sparkdsg
-│   │   │   ├── loop_closures.csv
-│   │   └── timestamp.txt
-│   ├── 00001
-│    ...
-├── final.4dmap  # The 4D map output from Khronos, to be evaluated.
-├── rosparams.yaml  # The ros params that were used when running khronos, these can be used to recreate an experiment.
-└── timing      # Timing information when khronos was run.
-    └── stats.csv
-    └── ...
+├── backend/                # Backend outputs
+│   ├── dsg_with_mesh.sparkdsg
+│   └── proposed_merge.csv
+├── frontend/               # Frontend outputs
+│   ├── dsg.json
+│   ├── dsg_with_mesh.json
+│   ├── layer_*_statistics.csv
+│   └── mesh.ply
+├── maps/                   # Periodically saved states (OPTIONAL, if save_every_n_frames > 0)
+├── snapshots/              # Intermediate snapshots during runtime
+├── timing/                 # Detailed timing information
+├── config.txt              # Human readable config of khronos that was run
+├── experiment_log.txt      # Meta information (should say "[FLAG] [Experiment Finished Cleanly]")
+├── final.4dmap             # The 4D map output from Khronos, to be evaluated
+├── git_hash.txt            # Git commit hash for reproducibility
+├── git_status.txt          # Git status at runtime
+├── mesh.ply                # Final mesh output
+├── object_changes.csv      # Detected object changes
+└── timing_stats.csv        # Aggregated timing statistics
 ```

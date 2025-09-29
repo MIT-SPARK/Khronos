@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.22.1)
 project(khronos VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -30,13 +30,14 @@ add_library(${PROJECT_NAME}
         src/active_window/active_window.cpp
         src/active_window/data/frame_data_buffer.cpp
         src/active_window/data/track.cpp
-        src/active_window/integration/binary_semantic_integrator.cpp
-        src/active_window/integration/projective_integrator.cpp
+        src/active_window/integration/object_integrator.cpp
         src/active_window/integration/tracking_integrator.cpp
         src/active_window/motion_detection/free_space_motion_detector.cpp
         src/active_window/object_detection/connected_semantics.cpp
         src/active_window/object_detection/instance_forwarding.cpp
         src/active_window/object_extraction/mesh_object_extractor.cpp
+        src/active_window/object_extraction/object_worker_pool.cpp
+        src/active_window/tracking/external_tracker.cpp
         src/active_window/tracking/max_iou_tracker.cpp
         src/backend/backend.cpp
         src/backend/change_detection/background/ray_background_change_detector.cpp
@@ -49,10 +50,9 @@ add_library(${PROJECT_NAME}
         src/backend/reconciliation/mesh/mesh_merger.cpp
         src/backend/reconciliation/mesh/overwrite_mesh.cpp
         src/backend/reconciliation/reconciler.cpp
-        src/backend/update_functions.cpp
+        src/backend/update_khronos_objects_functor.cpp
         src/spatio_temporal_map/spatio_temporal_map.cpp
         src/spatio_temporal_map/incremental_mesh.cpp
-        src/utils/data_directory.cpp
         src/utils/geometry_utils.cpp
         src/utils/khronos_attribute_utils.cpp
         src/utils/output_file_utils.cpp

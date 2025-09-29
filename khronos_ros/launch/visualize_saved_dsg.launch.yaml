@@ -1,0 +1,37 @@
+---
+launch:
+  # Args
+  - arg: {name: scene_graph, default: /data/datasets/khronos/tesse_cd/office/ground_truth/gt_dsg_with_mesh.json}
+  
+  - arg: {name: visualizer_config_path, default: $(find-pkg-share khronos_ros)/config/visualization/visualizer_config.yaml}
+  - arg: {name: visualizer_plugins_path, default: $(find-pkg-share khronos_ros)/config/visualization/visualizer_plugins.yaml}
+  
+  - arg: {name: world_frame, default: world}
+  - arg: {name: start_rviz, default: 'true'}
+  - arg: {name: rviz_file, default: uHumans2.rviz}
+  - arg: {name: rviz_dir, default: $(find-pkg-share khronos_ros)/config/rviz}
+  - arg: {name: rviz_path, default: $(var rviz_dir)/$(var rviz_file)}
+  
+  # Include hydra_visualizer launch file for static visualization
+  - include:
+      file: $(find-pkg-share hydra_visualizer)/launch/static_visualizer.launch.yaml
+      arg:
+        - {name: visualizer_ns, value: hydra_visualizer}
+        - {name: visualizer_frame, value: $(var world_frame)}
+        - {name: start_rviz, value: $(var start_rviz)}
+        - {name: rviz_path, value: $(var rviz_path)}
+        - {name: scene_graph, value: $(var scene_graph)}
+        - {name: visualizer_config_path, value: $(var visualizer_config_path)}
+        - {name: visualizer_plugins_path, value: $(var visualizer_plugins_path)}
+  
+  # Pose graph viewer node
+  - node:
+      pkg: pose_graph_tools_ros
+      exec: visualizer_node
+      name: posegraph_viewer
+      namespace: incremental_dsg_builder_node/pgmo
+      output: screen
+      remap:
+        - {from: '~/graph', to: pose_graph}
+      param:
+        - {name: frame_id, value: $(var world_frame)}

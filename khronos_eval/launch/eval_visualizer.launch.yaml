@@ -1,0 +1,24 @@
+---
+launch:
+  # Arguments
+  - arg:
+      name: visualization_directory
+      default: '$(find-pkg-share khronos_ros)/../output/tmp/eval_visualization/'
+      description: Directory containing visualization data
+  
+  # Eval Visualizer node
+  - node:
+      pkg: khronos_eval
+      exec: eval_visualizer_node
+      name: eval_visualizer_node
+      output: screen
+      param:
+        - {name: visualization_directory, value: $(var visualization_directory)}
+  
+  # RViz node
+  - node:
+      pkg: rviz2
+      exec: rviz2
+      name: rviz
+      output: log
+      args: -d $(find-pkg-share khronos_eval)/config/visualization/eval_visualizer.rviz

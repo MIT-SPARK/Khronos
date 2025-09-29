@@ -2,22 +2,37 @@
 
 #include <filesystem>
 
+#include <config_utilities/config.h>
+#include <config_utilities/types/path.h>
 #include <hydra/utils/csv_reader.h>
 #include <khronos_ros/visualization/visualization_utils.h>
 #include <spark_dsg/colormaps.h>
 
 namespace khronos {
 
-EvalVisualizer::EvalVisualizer(const ros::NodeHandle& nh)
-    : config(nh, nh.resolveName("khronos/eval_vis")), nh_(nh) {
+void declare_config(EvalVisualizer::Config& config) {
+  using namespace config;
+  name("EvalVisualizer::Config");
+  field(config.robot_time, "robot_time");
+  field(config.query_time, "query_time");
+  field(config.z_offset, "z_offset");
+  field(config.bbox_scale, "bbox_scale");
+  field(config.centroid_scale, "centroid_scale");
+  field(config.id_scale, "id_scale");
+  field(config.association_scale, "association_scale");
+  field<Path::Absolute>(config.visualization_directory, "visualization_directory");
+}
+
+EvalVisualizer::EvalVisualizer(const Config& _config, ianvs::NodeHandle nh)
+    : config("khronos/eval_vis", _config), nh_(nh) {
   // ROS.
-  centroid_gt_pub_ = nh_.advertise<visualization_msgs::Marker>("centroids_gt", 1);
-  centroid_dsg_pub_ = nh_.advertise<visualization_msgs::Marker>("centroids_dsg", 1);
-  bbox_gt_pub_ = nh_.advertise<visualization_msgs::Marker>("boundingboxes_gt", 1);
-  bbox_dsg_pub_ = nh_.advertise<visualization_msgs::Marker>("boundingboxes_dsg", 1);
-  association_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("associations", 1);
-  object_id_gt_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("object_ids_gt", 1);
-  object_id_dsg_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("object_ids_dsg", 1);
+  centroid_gt_pub_ = nh_.create_publisher<Marker>("centroids_gt", 1);
+  centroid_dsg_pub_ = nh_.create_publisher<Marker>("centroids_dsg", 1);
+  bbox_gt_pub_ = nh_.create_publisher<Marker>("boundingboxes_gt", 1);
+  bbox_dsg_pub_ = nh_.create_publisher<Marker>("boundingboxes_dsg", 1);
+  association_pub_ = nh_.create_publisher<MarkerArray>("associations", 1);
+  object_id_gt_pub_ = nh_.create_publisher<MarkerArray>("object_ids_gt", 1);
+  object_id_dsg_pub_ = nh_.create_publisher<MarkerArray>("object_ids_dsg", 1);
 
   // Use the same cached header throughout.
   header_.frame_id = "world";
@@ -26,15 +41,12 @@ EvalVisualizer::EvalVisualizer(const ros::NodeHandle& nh)
   loadData();
 
   // Register dynamic reconfigure.
-  config.setUpdateCallback(std::bind(&EvalVisualizer::reset, this));
+  config.setCallback(std::bind(&EvalVisualizer::reset, this));
 }
 
-void EvalVisualizer::spin() {
-  // Continuously publish in case things change.
-  while (ros::ok()) {
-    draw();
-    ros::spinOnce();
-  }
+void EvalVisualizer::start() {
+  using namespace std::chrono_literals;
+  timer_ = nh_.create_timer(100ms, true, [this]() { draw(); });
 }
 
 void EvalVisualizer::reset() {
@@ -51,7 +63,7 @@ void EvalVisualizer::reset() {
 
 void EvalVisualizer::draw() {
   std::lock_guard<std::mutex> lock(mutex_);
-  header_.stamp = ros::Time::now();
+  header_.stamp = nh_.now();
 
   // Get the right data.
   size_t robot_time_idx = config.get().robot_time;
@@ -87,18 +99,19 @@ void EvalVisualizer::draw() {
 }
 
 void EvalVisualizer::drawCentroids(const VisData& data) {
-  if (centroid_gt_pub_.getNumSubscribers() == 0 && centroid_dsg_pub_.getNumSubscribers() == 0) {
+  if (centroid_gt_pub_->get_subscription_count() == 0 &&
+      centroid_dsg_pub_->get_subscription_count() == 0) {
     return;
   }
 
   if (!centroid_gt_marker_) {
     // Create the markers.
-    visualization_msgs::Marker marker;
-    marker.type = visualization_msgs::Marker::SPHERE_LIST;
+    Marker marker;
+    marker.type = Marker::SPHERE_LIST;
     marker.scale = setScale(config.get().centroid_scale);
     marker.pose.orientation.w = 1.0;
     marker.header = header_;
-    marker.action = visualization_msgs::Marker::ADD;
+    marker.action = Marker::ADD;
     auto coloring_fn = getObjectColoringFunction();
 
     // Add DSG.
@@ -109,7 +122,7 @@ void EvalVisualizer::drawCentroids(const VisData& data) {
     if (marker.points.empty()) {
       marker.points.emplace_back();
     }
-    centroid_dsg_marker_ = std::make_unique<visualization_msgs::Marker>(marker);
+    centroid_dsg_marker_ = std::make_unique<Marker>(marker);
 
     // Add GT.
     marker.points.clear();
@@ -122,31 +135,31 @@ void EvalVisualizer::drawCentroids(const VisData& data) {
     if (marker.points.empty()) {
       marker.points.emplace_back();
     }
-    centroid_gt_marker_ = std::make_unique<visualization_msgs::Marker>(marker);
+    centroid_gt_marker_ = std::make_unique<Marker>(marker);
   }
 
   // Publish the markers.
-  if (centroid_gt_pub_.getNumSubscribers() > 0) {
-    centroid_gt_pub_.publish(*centroid_gt_marker_);
+  if (centroid_gt_pub_->get_subscription_count() > 0) {
+    centroid_gt_pub_->publish(*centroid_gt_marker_);
   }
-  if (centroid_dsg_pub_.getNumSubscribers() > 0) {
-    centroid_dsg_pub_.publish(*centroid_dsg_marker_);
+  if (centroid_dsg_pub_->get_subscription_count() > 0) {
+    centroid_dsg_pub_->publish(*centroid_dsg_marker_);
   }
 }
 
 void EvalVisualizer::drawBboxes(const VisData& data) {
-  if (bbox_gt_pub_.getNumSubscribers() == 0 && bbox_dsg_pub_.getNumSubscribers() == 0) {
+  if (bbox_gt_pub_->get_subscription_count() == 0 && bbox_dsg_pub_->get_subscription_count() == 0) {
     return;
   }
 
   if (!bbox_gt_marker_) {
     // Create the markers.
-    visualization_msgs::Marker marker;
-    marker.type = visualization_msgs::Marker::LINE_LIST;
+    Marker marker;
+    marker.type = Marker::LINE_LIST;
     marker.scale = setScale(config.get().bbox_scale);
     marker.pose.orientation.w = 1.0;
     marker.header = header_;
-    marker.action = visualization_msgs::Marker::ADD;
+    marker.action = Marker::ADD;
     auto coloring_fn = getObjectColoringFunction();
 
     // Add the DSG.
@@ -165,7 +178,7 @@ void EvalVisualizer::drawBboxes(const VisData& data) {
       marker.points.emplace_back();
       marker.points.emplace_back();
     }
-    bbox_dsg_marker_ = std::make_unique<visualization_msgs::Marker>(marker);
+    bbox_dsg_marker_ = std::make_unique<Marker>(marker);
 
     // Add GT.
     marker.points.clear();
@@ -188,28 +201,28 @@ void EvalVisualizer::drawBboxes(const VisData& data) {
       marker.points.emplace_back();
       marker.points.emplace_back();
     }
-    bbox_gt_marker_ = std::make_unique<visualization_msgs::Marker>(marker);
+    bbox_gt_marker_ = std::make_unique<Marker>(marker);
   }
 
   // Publish the markers.
-  if (bbox_gt_pub_.getNumSubscribers() > 0) {
-    bbox_gt_pub_.publish(*bbox_gt_marker_);
+  if (bbox_gt_pub_->get_subscription_count() > 0) {
+    bbox_gt_pub_->publish(*bbox_gt_marker_);
   }
-  if (bbox_dsg_pub_.getNumSubscribers() > 0) {
-    bbox_dsg_pub_.publish(*bbox_dsg_marker_);
+  if (bbox_dsg_pub_->get_subscription_count() > 0) {
+    bbox_dsg_pub_->publish(*bbox_dsg_marker_);
   }
 }
 
 void EvalVisualizer::drawAssociations(const VisData& data) {
-  if (!association_pub_.getNumSubscribers()) {
+  if (!association_pub_->get_subscription_count()) {
     return;
   }
 
   if (!association_marker_) {
     // Create the markers.
-    association_marker_ = std::make_unique<visualization_msgs::MarkerArray>();
-    visualization_msgs::Marker msg;
-    msg.type = visualization_msgs::Marker::LINE_LIST;
+    association_marker_ = std::make_unique<MarkerArray>();
+    Marker msg;
+    msg.type = Marker::LINE_LIST;
     msg.scale.x = config.get().association_scale;
     msg.pose.orientation.w = 1.f;
     msg.header = header_;
@@ -276,25 +289,25 @@ void EvalVisualizer::drawAssociations(const VisData& data) {
   }
 
   // Publish the markers.
-  association_pub_.publish(*association_marker_);
+  association_pub_->publish(*association_marker_);
 }
 
 void EvalVisualizer::drawObjectIds(const VisData& data) {
-  if (object_id_gt_pub_.getNumSubscribers() == 0) {
+  if (object_id_gt_pub_->get_subscription_count() == 0) {
     return;
   }
   if (!object_id_gt_marker_) {
     // Create the markers.
-    object_id_gt_marker_ = std::make_unique<visualization_msgs::MarkerArray>();
-    object_id_dsg_marker_ = std::make_unique<visualization_msgs::MarkerArray>();
+    object_id_gt_marker_ = std::make_unique<MarkerArray>();
+    object_id_dsg_marker_ = std::make_unique<MarkerArray>();
 
-    visualization_msgs::Marker msg;
-    msg.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+    Marker msg;
+    msg.type = Marker::TEXT_VIEW_FACING;
     msg.scale.z = config.get().id_scale;
     msg.pose.orientation.w = 1.f;
     msg.header = header_;
     msg.color.a = 1.f;
-    msg.action = visualization_msgs::Marker::ADD;
+    msg.action = Marker::ADD;
     int id = 0;
     const float z_offset = (config.get().centroid_scale + config.get().id_scale) / 2.f + 0.05f;
 
@@ -309,7 +322,7 @@ void EvalVisualizer::drawObjectIds(const VisData& data) {
     size_t num_id_markers = object_id_dsg_marker_->markers.size();
     for (size_t i = num_id_markers; i < num_previous_id_dsg_markers_; ++i) {
       msg.id = id++;
-      msg.action = visualization_msgs::Marker::DELETE;
+      msg.action = Marker::DELETE;
       object_id_dsg_marker_->markers.push_back(msg);
     }
     num_previous_id_dsg_markers_ = num_id_markers;
@@ -325,68 +338,66 @@ void EvalVisualizer::drawObjectIds(const VisData& data) {
     num_id_markers = object_id_gt_marker_->markers.size();
     for (size_t i = num_id_markers; i < num_previous_id_gt_markers_; ++i) {
       msg.id = id++;
-      msg.action = visualization_msgs::Marker::DELETE;
+      msg.action = Marker::DELETE;
       object_id_gt_marker_->markers.push_back(msg);
     }
     num_previous_id_gt_markers_ = num_id_markers;
   }
 
   // Publish the markers.
-  if (object_id_gt_pub_.getNumSubscribers() > 0) {
-    object_id_gt_pub_.publish(*object_id_gt_marker_);
+  if (object_id_gt_pub_->get_subscription_count() > 0) {
+    object_id_gt_pub_->publish(*object_id_gt_marker_);
   }
-  if (object_id_dsg_pub_.getNumSubscribers() > 0) {
-    object_id_dsg_pub_.publish(*object_id_dsg_marker_);
+  if (object_id_dsg_pub_->get_subscription_count() > 0) {
+    object_id_dsg_pub_->publish(*object_id_dsg_marker_);
   }
 }
 
 std::function<Color(const VisObject&)> EvalVisualizer::getObjectColoringFunction() const {
-  if (config.get().object_color == 1) {
-    // Presence.
-    return [](const VisObject& object) {
-      if (object.is_present) {
-        return Color(0, 0, 255);
-      }
-      return Color(100, 100, 100);
-    };
-  } else if (config.get().object_color == 2) {
-    // Persistence.
-    return [](const VisObject& object) {
-      if (object.is_present) {
-        if (object.has_appeared) {
-          return Color(0, 225, 0);  // Appeared.
-        } else {
-          return Color(0, 0, 255);  // Persistent.
+  switch (config.get().object_color) {
+    case Config::ColorMode::Presence:
+      return [](const VisObject& object) {
+        if (object.is_present) {
+          return Color(0, 0, 255);
         }
-      } else {
-        if (object.has_disappeared) {
-          return Color(255, 0, 0);  // Disappeared.
+        return Color(100, 100, 100);
+      };
+      break;
+    case Config::ColorMode::ChangeState:
+      return [](const VisObject& object) {
+        if (object.is_present) {
+          if (object.has_appeared) {
+            return Color(0, 225, 0);  // Appeared.
+          } else {
+            return Color(0, 0, 255);  // Persistent.
+          }
         } else {
-          return Color(100, 100, 100);  // Absent.
+          if (object.has_disappeared) {
+            return Color(255, 0, 0);  // Disappeared.
+          } else {
+            return Color(100, 100, 100);  // Absent.
+          }
         }
-      }
-    };
-  } else if (config.get().object_color != 0) {
-    LOG(WARNING) << "Unknown object coloring function " << config.get().object_color
-                 << ". Using default.";
+      };
+      break;
+    case Config::ColorMode::Label:
+    default:
+      return
+          [this](const VisObject& object) { return spark_dsg::colormaps::rainbowId(object.label); };
   }
-
-  // Default: Label
-  return [this](const VisObject& object) { return spark_dsg::colormaps::rainbowId(object.label); };
 }
 
 void EvalVisualizer::loadData() {
   // Get the file names and check if they exist.
-  std::string visualization_directory;
-  nh_.getParam("visualization_directory", visualization_directory);
+  const auto visualization_directory = config.get().visualization_directory;
   if (visualization_directory.empty()) {
     LOG(FATAL) << "Param 'visualization_directory' not set.";
   }
-  const std::string objects_file = visualization_directory + "/objects.csv";
+  const auto objects_file = visualization_directory / "objects.csv";
   if (!std::filesystem::exists(objects_file)) {
     LOG(FATAL) << "File '" << objects_file << "' does not exist.";
   }
-  const std::string associations_file = visualization_directory + "/associations.csv";
+  const auto associations_file = visualization_directory / "associations.csv";
   if (!std::filesystem::exists(associations_file)) {
     LOG(FATAL) << "File '" << associations_file << "' does not exist.";
   }

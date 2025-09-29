@@ -1,0 +1,76 @@
+---
+launch:
+  # ============ Arguments ============
+  # Data
+  - arg: {name: bag_path, description: Path to the ROS bag file}
+  - arg: {name: play_rate, default: '1.0'}
+  - arg: {name: sim_time_required, default: 'true'}
+  - arg: {name: robot_ns, default: sparkal1}
+  - arg: {name: compressed_rgb, default: 'true'}
+
+  # Semantics (for future use when semantic inference is integrated)
+  - arg: {name: use_prerecorded_semantics, default: 'true'}
+  - arg: {name: use_openset_semantics, default: 'false'}
+  - arg: {name: labelspace_name, default: ade20k_indoor}
+  - arg: {name: segmenter_config, default: $(find-pkg-share khronos_ros)/config/openset/sam_clip.yaml}
+
+  # ============ Set sim time parameter ============
+  - set_parameter:
+      name: use_sim_time
+      value: $(var sim_time_required)
+
+  # ============ Play the bag ============
+  - executable:
+      cmd: ros2 run ianvs play_rosbag $(var bag_path) --rate $(var play_rate) --clock
+      name: dataset_player
+      output: screen
+      shell: true
+
+  # ============ Image Transport Republishers ============
+  # RGB: compressed → raw (Mezzanine bag only has compressed images)
+  - executable:
+      if: $(var compressed_rgb)
+      cmd: "ros2 run image_transport republish --ros-args -r in/compressed:=/$(var robot_ns)/forward/color/image_raw/compressed -r out:=/$(var robot_ns)/forward/color/image_raw -p use_sim_time:=true -p in_transport:=compressed -p out_transport:=raw"
+      name: rgb_republisher
+      output: screen
+      shell: true
+
+  # ============ Static TFs ============
+  - include:
+      file: $(find-pkg-share khronos_ros)/launch/datasets/tf/jackal_static_tf.launch.yaml
+
+  # ============ Odometry to TF ============
+  # REQUIRED: Publish odom->base transform from odometry messages.
+  # The Mezzanine bag contains NO /tf or /tf_static topics (only odometry messages).
+  # This node converts nav_msgs/Odometry to TF transforms (sparkal1/odom → sparkal1/base).
+  # Without this, sensor extrinsics lookup via TF will fail and khronos_node cannot start.
+  # This was solved in ROS1 by running Kimera-VIO, but we don't have a ROS2 port of Kimera
+  # yet, so we need this node.
+  - node:
+      pkg: khronos_ros
+      exec: odom_to_tf.py
+      name: odom_to_tf
+      param:
+        - {name: odom_topic, value: /$(var robot_ns)/jackal_velocity_controller/odom}
+
+  # ============ Semantic Inference (if not using prerecorded) ============
+  # When use_prerecorded_semantics=false, run live semantic inference.
+  # Input: /sparkal1/forward/color/image_raw (from bag or republished)
+  # Output: /semantic_inference/semantic/image_raw
+
+  # Standard closed-set semantic inference (ADE20k)
+  - include:
+      if: $(and $(not $(var use_prerecorded_semantics)) $(not $(var use_openset_semantics)))
+      file: $(find-pkg-share semantic_inference_ros)/launch/closed_set.launch.yaml
+      arg:
+        - {name: compressed_rgb, value: $(var compressed_rgb)}
+        - {name: labelspace_name, value: $(var labelspace_name)}
+        - {name: use_prerecorded, value: 'false'}
+
+  # Open set semantics (SAM+CLIP)
+  - include:
+      if: $(and $(not $(var use_prerecorded_semantics)) $(var use_openset_semantics))
+      file: $(find-pkg-share semantic_inference_ros)/launch/open_set.launch.yaml
+      arg:
+        - {name: compressed_rgb, value: $(var compressed_rgb)}
+        - {name: config_path, value: $(var segmenter_config)}

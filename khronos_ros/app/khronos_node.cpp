@@ -35,40 +35,40 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
+#include <config_utilities/parsing/context.h>
 #include <glog/logging.h>
-#include <ros/ros.h>
+#include <ianvs/node_init.h>
 
 #include "khronos_ros/experiments/experiment_manager.h"
 #include "khronos_ros/khronos_pipeline.h"
 #include "khronos_ros/utils/ros_namespaces.h"
 
 int main(int argc, char** argv) {
+  config::initContext(argc, argv, true);
+  config::setConfigSettingsFromContext();
+  rclcpp::init(argc, argv);
+
   // Start Ros.
-  ros::init(argc, argv, "khronos_active_window");
+  auto node = std::make_shared<rclcpp::Node>("khronos_node");
+  ianvs::NodeHandle nh(*node);
+  
+  // Register node as current node so ianvs::NodeHandle::this_node() works
+  ianvs::CurrentNode::init(node);
 
   // Setup logging.
   FLAGS_alsologtostderr = true;
   FLAGS_colorlogtostderr = true;
-  google::ParseCommandLineFlags(&argc, &argv, false);
   google::InitGoogleLogging(argv[0]);
   google::InstallFailureSignalHandler();
 
-  // Global config settings.
-  auto& settings = config::Settings();
-  settings.print_indent = 40;
-  settings.print_width = 100;
-  settings.subconfig_indent = 2;
-
   // Setup node.
-  ros::NodeHandle nh("~");
   auto khronos = std::make_shared<khronos::KhronosPipeline>(nh);
-
-  // Setup the experiment manager to do logging and evaluation.
-  auto experiment_nh = ros::NodeHandle(nh, khronos::RosNs::EXPERIMENT);
-  khronos::ExperimentManager manager(experiment_nh, khronos);
+  // Don't add experiment namespace to avoid double namespacing
+  const auto experiment_config =
+      config::fromContext<khronos::ExperimentManager::Config>(khronos::RosNs::EXPERIMENT);
+  khronos::ExperimentManager manager(experiment_config, nh, khronos);
 
   // Run the experiment.
   manager.run();
-
   return 0;
 }

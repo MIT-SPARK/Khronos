@@ -67,3 +67,4 @@ CATKIN_IGNORE
 # Local utilities
 Notes.txt
 *compile_commands.json
+*.clangd

@@ -38,6 +38,7 @@
 #include "khronos/backend/change_detection/ray_verificator.h"
 
 #include <stdlib.h>
+#include <glog/logging.h>
 
 namespace khronos {
 
@@ -148,10 +149,11 @@ void RayVerificator::setDsg(std::shared_ptr<const DynamicSceneGraph> dsg) {
   dsg_ = std::move(dsg);
   rays_.clear();
   timestamps_.clear();
+  node_ids_.clear();
   block_seen_by_rays_.clear();
   vertices_in_block_.clear();
   objects_in_block_.clear();
-  previous_node_index_ = 0;
+  previous_node_id_ = 0;
   previous_vertex_index_ = 0;
   previous_object_index_ = 0;
   addPoseNodes();
@@ -180,28 +182,52 @@ void RayVerificator::updateDsg() {
 }
 
 void RayVerificator::addPoseNodes() {
-  if (!dsg_ || !dsg_->hasLayer(DsgLayers::AGENTS, config.prefix.key)) {
+  if (!dsg_) {
+    return;
+  }
+
+  const auto agents =
+      dsg_->findLayer(dsg_->getLayerKey(DsgLayers::AGENTS)->layer, config.prefix.key);
+  if (!agents) {
     return;
   }
 
   // Add all new sensor poses to the possible timestamps.
-  const auto& nodes = dsg_->getLayer(DsgLayers::AGENTS, config.prefix.key).nodes();
-  for (size_t i = previous_node_index_; i < nodes.size(); ++i) {
-    const auto& node = *nodes[i];
+  const auto& nodes = agents->nodes();
+  for (const auto& [node_id, node] : nodes) {
+    if (node_id < previous_node_id_) {
+      continue;
+    }
+
     // NOTE(lschmid): These should be ordered already so timestamps should be sorted by
     // construction.
-    if (node.timestamp) timestamps_.emplace_back(static_cast<uint64_t>(node.timestamp->count()));
+    previous_node_id_ = node_id;
+    timestamps_.emplace_back(static_cast<uint64_t>(
+        node->attributes<spark_dsg::AgentNodeAttributes>().timestamp.count()));
+    node_ids_.emplace_back(node_id);
   }
-  previous_node_index_ = nodes.size();
 }
 
 BlockIndexSet RayVerificator::addVertices() {
   BlockIndexSet observed_blocks;
 
+  // Check if DSG and mesh exist and have vertices
+  if (!dsg_ || !dsg_->hasMesh() || dsg_->mesh()->numVertices() == 0) {
+    return observed_blocks;
+  }
+
   // For all vertices, compute the sources they belong to and add them to the library of rays.
   const auto& vertices = dsg_->mesh()->points;
   const auto& first_seen = dsg_->mesh()->first_seen_stamps;
   auto last_seen = dsg_->mesh()->stamps;
+  
+  // Ensure all mesh arrays have consistent sizes
+  if (vertices.size() != first_seen.size() || vertices.size() != last_seen.size()) {
+    LOG(WARNING) << "Mesh arrays have inconsistent sizes: vertices=" << vertices.size() 
+                 << ", first_seen=" << first_seen.size() 
+                 << ", last_seen=" << last_seen.size();
+    return observed_blocks;
+  }
   if (config.active_window_duration > 0) {
     const uint64_t offset_ns = config.active_window_duration * 1e9;
     for (auto& stamp : last_seen) {
@@ -221,7 +247,13 @@ BlockIndexSet RayVerificator::addVertices() {
 
     // Create the rays and add them to the hash.
     for (const size_t source_index : source_indices) {
-      rays_.emplace_back(timestamps_.at(source_index), source_index, i);
+      if (source_index >= timestamps_.size() || source_index >= node_ids_.size()) {
+        LOG(WARNING) << "Invalid source index: " << source_index 
+                     << " (timestamps size=" << timestamps_.size() 
+                     << ", node_ids size=" << node_ids_.size() << ")";
+        continue;
+      }
+      rays_.emplace_back(timestamps_.at(source_index), node_ids_.at(source_index), i);
       observed_blocks.merge(addRayToHash(rays_.size() - 1));
     }
   }

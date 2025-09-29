@@ -82,16 +82,17 @@ void DynamicObjectEvaluator::setGroundTruthDSG(DynamicSceneGraph::Ptr dsg) {
 
   const auto& nodes = gt_dsg_.dsg->getLayer(DsgLayers::OBJECTS).nodes();
   for (const auto& [id, node] : nodes) {
-    auto attrs = dynamic_cast<KhronosObjectAttributes*>(node->getAttributesPtr());
-    // Ignore static objects
-    if (attrs->trajectory_timestamps.size() == 0) {
-      continue;
-    }
+    auto attrs = node->tryAttributes<KhronosObjectAttributes>();
     // Check if object was marked abset for some reason
     if (!attrs) {
       gt_dsg_.num_objects_invalid++;
       continue;
     }
+    // Ignore static objects
+    if (attrs->trajectory_timestamps.size() == 0) {
+      continue;
+    }
+
     // Sort fields and add object
     std::sort(attrs->first_observed_ns.begin(), attrs->first_observed_ns.end());
     std::sort(attrs->last_observed_ns.begin(), attrs->last_observed_ns.end());
@@ -116,13 +117,14 @@ void DynamicObjectEvaluator::setEvalDSG(DynamicSceneGraph::Ptr dsg) {
 
   const auto& nodes = eval_dsg_.dsg->getLayer(DsgLayers::OBJECTS).nodes();
   for (const auto& [id, node] : nodes) {
-    auto attrs = dynamic_cast<KhronosObjectAttributes*>(node->getAttributesPtr());
-    // Ignore static objects
-    if (attrs->trajectory_timestamps.size() == 0) {
-      continue;
-    }
+    auto attrs = node->tryAttributes<KhronosObjectAttributes>();
+    // Check if object was marked abset for some reason
     if (!attrs) {
       eval_dsg_.num_objects_invalid++;
+      continue;
+    }
+    // Ignore static objects
+    if (attrs->trajectory_timestamps.size() == 0) {
       continue;
     }
 

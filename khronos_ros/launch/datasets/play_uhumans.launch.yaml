@@ -1,0 +1,29 @@
+---
+launch:
+  # rosbag args
+  - arg: {name: bag_file}
+  - arg: {name: play_rate, default: '1'}
+  - arg: {name: paused, default: 'false'}
+  - arg: {name: sim_time_required, default: 'true'}
+  - arg: {name: use_gt_frame, default: 'true'}
+  # semantics args
+  - arg: {name: use_gt_semantics, default: 'true'}
+  - arg: {name: use_openset_semantics, default: 'false'}
+  - arg: {name: segmenter_config, default: $(find-pkg-share khronos_ros)/config/openset/sam_clip.yaml}
+  # ROS2 bag player
+  - executable:
+      cmd: ros2 run ianvs play_rosbag $(var bag_file) -r $(var play_rate) --clock $(if $(var paused) --start-paused) #--qos-profile-overrides-path $(find-pkg-share khronos_ros)/config/qos_overrides.yaml
+      name: dataset_player
+      shell: true
+  - group:
+      - set_remap: {from: semantic_inference/color/image_raw, to: /tesse/left_cam/rgb/image_raw}
+      - include:
+          if: $(and $(not $(var use_openset_semantics)) $(not $(var use_gt_semantics)))
+          file: $(find-pkg-share semantic_inference_ros)/launch/closed_set.launch.yaml
+          arg:
+            - {name: labelspace_name, value: ade20k_indoor}
+      - include:
+          if: $(and $(var use_openset_semantics) $(not $(var use_gt_semantics)))
+          file: $(find-pkg-share semantic_inference_ros)/launch/open_set.launch.yaml
+          arg:
+            - {name: config_path, value: $(var segmenter_config)}

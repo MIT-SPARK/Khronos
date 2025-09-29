@@ -53,6 +53,8 @@ struct SemanticClusterInfo {
 
   explicit SemanticClusterInfo(int category_id) : category_id(category_id) {}
   explicit SemanticClusterInfo(const FeatureVector& feature) : feature(feature) {}
+  explicit SemanticClusterInfo(int category_id, const FeatureVector& feature)
+      : category_id(category_id), feature(feature) {}
 };
 
 /**

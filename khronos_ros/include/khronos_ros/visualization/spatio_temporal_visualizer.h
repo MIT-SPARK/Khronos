@@ -44,31 +44,51 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
+#include <config_utilities/dynamic_config.h>
 #include <hydra/common/robot_prefix_config.h>
+#include <hydra_visualizer/plugins/mesh_plugin.h>
 #include <hydra_visualizer/scene_graph_renderer.h>
-#include <hydra_visualizer/utils/config_wrapper.h>
 #include <khronos/common/common_types.h>
 #include <khronos/spatio_temporal_map/spatio_temporal_map.h>
-#include <khronos_msgs/KhronosSpatioTemporalVisConfig.h>
-#include <khronos_msgs/SpatioTemporalVisualizerSetState.h>
-#include <khronos_msgs/SpatioTemporalVisualizerSetTimeMode.h>
-#include <khronos_msgs/SpatioTemporalVisualizerSetup.h>
-#include <ros/node_handle.h>
-#include <std_srvs/SetBool.h>
-#include <visualization_msgs/MarkerArray.h>
-
-#include "khronos_ros/visualization/khronos_mesh_visualizer.h"
+#include <khronos_msgs/msg/spatio_temporal_visualizer_state.hpp>
+#include <khronos_msgs/srv/spatio_temporal_visualizer_set_state.hpp>
+#include <khronos_msgs/srv/spatio_temporal_visualizer_set_time_mode.hpp>
+#include <khronos_msgs/srv/spatio_temporal_visualizer_setup.hpp>
+#include <std_srvs/srv/set_bool.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 namespace khronos {
+
+struct DynamicVisualizerConfig {
+  enum class ObjectColorMode : int {
+    Semantic = 0,
+    Instance = 1,
+    Presence = 2
+  } object_bbox_color = ObjectColorMode::Semantic;
+  enum class DynamicColorMode : int {
+    ID = 0,
+    Red = 1,
+    Mixed = 2
+  } dynamic_object_color = DynamicColorMode::ID;
+  double play_rate = 1.0;
+  double fade_duration = 0.0;
+};
+
+void declare_config(DynamicVisualizerConfig& config);
 
 /**
  * @brief Visualization of a 4D khronos scene belief extracted from an experiment directory via ROS.
  */
 class SpatioTemporalVisualizer {
  public:
-  using Coloring = std::optional<KhronosMeshVisualizer::Coloring>;
-  using DynamicConfig =
-      hydra::visualizer::ConfigWrapper<khronos_msgs::KhronosSpatioTemporalVisConfig>;
+  using DynamicConfig = config::DynamicConfig<DynamicVisualizerConfig>;
+  using MarkerArray = visualization_msgs::msg::MarkerArray;
+  using Marker = visualization_msgs::msg::Marker;
+  using State = khronos_msgs::msg::SpatioTemporalVisualizerState;
+  using SetBool = std_srvs::srv::SetBool;
+  using SetTimeMode = khronos_msgs::srv::SpatioTemporalVisualizerSetTimeMode;
+  using Setup = khronos_msgs::srv::SpatioTemporalVisualizerSetup;
+  using SetState = khronos_msgs::srv::SpatioTemporalVisualizerSetState;
 
   // Config.
   struct Config {
@@ -87,10 +107,15 @@ class SpatioTemporalVisualizer {
     hydra::RobotPrefixConfig robot_prefix;
 
     // Initial config of the dynamic config server.
-    khronos_msgs::KhronosSpatioTemporalVisConfig dynamic_config;
+    DynamicVisualizerConfig dynamic_config;
 
     // Config of the mesh visualizer.
-    KhronosMeshVisualizer::Config mesh_visualizer;
+    hydra::MeshPlugin::Config mesh{
+        true,
+        config::VirtualConfig<hydra::MeshColoring>(hydra::SemanticMeshColoring::Config())};
+
+    //! Config for underlying scene graph visualizer
+    hydra::SceneGraphRenderer::Config scene_graph;
 
     // Initial settings of the dsg visualizer.
     float initial_robot_time = 1.0f;  // Percentage of time to show on initialization.
@@ -98,40 +123,36 @@ class SpatioTemporalVisualizer {
     enum class TimeMode { ROBOT, QUERY, ONLINE } initial_time_mode = TimeMode::ONLINE;
   } const config;
 
-  explicit SpatioTemporalVisualizer(const ros::NodeHandle& nh);
-  virtual ~SpatioTemporalVisualizer() = default;
-
-  void spin();
+  SpatioTemporalVisualizer(const Config& config, ianvs::NodeHandle nh);
   void draw();
   void reset();
 
   // Service callbacks.
-  bool playCb(std_srvs::SetBool::Request& req, std_srvs::SetBool::Response& /* res */);
-  bool setPlayForwardCb(std_srvs::SetBool::Request& req, std_srvs::SetBool::Response& /* res */);
-  bool isSetupCb(khronos_msgs::SpatioTemporalVisualizerSetup::Request& /* req */,
-                 khronos_msgs::SpatioTemporalVisualizerSetup::Response& res);
-  bool setTimeModeCb(khronos_msgs::SpatioTemporalVisualizerSetTimeMode::Request& req,
-                     khronos_msgs::SpatioTemporalVisualizerSetTimeMode::Response& res);
-  bool setStateCb(khronos_msgs::SpatioTemporalVisualizerSetState::Request& req,
-                  khronos_msgs::SpatioTemporalVisualizerSetState::Response& /* res*/);
+  void playCb(SetBool::Request::SharedPtr req, SetBool::Response::SharedPtr res);
+  void setPlayForwardCb(SetBool::Request::SharedPtr req, SetBool::Response::SharedPtr res);
+  void isSetupCb(Setup::Request::SharedPtr req, Setup::Response::SharedPtr res);
+  void setTimeModeCb(SetTimeMode::Request::SharedPtr req, SetTimeMode::Response::SharedPtr res);
+  void setStateCb(SetState::Request::SharedPtr req, SetState::Response::SharedPtr res);
 
  private:
+  void spinOnce();
+
   DynamicConfig dynamic_config_;
 
   // ROS.
-  ros::NodeHandle nh_;
-  ros::Publisher state_pub_;
-  ros::Publisher dynamic_obj_pub_;
-  ros::Publisher static_obj_pub_;
-  ros::Publisher agent_pub_;
-  ros::ServiceServer play_srv_;
-  ros::ServiceServer set_play_forward_srv_;
-  ros::ServiceServer set_time_mode_srv_;
-  ros::ServiceServer is_setup_srv_;
-  ros::ServiceServer set_state_srv_;
+  ianvs::NodeHandle nh_;
+  ianvs::NodeHandle::Timer timer_;
+  rclcpp::Publisher<State>::SharedPtr state_pub_;
+  rclcpp::Publisher<MarkerArray>::SharedPtr dynamic_obj_pub_;
+  rclcpp::Publisher<MarkerArray>::SharedPtr static_obj_pub_;
+  rclcpp::Publisher<Marker>::SharedPtr agent_pub_;
+  rclcpp::Service<SetBool>::SharedPtr play_srv_;
+  rclcpp::Service<SetBool>::SharedPtr set_play_forward_srv_;
+  rclcpp::Service<SetTimeMode>::SharedPtr set_time_mode_srv_;
+  rclcpp::Service<Setup>::SharedPtr is_setup_srv_;
+  rclcpp::Service<SetState>::SharedPtr set_state_srv_;
 
   // Stored data.
-  const DynamicSceneGraph::LayerIds layer_ids_;
   const double min_time_delta_;  // Minimum time delta between two frames [s].
 
   // Threading.
@@ -149,7 +170,8 @@ class SpatioTemporalVisualizer {
   // Visualizer state tracking for incremental updates.
   size_t prev_robot_time_ = 0;
   size_t prev_query_time_ = 0;
-  double previous_wall_time_ = 0.0;  // Time in s for play increments.
+  std::chrono::time_point<std::chrono::steady_clock>
+      previous_wall_time_;  // Time in s for play increments.
   size_t num_prev_dynamic_objects_ = 0;
   size_t num_prev_static_objects_ = 0;
 
@@ -157,7 +179,7 @@ class SpatioTemporalVisualizer {
   DynamicSceneGraph::Ptr current_dsg_;
 
   // Members.
-  KhronosMeshVisualizer mesh_visualizer_;
+  hydra::MeshPlugin mesh_visualizer_;
   hydra::SceneGraphRenderer dsg_renderer_;
 
   // Loaded data.
@@ -185,25 +207,23 @@ class SpatioTemporalVisualizer {
 
   // Visualization.
   void drawDynamicObjects();
-  void visualizeDynamicObject(const std_msgs::Header& header,
+  void visualizeDynamicObject(const std_msgs::msg::Header& header,
                               const KhronosObjectAttributes& attrs,
                               const size_t id,
-                              visualization_msgs::MarkerArray& msg) const;
+                              MarkerArray& msg) const;
   void resetStaticObjects();
   void resetDynamicObjects();
   void drawAgent();
   void resetAgent();
 
   // Coloring functions.
-  KhronosMeshVisualizer::ObjectColors getObjectMeshColors() const;
-  hydra::MeshColoring::Ptr getBackgroundMeshColoring() const;
   void recolorObjectDsgBoundingBoxes();
 
-  void visualizeStaticObject(const std_msgs::Header& header,
+  void visualizeStaticObject(const std_msgs::msg::Header& header,
                              const KhronosObjectAttributes& attrs,
                              const NodeId id,
                              const Color& color,
-                             visualization_msgs::MarkerArray& msg) const;
+                             MarkerArray& msg) const;
 
   // Tools.
   float stampToSec(const uint64_t stamp) const;
@@ -212,7 +232,3 @@ class SpatioTemporalVisualizer {
 void declare_config(SpatioTemporalVisualizer::Config& config);
 
 }  // namespace khronos
-
-namespace khronos_msgs {
-void declare_config(KhronosSpatioTemporalVisConfig& config);
-}  // namespace khronos_msgs

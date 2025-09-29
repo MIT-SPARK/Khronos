@@ -37,39 +37,40 @@
 
 #pragma once
 
-#include <string>
+#include <hydra/reconstruction/projective_integrator.h>
+
+#include "khronos/active_window/data/frame_data.h"
+#include "khronos/active_window/data/reconstruction_types.h"
 
 namespace khronos {
 
 /**
- * @brief Struct that manages the creation of output directories to write experiment or evaluation
- * data to.
+ * @brief Retain khronos-specific data and interfaces for the projective integrator after it was
+ * moved to hydra.
  */
-struct DataDirectory {
-  /**
-   * @brief Create a new data directory.
-   * @param data_path The path where to setup the data directory.
-   * @param allocate Whether to allocate the directory ifit does not yet exist.
-   * @param overwrite Whether to overwrite the directory if it already exists.
-   */
-  explicit DataDirectory(const std::string& data_path,
-                         bool allocate = true,
-                         bool overwrite = false);
+class ObjectIntegrator : public hydra::ProjectiveIntegrator {
+ public:
+  // Construction.
+  explicit ObjectIntegrator(const hydra::ProjectiveIntegrator::Config& config);
+  ~ObjectIntegrator() = default;
 
   /**
-   * @brief Check whether the data directory is correctly setup.
+   * @brief Set the data and target object ID for the integrator.
+   * @param frame_data The frame data to use for integration.
+   * @param target_object_id The ID of the target object to integrate as belonging to the object.
    */
-  bool isValid() const { return !path_.empty(); }
-  operator bool() const { return isValid(); }
-
-  /**
-   * @brief Get the path to the data directory that was allocated.
-   */
-  std::string getPath() const { return path_; }
-  operator std::string() const { return getPath(); }
+  void setFrameData(FrameData* frame_data, int target_object_id);
 
  private:
-  std::string path_;
+  // Specialize computeLabel to select the object image insstead of semantics.
+  bool computeLabel(const VolumetricMap::Config& map_config,
+                    const InputData& /* data */,
+                    const cv::Mat& integration_mask,
+                    VoxelMeasurement& measurement) const override;
+
+  // The current frame data to use for integration.
+  FrameData* current_data_ = nullptr;
+  int current_object_id_ = -1;
 };
 
 }  // namespace khronos

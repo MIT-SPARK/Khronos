@@ -110,7 +110,7 @@ void GTConsolidator::consolidateDSG() {
   auto& static_nodes = gt_dsg_with_mesh_->getLayer(DsgLayers::OBJECTS).nodes();
   for (auto& [id, node] : static_nodes) {
     // Check if the object was marked absent for some reason.
-    auto attrs = dynamic_cast<KhronosObjectAttributes*>(node->getAttributesPtr());
+    auto attrs = node->tryAttributes<KhronosObjectAttributes>();
     if (!attrs) {
       num_static_objects_invalid++;
       continue;
@@ -145,7 +145,7 @@ void GTConsolidator::consolidateDSG() {
   // Add dynamic objects to the DSG.
   auto& dynamic_nodes = gt_dynamic_dsg_->getLayer(DsgLayers::OBJECTS).nodes();
   for (auto& [id, node] : dynamic_nodes) {
-    auto attrs = dynamic_cast<KhronosObjectAttributes*>(node->getAttributesPtr());
+    auto attrs = node->tryAttributes<KhronosObjectAttributes>();
     if (!attrs || attrs->trajectory_positions.empty()) {
       num_dynamic_objects_invalid++;
       continue;
@@ -157,8 +157,7 @@ void GTConsolidator::consolidateDSG() {
       LOG(FATAL) << "Node " << new_node_id
                  << " already exists in static DSG! Figure out a way to deal with this.";
     }
-    gt_dsg_with_mesh_->insertNode(std::make_unique<SceneGraphNode>(
-        new_node_id, DsgLayers::OBJECTS, std::make_unique<KhronosObjectAttributes>(*attrs)));
+    gt_dsg_with_mesh_->emplaceNode(DsgLayers::OBJECTS, new_node_id, std::make_unique<KhronosObjectAttributes>(*attrs));
   }
 
   LOG(INFO) << "Consolidated DSG.";

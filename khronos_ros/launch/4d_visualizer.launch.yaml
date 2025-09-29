@@ -1,0 +1,51 @@
+---
+launch:
+  # Data to visualize
+  - arg: {name: map_file, default: '$(find-pkg-share khronos_ros)/../output/final.4dmap'}
+  
+  # Visualization config
+  - arg: {name: show_gui, default: 'true'}
+  - arg: {name: visualizer_config, default: 4d_visualizer.yaml}
+  - arg: {name: world_frame, default: world}
+  - arg: {name: rviz_file, default: 4d_visualizer.rviz}
+  
+  # Visualizer node
+  - arg: {name: visualizer_node_name, default: spatio_temporal_visualizer}
+  
+  # Launch the spatio_temporal_visualizer_node
+  - node:
+      pkg: khronos_ros
+      exec: spatio_temporal_visualizer_node
+      name: $(var visualizer_node_name)
+      output: screen
+      args: >
+        --config-utilities-file $(find-pkg-share khronos_ros)/config/visualization/$(var visualizer_config)
+        --config-utilities-yaml {map_file: $(var map_file), global_frame_name: $(var world_frame)}
+  
+  # Launch the GUI if requested
+  - node:
+      if: $(var show_gui)
+      pkg: khronos_ros
+      exec: spatio_temporal_visualizer_gui.py
+      name: spatio_temporal_visualizer_gui
+      output: screen
+      param:
+        - {name: gui.visualizer_ns, value: /$(var visualizer_node_name)}
+        - {name: gui.query_time_unit, value: s}
+        - {name: gui.robot_time_unit, value: s}
+  
+  # Launch RViz2
+  - node:
+      if: $(var show_gui)
+      name: rviz
+      pkg: rviz2
+      exec: rviz2
+      output: screen
+      args: -d $(find-pkg-share khronos_ros)/config/rviz/$(var rviz_file)
+  
+  # Static transform publisher for map to world
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: global_tf
+      args: --frame-id map --child-frame-id world

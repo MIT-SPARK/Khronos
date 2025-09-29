@@ -1,0 +1,120 @@
+---
+launch:
+  # Static transforms for Jackal robot - converted from ROS1 tf/sparkal1.launch
+  # The odom->base transform comes from odometry messages via odom_to_tf.py node
+
+  # Base transforms
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: base_to_base_link
+      args: --x 0.0 --y 0.0 --z 0.0 --qx 0.0 --qy 0.0 --qz 0.0 --qw 1.0 --frame-id sparkal1/base --child-frame-id sparkal1/base_link
+
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: base_to_forward_link
+      args: --x 0.15 --y 0.02 --z 0.4 --qx 0.0 --qy 0.0499791692707 --qz 0.0 --qw 0.998750260395 --frame-id sparkal1/base --child-frame-id sparkal1/forward_link
+
+  # Alias for left_cam (used in ROS1 config) - maps to forward camera optical frame
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: forward_optical_to_left_cam
+      args: --x 0.0 --y 0.0 --z 0.0 --qx 0.0 --qy 0.0 --qz 0.0 --qw 1.0 --frame-id sparkal1/forward_color_optical_frame --child-frame-id sparkal1/left_cam
+
+  # Forward camera transforms
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: forward_link_to_depth_frame
+      args: --x 0.0 --y 0.0 --z 0.0 --qx 0.0 --qy 0.0 --qz 0.0 --qw 1.0 --frame-id sparkal1/forward_link --child-frame-id sparkal1/forward_depth_frame
+
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: depth_frame_to_depth_optical
+      args: --x 0.0 --y 0.0 --z 0.0 --qx -0.5 --qy 0.5 --qz -0.5 --qw 0.5 --frame-id sparkal1/forward_depth_frame --child-frame-id sparkal1/forward_depth_optical_frame
+
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: forward_link_to_color_frame
+      args: --x -0.000319962506182 --y -0.059194676578 --z 6.36131953797e-05 --qx -4.90370948683e-05 --qy -0.00241188099608 --qz 0.00221833540127 --qw 0.999994635582 --frame-id sparkal1/forward_link --child-frame-id sparkal1/forward_color_frame
+
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: color_frame_to_color_optical
+      args: --x 0.0 --y 0.0 --z 0.0 --qx -0.5 --qy 0.5 --qz -0.5 --qw 0.5 --frame-id sparkal1/forward_color_frame --child-frame-id sparkal1/forward_color_optical_frame
+
+  # Chassis and mount transforms
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: base_link_to_chassis
+      args: --x 0.0 --y 0.0 --z 0.0 --qx 0.0 --qy 0.0 --qz 0.0 --qw 1.0 --frame-id sparkal1/base_link --child-frame-id sparkal1/chassis_link
+
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: chassis_to_mid_mount
+      args: --x 0.0 --y 0.0 --z 0.184 --qx 0.0 --qy 0.0 --qz 0.0 --qw 1.0 --frame-id sparkal1/chassis_link --child-frame-id sparkal1/mid_mount
+
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: mid_to_front_mount
+      args: --x 0.12 --y 0.0 --z 0.0 --qx 0.0 --qy 0.0 --qz 0.0 --qw 1.0 --frame-id sparkal1/mid_mount --child-frame-id sparkal1/front_mount
+
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: mid_to_rear_mount
+      args: --x -0.12 --y 0.0 --z 0.0 --qx 0.0 --qy 0.0 --qz 0.0 --qw 1.0 --frame-id sparkal1/mid_mount --child-frame-id sparkal1/rear_mount
+
+  # Velodyne/LiDAR transforms
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: base_to_velodyne
+      args: --x 0.0 --y 0.0 --z 0.3 --qx 0.0 --qy 0.0 --qz 0.0 --qw 1.0 --frame-id sparkal1/base --child-frame-id sparkal1/velodyne
+
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: mid_mount_to_velodyne_base
+      args: --x 0.0 --y 0.0 --z 0.1 --qx 0.0 --qy 0.0 --qz 0.0 --qw 1.0 --frame-id sparkal1/mid_mount --child-frame-id sparkal1/velodyne_base_link
+
+  # IMU and sensor transforms
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: chassis_to_imu
+      args: --x 0.0 --y 0.0 --z 0.0 --qx 0.0 --qy 0.0 --qz 0.0 --qw 1.0 --frame-id sparkal1/chassis_link --child-frame-id sparkal1/imu_link
+
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: forward_link_to_gyro
+      args: --x -0.0160199999809 --y -0.0302200000733 --z 0.00740000000224 --qx 0.0 --qy 0.0 --qz 0.0 --qw 1.0 --frame-id sparkal1/forward_link --child-frame-id sparkal1/forward_gyro_frame
+
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: forward_link_to_accel
+      args: --x -0.0160199999809 --y -0.0302200000733 --z 0.00740000000224 --qx 0.0 --qy 0.0 --qz 0.0 --qw 1.0 --frame-id sparkal1/forward_link --child-frame-id sparkal1/forward_accel_frame
+
+  # Map to odom transform (for now static, should come from localization)
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: map_to_odom
+      args: --x 0 --y 0 --z 0 --qx 0 --qy 0 --qz 0 --qw 1 --frame-id sparkal1/map --child-frame-id sparkal1/odom
+
+  # World to map transform
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: world_to_map
+      args: --x 0 --y 0 --z 0 --qx 0 --qy 0 --qz 0 --qw 1 --frame-id world --child-frame-id sparkal1/map

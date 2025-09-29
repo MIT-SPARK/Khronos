@@ -134,10 +134,14 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
       }
     }
 
+    // Closed set version
+    if (data.input.label_features.empty()) {
+      cluster.semantics = SemanticClusterInfo(id);
+    }
     // TODO(Yun) For now all semantic id is the same (so all label checks are invalid)
     const auto feature = data.input.label_features.find(id);
     if (feature != data.input.label_features.end()) {
-      cluster.semantics = SemanticClusterInfo(feature->second);
+      cluster.semantics = SemanticClusterInfo(id, feature->second);
     }
 
     data.semantic_clusters.emplace_back(std::move(cluster));

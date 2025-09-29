@@ -1,8 +1,8 @@
 ---
 plugins:
-  dsg_mesh:
+  mesh:
     type: MeshPlugin
-    use_color_adaptor: false
+    use_color_adapter: false
     coloring:
       type: FirstSeenMeshColoring
   places_basis_points:

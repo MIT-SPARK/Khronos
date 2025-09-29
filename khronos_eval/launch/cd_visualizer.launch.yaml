@@ -1,0 +1,55 @@
+---
+launch:
+  # Arguments
+  - arg:
+      name: dsg_file
+      default: '$(find-pkg-share khronos_ros)/../output/office_test/maps/00004/backend/dsg_with_mesh.sparkdsg'
+      description: Path to the DSG file
+  
+  - arg:
+      name: visualizer_config
+      default: $(find-pkg-share khronos_ros)/config/visualization/visualizer_config.yaml
+      description: Path to visualizer config file
+  
+  - arg:
+      name: change_detector_config
+      default: $(find-pkg-share khronos_eval)/config/visualization/cd_visualizer.yaml
+      description: Path to change detector config file
+  
+  # Include visualize_saved_dsg launch file
+  - include:
+      file: $(find-pkg-share khronos_ros)/launch/visualize_saved_dsg.launch.py
+      arg:
+        - {name: scene_graph, value: $(var dsg_file)}
+        - {name: start_rviz, value: 'false'}
+  
+  # CD Visualizer node
+  - node:
+      pkg: khronos_eval
+      exec: cd_visualizer_node
+      name: cd_visualizer_node
+      output: screen
+      param:
+        - {name: visualizer_frame, value: world}
+        - {name: graph/type, value: GraphFromFile}
+        - {name: graph/filepath, value: $(var dsg_file)}
+        - {name: scene_graph_filepath, value: $(var dsg_file)}
+        - {name: load_graph, value: true}
+      args: >
+        --config-utilities-file $(var visualizer_config)
+        --config-utilities-file $(var change_detector_config)
+  
+  # RViz node
+  - node:
+      pkg: rviz2
+      exec: rviz2
+      name: rviz
+      output: log
+      args: -d $(find-pkg-share khronos_eval)/config/visualization/cd_visualizer.rviz
+  
+  # Static transform publisher for map to world
+  - node:
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: global_tf
+      args: --frame-id map --child-frame-id world

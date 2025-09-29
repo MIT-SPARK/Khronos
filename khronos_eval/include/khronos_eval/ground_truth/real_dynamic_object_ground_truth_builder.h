@@ -7,9 +7,9 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/semantic_color_map.h>
-#include <ros/ros.h>
-#include <sensor_msgs/Image.h>
-#include <tf/tfMessage.h>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <tf2_msgs/msg/tf_message.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
@@ -43,28 +43,28 @@ class RealDynamicObjectGroundTruthBuilder {
   void processRosbag();
   void mouseClickCallback(int event, int x, int y, int flags);
   static void staticMouseClickCallback(int event, int x, int y, int flags, void* userdata);
-  Point get3DPointFromDepth(const ros::Time& timestamp,
+  Point get3DPointFromDepth(const rclcpp::Time& timestamp,
                             const int x,
                             const int y,
                             const float depth);
-  float getDistance(const ros::Time& timestamp, const Point& pixel_point);
+  float getDistance(const rclcpp::Time& timestamp, const Point& pixel_point);
   KhronosObjectAttributes::Ptr getKhronosAttributesFromPoints();
   void extractImagesFromBag(const std::string& bag_file,
                             const std::string& topic,
-                            std::vector<sensor_msgs::ImageConstPtr>* images);
+                            std::vector<std::shared_ptr<sensor_msgs::msg::Image>>* images);
   void extractPosesFromDsg(const std::string& dsg_file);
-  ros::Time findClosestTimestamp(const ros::Time& query_time);
+  rclcpp::Time findClosestTimestamp(const rclcpp::Time& query_time);
   void saveOutput();
 
  private:
-  std::vector<sensor_msgs::ImageConstPtr> rgb_images_, depth_images_;
+  std::vector<std::shared_ptr<sensor_msgs::msg::Image>> rgb_images_, depth_images_;
   std::vector<TimeStamp> timestamps_;
   std::vector<std::pair<TimeStamp, Point>> current_points_;
   DynamicSceneGraph::Ptr dsg_;
   size_t i_img_ = 0;
   size_t num_objects_ = 0;
   tf2_ros::Buffer tfBuffer_;
-  std::set<ros::Time> transform_timestamps_;
+  std::set<rclcpp::Time> transform_timestamps_;
 };
 
 void declare_config(RealDynamicObjectGroundTruthBuilder::Config& config);

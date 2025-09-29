@@ -46,12 +46,38 @@
 #include <stdexcept>
 #include <string>
 
-#include <config_utilities/parsing/ros.h>
 #include <glog/logging.h>
-#include <hydra_ros/utils/node_utilities.h>
+#include <ianvs/spin_functions.h>
 #include <khronos/common/common_types.h>
 
 namespace khronos {
+namespace {
+
+struct Proc {
+  Proc(const std::string& cmd) : pipe_(popen(cmd.c_str(), "r")) {}
+
+  ~Proc() {
+    if (pipe_) {
+      pclose(pipe_);
+    }
+  }
+
+  operator bool() const { return pipe_ != nullptr; }
+
+  std::string exec() {
+    std::array<char, 128> buffer;
+    std::string output;
+    while (fgets(buffer.data(), buffer.size(), pipe_) != nullptr) {
+      output += buffer.data();
+    }
+
+    return output;
+  }
+
+  FILE* pipe_;
+};
+
+}  // namespace
 
 void declare_config(ExperimentManager::Config& config) {
   using namespace config;
@@ -64,12 +90,14 @@ void declare_config(ExperimentManager::Config& config) {
   field(config.log_timing_details, "log_timing_details");
   field(config.save_every_n_frames, "save_every_n_frames");
   field(config.save_full_state, "save_full_state");
+  field(config.exit_after_clock, "exit_after_clock");
 }
 
-ExperimentManager::ExperimentManager(const ros::NodeHandle& nh,
+ExperimentManager::ExperimentManager(const Config& config,
+                                     ianvs::NodeHandle nh,
                                      std::shared_ptr<KhronosPipeline> khronos)
-    : config(config::checkValid(config::fromRos<Config>(nh))),
-      data_dir_(config.output_dir, true, config.overwrite),
+    : config(config::checkValid(config)),
+      data_dir_(config.output_dir, hydra::DataDirectory::Config{true, config.overwrite}),
       khronos_(std::move(khronos)),
       nh_(nh) {
   // Verify output directory.
@@ -77,14 +105,11 @@ ExperimentManager::ExperimentManager(const ros::NodeHandle& nh,
     CLOG(1) << "[ExperimentManager] No output directory specified. Not saving experiment data.";
     return;
   }
-  logger_ = std::make_shared<ExperimentLogger>(data_dir_);
+  logger_ = std::make_shared<ExperimentLogger>(data_dir_.path());
   logger_->alsoLogToConsole(config.verbosity > 0);
-  logger_->log("Setup output directory '" + data_dir_.getPath() + "'.");
+  logger_->log("Setup output directory '" + data_dir_.path().string() + "'.");
 
   // Setup timers.
-  if (config.log_timing || config.log_timing_details) {
-    std::filesystem::create_directories(data_dir_.getPath() + "/timing");
-  }
   hydra::timing::ElapsedTimeRecorder::instance().timing_disabled = !config.log_timing;
   hydra::timing::ElapsedTimeRecorder::instance().disable_output = false;
 
@@ -112,10 +137,10 @@ ExperimentManager::ExperimentManager(const ros::NodeHandle& nh,
                                                      std::placeholders::_3));
   }
 
-  CLOG(1) << "[ExperimentManager] Setup output directory: '" << data_dir_.getPath() << "'.";
+  CLOG(1) << "[ExperimentManager] Setup output directory: '" << data_dir_.path() << "'.";
 
   // Setup service for termination.
-  finish_mapping_and_save_srv_ = nh_.advertiseService(
+  finish_mapping_and_save_srv_ = nh_.create_service<std_srvs::srv::Empty>(
       "finish_mapping_and_save", &ExperimentManager::finishMappingAndSaveCallback, this);
 }
 
@@ -127,8 +152,11 @@ void ExperimentManager::run() {
   if (logger_) {
     logger_->log("Starting experiment.");
   }
+  LOG(INFO) << "[ExperimentManager] Initializing pipeline...";
+  khronos_->init();
+  LOG(INFO) << "[ExperimentManager] Starting pipeline...";
   khronos_->start();
-  hydra::spinAndWait(nh_);
+  ianvs::spinAndWait(nh_, config.exit_after_clock);
   if (logger_) {
     logger_->log("Stopping experiment.");
   }
@@ -152,12 +180,12 @@ void ExperimentManager::addBackendCallback(size_t every_n_frames,
   backend_callback_counters_.emplace_back(0);
 }
 
-bool ExperimentManager::finishMappingAndSaveCallback(std_srvs::Empty::Request& /* req */,
-                                                     std_srvs::Empty::Response& /* res */) {
-  khronos_->finishMapping();
+void ExperimentManager::finishMappingAndSaveCallback(
+    const std_srvs::srv::Empty::Request::SharedPtr&,
+    std_srvs::srv::Empty::Response::SharedPtr) {
+  khronos_->stop();
   logData();
   final_map_saved_ = true;
-  return true;
 }
 
 void ExperimentManager::evaluateFrontend(const VolumetricMap& map,
@@ -199,15 +227,16 @@ void ExperimentManager::evaluateBackend(TimeStamp timestamp_ns,
 
 void ExperimentManager::saveMap(size_t timestamp) {
   std::stringstream map_dir;
-  map_dir << data_dir_.getPath() << "/maps/" << std::setw(5) << std::setfill('0')
-          << num_saved_maps_++;
+  map_dir << "snapshots/" << std::setw(5) << std::setfill('0') << num_saved_maps_++;
 
-  hydra::LogConfig log_config;
-  log_config.log_dir = map_dir.str();
-  hydra::LogSetup log_setup(log_config);
+  // Ensure the snapshots directory exists
+  const auto snapshots_path = data_dir_.path() / "snapshots";
+  if (!std::filesystem::exists(snapshots_path)) {
+    std::filesystem::create_directories(snapshots_path);
+  }
 
-  khronos_->save(hydra::LogSetup(log_config), config.save_full_state);
-  std::ofstream out_file(map_dir.str() + "/timestamp.txt");
+  khronos_->save(data_dir_.child(map_dir.str()), config.save_full_state);
+  std::ofstream out_file(data_dir_.path() / map_dir.str() / "timestamp.txt");
   out_file << timestamp;
   out_file.close();
 }
@@ -216,36 +245,41 @@ void ExperimentManager::logData() {
   if (!data_dir_) {
     return;
   }
-  CLOG(1) << "[ExperimentManager] Writing data to output directory: '" << data_dir_.getPath()
+  CLOG(1) << "[ExperimentManager] Writing data to output directory: '" << data_dir_.path()
           << "' ...";
 
   // Log timing.
   if (config.log_timing || config.log_timing_details) {
-    hydra::LogConfig log_config;
-    log_config.log_dir = data_dir_.getPath() + "/timing";
-    log_config.log_raw_timers_to_single_dir = true;
-    hydra::timing::ElapsedTimeRecorder::instance().logStats(log_config.log_dir + "/stats.csv");
+    const auto timing_path = data_dir_.path("timing");
+    hydra::timing::ElapsedTimeRecorder::instance().logStats(timing_path / "stats.csv");
     if (config.log_timing_details) {
-      hydra::timing::ElapsedTimeRecorder::instance().logAllElapsed(hydra::LogSetup(log_config));
+      hydra::timing::ElapsedTimeRecorder::instance().logTimers(timing_path);
     }
   }
+
   if (evaluationIsOn()) {
+    // TODO(Yun): someone figure out how they want these logs organized
     if (config.save_every_n_frames > 0) {
-      // Save the final map if periodically saving.
-      saveMap(last_backend_time_stamp_);
-      const std::string map_path = data_dir_.getPath() + "/maps";
-      const std::size_t number_maps = std::distance(std::filesystem::directory_iterator(map_path),
-                                                    std::filesystem::directory_iterator{});
-      logger_->log("Saved '" + std::to_string(number_maps) + "' maps.");
+      // Don't save another snapshot here - the periodic saves are sufficient
+      // Just log how many snapshots were saved
+      const std::string snapshots_path = data_dir_.path() / "snapshots";
+      if (std::filesystem::exists(snapshots_path)) {
+        const std::size_t number_snapshots = std::distance(
+            std::filesystem::directory_iterator(snapshots_path),
+            std::filesystem::directory_iterator{});
+        logger_->log("Saved '" + std::to_string(number_snapshots) + "' snapshots during operation.");
+      } else if (config.save_every_n_frames > 0) {
+        logger_->log("Snapshots directory not found, periodic saves may have failed.");
+      }
     }
 
-    // Save the resulting spatio-temporal map.
-    khronos_->save4DMap(data_dir_.getPath() + "/final.4dmap");
-    logger_->log("Saved final spatio-temporal map to '" + data_dir_.getPath() + "'.");
+    // Save the resulting spatio-temporal map (final state only).
+    khronos_->save(data_dir_);
+    logger_->log("Saved final spatio-temporal map to '" + data_dir_.path().string() + "'.");
     logger_->setFlag("Experiment Finished Cleanly");
   }
-  CLOG(1) << "[ExperimentManager] Finished writing data to output directory: '"
-          << data_dir_.getPath() << "'.";
+  CLOG(1) << "[ExperimentManager] Finished writing data to output directory: '" << data_dir_.path()
+          << "'.";
 }
 
 void ExperimentManager::logConfigs() {
@@ -259,45 +293,73 @@ void ExperimentManager::logConfigs() {
     return;
   }
 
-  // Store ros params.
-  const std::string params_file = data_dir_.getPath() + "/rosparams.yaml";
-  std::string command = "rosparam dump " + params_file;
-  if (system(command.c_str()) == 0) {
-    logger_->log("Wrote ROS params to '" + params_file + "'.");
-  } else {
-    logger_->log("Failed to write ROS params to '" + params_file + "'.");
-  }
-
   // Store git commit hash for reproducibility.
-  std::string git_hash;
-  command = "eval 'roscd khronos && git rev-parse HEAD'";
-  if (exec(command.c_str(), git_hash)) {
-    logger_->log("Running Khronos on git commit: " + git_hash);
+  // Assume we're running from ros2_ws directory and check ./src/khronos
+  std::filesystem::path khronos_path = std::filesystem::current_path() / "src" / "khronos";
+
+  if (std::filesystem::exists(khronos_path / ".git")) {
+    std::string git_hash;
+    std::string git_hash_cmd = "cd " + khronos_path.string() + " && git rev-parse HEAD 2>/dev/null";
+
+    if (exec(git_hash_cmd, git_hash) && !git_hash.empty()) {
+      // Remove trailing newline
+      size_t last_char = git_hash.find_last_not_of("\n\r");
+      if (last_char != std::string::npos) {
+        git_hash.erase(last_char + 1);
+      }
+
+      logger_->log("Git hash: " + git_hash);
+
+      // Store git hash in a separate file
+      const auto git_hash_path = data_dir_.path() / "git_hash.txt";
+      std::ofstream hash_file(git_hash_path);
+      if (hash_file.is_open()) {
+        hash_file << git_hash << std::endl;
+        hash_file.close();
+        logger_->log("Wrote git hash to '" + git_hash_path.string() + "'.");
+      }
+
+      // Check if there are uncommitted changes
+      std::string git_status;
+      std::string git_status_cmd = "cd " + khronos_path.string() + " && git status --porcelain 2>/dev/null";
+      if (exec(git_status_cmd, git_status) && !git_status.empty()) {
+        logger_->log("WARNING: Uncommitted changes detected in repository!");
+
+        // Store the git status for reference
+        const auto git_status_path = data_dir_.path() / "git_status.txt";
+        std::ofstream status_file(git_status_path);
+        if (status_file.is_open()) {
+          status_file << git_status;
+          status_file.close();
+          logger_->log("Wrote git status to '" + git_status_path.string() + "'.");
+        }
+      }
+    } else {
+      logger_->log("Failed to retrieve git hash.");
+    }
   } else {
-    logger_->log("Failed to get git hash.");
+    logger_->log("Git repository not found at: " + khronos_path.string());
   }
 
   // Print and store the realized config.
-  std::ofstream out_file(data_dir_.getPath() + "/config.txt");
+  const auto config_path = data_dir_.path() / "config.txt";
+  std::ofstream out_file(config_path);
   if (out_file.is_open()) {
     out_file << params;
     out_file.close();
-    logger_->log("Wrote config to '" + data_dir_.getPath() + "/config.txt'.");
+    logger_->log("Wrote config to '" + config_path.string() + "'.");
   } else {
-    logger_->log("Failed to write config to '" + data_dir_.getPath() + "/config.txt'.");
+    logger_->log("Failed to write config to '" + config_path.string() + "'.");
   }
 }
 
-bool ExperimentManager::exec(const char* cmd, std::string& output) {
-  std::array<char, 128> buffer;
-  std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
-  if (!pipe) {
+bool ExperimentManager::exec(const std::string& cmd, std::string& output) {
+  Proc proc(cmd);
+  if (!proc) {
     return false;
   }
-  output.clear();
-  while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-    output += buffer.data();
-  }
+
+  output = proc.exec();
   return true;
 }
 

@@ -1,0 +1,82 @@
+---
+launch:
+  - arg: {name: sim_time_required, default: 'true'}
+  # Evaluation
+  - arg: {name: evaluate, default: 'true'}
+  - arg: {name: output_dir, default: '$(find-pkg-share khronos_ros)/../output'}
+  # Semantics: Configure to use GT / Openset
+  - arg: {name: use_gt_semantics, default: 'true'}
+  - arg: {name: use_openset_semantics, default: 'false'}
+  - arg: {name: use_gt_frame, default: 'true'}
+  - arg: {name: paused, default: 'false'}
+  # Dataset: tesse_cd_office, tesse_cd_apartment
+  - arg: {name: dataset, default: tesse_cd_office}
+  - arg: {name: bag_dir, default: /data/datasets/khronos/tesse_cd/ros2_converted}
+  - arg: {name: play_rate, default: '1'}
+
+  # Mapper: uHumans2.yaml, ground_truth.yaml
+  - let: {name: mapper_type, value: $(if $(var use_openset_semantics) uHumans2_openset uHumans2)}
+  - arg: {name: input_config, default: $(find-pkg-share khronos_ros)/config/datasets/$(var mapper_type).yaml}
+  - arg: {name: mapper_config, default: $(find-pkg-share khronos_ros)/config/mapper/$(var mapper_type).yaml}
+  - arg: {name: rviz_path, default: $(find-pkg-share khronos_ros)/config/rviz/uHumans2.rviz}
+  # TODO(lschmid): Check using sensor frame works?
+  - arg: {name: sensor_frame, default: $(if $(var use_gt_frame) left_cam left_cam_kimera)}
+  - arg: {name: robot_frame, default: $(if $(var use_gt_frame) base_link_gt base_link_kimera)}
+  # Sensor range parameters
+  - arg: {name: sensor_min_range, default: '0.1'}
+  - arg: {name: sensor_max_range, default: '5.0'}
+  # Semantics: Use these for ground truth semantic labels from uH2
+  - arg: {name: labelspace_config, default: $(find-pkg-share hydra)/config/label_spaces/$(var dataset)_label_space.yaml, if: $(var use_gt_semantics)}
+  - arg: {name: label_remap_config, default: $(find-pkg-share hydra)/config/label_remaps/$(var dataset).yaml, if: $(var use_gt_semantics)}
+  - arg: {name: labelspace_config, default: $(find-pkg-share hydra)/config/label_spaces/ade20k_indoor_label_space.yaml, unless: $(var use_gt_semantics)}
+  - arg: {name: label_remap_config, default: '', unless: $(var use_gt_semantics)}
+  - arg: {name: semantic_colormap_config, default: ''}
+  # Construct extra_yaml based on whether we have GT semantics
+  - let: {name: extra_yaml_gt, value: '{semantic_label_remap_filepath: $(var label_remap_config), semantic_colormap_file: $(var semantic_colormap_config)}'}
+  - let: {name: extra_yaml_no_gt, value: '{semantic_colormap_file: $(var semantic_colormap_config)}'}
+  - let: {name: extra_yaml, value: $(if $(var use_gt_semantics) $(var extra_yaml_gt) $(var extra_yaml_no_gt))}
+  # Input topics
+  - arg: {name: rgb_topic, default: /tesse/left_cam/rgb/image_raw}
+  - arg: {name: rgb_info_topic, default: /tesse/left_cam/camera_info}
+  - arg: {name: depth_topic, default: /tesse/depth_cam/mono/image_raw}
+  - arg: {name: label_topic, default: /tesse/seg_cam/converted/image_raw, if: $(var use_gt_semantics)}
+  - let: {name: label_topic, value: /semantic_inference/semantic/image_raw, unless: $(var use_gt_semantics)}
+  - arg: {name: prerecorded_topic, default: /oneformer/labels/image_raw}
+  # Dataset
+  - arg: {name: bag_path, default: $(var bag_dir)/$(var dataset)}
+  # Play data uHumans data -->
+  - include:
+      file: $(find-pkg-share khronos_ros)/launch/datasets/play_uhumans.launch.yaml
+      arg:
+        - {name: bag_file, value: $(var bag_path)}
+        - {name: use_gt_frame, value: $(var use_gt_frame)}
+        - {name: play_rate, value: $(var play_rate)}
+        - {name: sim_time_required, value: $(var sim_time_required)}
+        - {name: paused, value: $(var paused)}
+        - {name: use_gt_semantics, value: $(var use_gt_semantics)}
+        - {name: use_openset_semantics, value: $(var use_openset_semantics)}
+# TODO(marcus): re-enable if/after kimera is upgraded to ros2
+#  - include:
+      #file: $(find-pkg-share hydra_vio_configs)/launch/uh2_vio.launch
+      #arg:
+        #- {name: odom_frame_id, value: odom}
+        #- {name: map_frame_id, value: map}
+        #- {name: should_use_sim_time, value: $(var sim_time_required)}
+        #- {name: glog_to_dir, value: 'true'}
+        #- {name: use_lcd, value: 'true'}
+        #- {name: lcd_no_detection, value: 'false'}
+          ## clean, noisy
+        #- {name: imu_topic, value: /tesse/imu/noisy/imu}
+        #- {name: log_output_path, value: $(var output_dir)}
+  - include:
+      file: $(find-pkg-share khronos_ros)/launch/khronos.launch.yaml
+      arg:
+        - {name: extrinsics, value: $(find-pkg-share hydra)/config/extrinsics/uhumans2.yaml}
+        - {name: labelspace_config, value: $(var labelspace_config)}
+        - {name: extra_yaml, value: $(var extra_yaml)}
+        - {name: output_dir, value: $(var output_dir)}
+        - {name: evaluate, value: $(var evaluate)}
+        - {name: sensor_min_range, value: $(var sensor_min_range)}
+        - {name: sensor_max_range, value: $(var sensor_max_range)}
+  - node: {if: $(var use_gt_frame), pkg: tf2_ros, exec: static_transform_publisher, name: map_static_tf, args: --child-frame-id map --frame-id world}
+  - node: {if: $(var use_gt_frame), pkg: tf2_ros, exec: static_transform_publisher, name: odom_static_tf, args: --child-frame-id odom --frame-id map}

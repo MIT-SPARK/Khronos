@@ -1,0 +1,106 @@
+---
+launch:
+  # ============ Arguments ============
+  - arg: {name: sim_time_required, default: 'true'}
+  - arg: {name: robot_ns, default: sparkal1}
+
+  # Evaluation
+  - arg: {name: evaluate, default: 'true'}
+  - arg: {name: output_dir, default: '$(find-pkg-share khronos_ros)/../jackal_output'}
+  - arg: {name: log_vio, default: 'false'}
+
+  # Semantics: Configure to use pre-recorded / Openset
+  - arg: {name: use_prerecorded_semantics, default: 'true'}
+  - arg: {name: use_openset_semantics, default: 'false'}
+  - arg: {name: use_gt_frame, default: 'false'}
+
+  # Mapper configs
+  - arg:
+      name: input_config
+      default: $(find-pkg-share khronos_ros)/config/datasets/jackal.yaml
+
+  - arg:
+      name: mapper_config
+      default: $(find-pkg-share khronos_ros)/config/mapper/jackal.yaml
+
+  - arg: {name: rviz_path, default: $(find-pkg-share khronos_ros)/config/rviz/jackal.rviz}
+
+  # Dataset arguments
+  - arg: {name: dataset, default: khronos_mezzanine_long2_w_semantics}
+  - arg: {name: bag_dir, default: /data/datasets/khronos/mezzanine}
+  - arg: {name: play_rate, default: '1.0'}
+  - arg: {name: compressed_rgb, default: 'true'}
+
+  # ============ Auto-generated args ============
+  # Sensing frame - matching ROS1 configuration
+  - arg: {name: sensor_frame, default: $(var robot_ns)/left_cam}
+  - arg: {name: robot_frame, default: $(var robot_ns)/base}
+  - arg: {name: map_frame, default: $(var robot_ns)/map}
+  - arg: {name: odom_frame, default: $(var robot_ns)/odom}
+  # Sensor range parameters
+  - arg: {name: sensor_min_range, default: '0.1'}
+  - arg: {name: sensor_max_range, default: '5.0'}
+
+  # Semantics: Use these for ground truth semantic labels from uH2
+  - arg: {name: semantic_colormap_config, default: ''}
+  - arg: {name: labelspace_name, default: ade20k_indoor}
+  - arg: {name: labelspace_config, default: $(find-pkg-share hydra)/config/label_spaces/$(var labelspace_name)_label_space.yaml}
+  # OneFormer outputs standard ADE20k label IDs, so no remapping needed.
+  # Use extra_yaml to pass semantic config inline
+  - let: {name: extra_yaml, value: '{semantic_colormap_file: $(var semantic_colormap_config)}'}
+
+  # Input topics
+  - arg: {name: rgb_topic, default: /$(var robot_ns)/forward/color/image_raw}
+  - arg: {name: rgb_info_topic, default: /$(var robot_ns)/forward/color/camera_info}
+  - arg: {name: depth_topic, default: /$(var robot_ns)/forward/depth/image_rect_raw}
+  # Label topic: use pre-recorded from bag OR live semantic inference
+  - arg:
+      name: label_topic
+      default: $(if $(var use_prerecorded_semantics) /oneformer/labels/image_raw /semantic_inference/semantic/image_raw)
+
+  # Dataset - ROS2 bags are directories, not .bag files
+  - arg: {name: bag_path, default: $(var bag_dir)/$(var dataset)}
+
+  # ============ Set sim time parameter ============
+  - set_parameter:
+      name: use_sim_time
+      value: $(var sim_time_required)
+
+  # ============ Play Jackal Dataset ============
+  - include:
+      file: $(find-pkg-share khronos_ros)/launch/datasets/play_jackal.launch.yaml
+      arg:
+        - {name: bag_path, value: $(var bag_path)}
+        - {name: play_rate, value: $(var play_rate)}
+        - {name: sim_time_required, value: $(var sim_time_required)}
+        - {name: robot_ns, value: $(var robot_ns)}
+        - {name: compressed_rgb, value: $(var compressed_rgb)}
+        - {name: use_prerecorded_semantics, value: $(var use_prerecorded_semantics)}
+        - {name: use_openset_semantics, value: $(var use_openset_semantics)}
+        - {name: labelspace_name, value: $(var labelspace_name)}
+
+  # ============ Include Khronos main launch ============
+  - include:
+      file: $(find-pkg-share khronos_ros)/launch/khronos.launch.yaml
+      arg:
+        - {name: sim_time_required, value: $(var sim_time_required)}
+        - {name: robot_ns, value: $(var robot_ns)}
+        - {name: evaluate, value: $(var evaluate)}
+        - {name: output_dir, value: $(var output_dir)}
+        - {name: use_gt_frame, value: $(var use_gt_frame)}
+        - {name: input_config, value: $(var input_config)}
+        - {name: mapper_config, value: $(var mapper_config)}
+        - {name: rviz_path, value: $(var rviz_path)}
+        - {name: sensor_frame, value: $(var sensor_frame)}
+        - {name: robot_frame, value: $(var robot_frame)}
+        - {name: map_frame, value: $(var map_frame)}
+        - {name: odom_frame, value: $(var odom_frame)}
+        - {name: semantic_colormap_config, value: $(var semantic_colormap_config)}
+        - {name: labelspace_config, value: $(var labelspace_config)}
+        - {name: extra_yaml, value: $(var extra_yaml)}
+        - {name: rgb_topic, value: $(var rgb_topic)}
+        - {name: rgb_info_topic, value: $(var rgb_info_topic)}
+        - {name: depth_topic, value: $(var depth_topic)}
+        - {name: label_topic, value: $(var label_topic)}
+        - {name: sensor_min_range, value: $(var sensor_min_range)}
+        - {name: sensor_max_range, value: $(var sensor_max_range)}

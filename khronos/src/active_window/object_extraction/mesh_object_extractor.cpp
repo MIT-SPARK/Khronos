@@ -42,7 +42,6 @@
 #include <spark_dsg/colormaps.h>
 
 #include "khronos/active_window/data/reconstruction_types.h"
-#include "khronos/active_window/integration/binary_semantic_integrator.h"
 #include "khronos/utils/geometry_utils.h"
 
 namespace khronos {
@@ -59,6 +58,7 @@ void declare_config(MeshObjectExtractor::Config& config) {
   field(config.min_object_reconstruction_confidence, "min_object_reconstruction_confidence");
   field(config.min_object_reconstruction_observations, "min_object_reconstruction_observations");
   field(config.object_reconstruction_resolution, "object_reconstruction_resolution");
+  field(config.min_reconstruction_resolution, "min_reconstruction_resolution");
   field(config.visualize_classification, "visualize_classification");
   field(config.projective_integrator, "projective_integrator");
   field(config.mesh_integrator, "mesh_integrator");
@@ -72,6 +72,7 @@ void declare_config(MeshObjectExtractor::Config& config) {
   check(config.min_object_volume, GE, 0, "min_object_volume");
   check(config.max_object_volume, GE, config.min_object_volume, "max_object_volume");
   check(config.min_dynamic_displacement, GE, 0, "min_dynamic_displacement");
+  check(config.min_reconstruction_resolution, GE, 0.0f, "min_reconstruction_resolution");
 }
 
 MeshObjectExtractor::MeshObjectExtractor(const Config& config)
@@ -200,6 +201,7 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
   VolumetricMap::Config map_config;
   if (config.object_reconstruction_resolution < 0.f) {
     map_config.voxel_size = extent.dimensions.maxCoeff() * -config.object_reconstruction_resolution;
+    map_config.voxel_size = std::max(map_config.voxel_size, config.min_reconstruction_resolution);
   } else {
     map_config.voxel_size = config.object_reconstruction_resolution;
   }
@@ -225,17 +227,19 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
     }
   }
 
+  // Print info if desired.
   const Eigen::IOFormat fmt(
       Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "; ", "", "", "[", "]");
   CLOG(5) << "[MeshObjectExtractor] Allocated TSDF layer for " << getTrackName(track) << " with "
           << tsdf_layer.numBlocks() << " blocks (min_index=" << min_block_index.format(fmt)
-          << ", max_index=" << max_block_index.format(fmt) << ")";
+          << ", max_index=" << max_block_index.format(fmt) << ") with voxel size "
+          << map_config.voxel_size << " [m]";
 
   // Perform 3D reconstruction using projective updates over all frames.
+  ObjectIntegrator integrator(config.projective_integrator);
   for (const auto& [frame_data, segment_id] : frames) {
-    const ProjectiveIntegrator integrator(config.projective_integrator,
-                                          std::make_unique<BinarySemanticIntegrator>(segment_id));
-    integrator.updateObjectMap(*frame_data, map);
+    integrator.setFrameData(frame_data.get(), segment_id);
+    integrator.updateMap(frame_data->input, map, false);
   }
 
   // Erase low_confidence voxels to extract the object of interest.
@@ -337,8 +341,6 @@ BoundingBox MeshObjectExtractor::computeExtent(
 
 float MeshObjectExtractor::computeConfidence(const TsdfVoxel& /* tsdf_voxel */,
                                              const hydra::SemanticVoxel& confidence_voxel) const {
-  // NOTE(lschmid): This exploits the semantic_likelihoods to store the counts of correct and
-  // incorrect observations.
   if (confidence_voxel.empty) {
     return 0.0f;
   }
@@ -350,7 +352,7 @@ float MeshObjectExtractor::computeConfidence(const TsdfVoxel& /* tsdf_voxel */,
     return -1.f;
   }
 
-  return confidence_voxel.semantic_likelihoods(0) / total_observations;
+  return confidence_voxel.semantic_likelihoods(1) / total_observations;
 }
 
 bool MeshObjectExtractor::trackIsValid(const Track& track) const {

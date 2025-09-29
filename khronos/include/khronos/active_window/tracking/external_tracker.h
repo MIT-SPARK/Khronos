@@ -35,44 +35,51 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#include "khronos/utils/data_directory.h"
+#pragma once
 
-#include <filesystem>
+#include <hydra/common/global_info.h>
 
-#include <glog/logging.h>
+#include "khronos/active_window/data/frame_data.h"
+#include "khronos/active_window/tracking/tracker.h"
 
 namespace khronos {
 
-DataDirectory::DataDirectory(const std::string& data_path, bool allocate, bool overwrite) {
-  if (data_path.empty()) {
-    return;
-  }
+/**
+ * @brief Tracker if tracking is performed externally, i.e. all input IDs are already conssitent
+ * instance IDs.
+ * @note This currently does not handle any dynamic tracks, only semantic ones.
+ * @note
+ */
+class ExternalTracker : public Tracker {
+ public:
+  struct Config {
+    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
 
-  auto path = std::filesystem::path(data_path);
+    // Duration [s] until tracks become deactivated, leaving the active window.
+    float temporal_window = 3.f;
 
-  // Setup the directory.
-  if (std::filesystem::exists(path)) {
-    if (overwrite) {
-      // Clear the existing directory to write new output.
-      LOG(WARNING) << "[DataDirectory] Overwriting existing output directory: '" << path.string()
-                   << "'.";
-      std::filesystem::remove_all(path);
-      path_ = path;
-      std::filesystem::create_directories(path);
-    } else if (allocate) {
-      // Create a time stamped sub-directory.
-      auto t = std::time(nullptr);
-      auto tm = *std::localtime(&t);
-      std::stringstream timestamp;
-      timestamp << std::put_time(&tm, "%Y_%m_%d-%H_%M_%S");
-      path_ = path / timestamp.str();
-      std::filesystem::create_directories(path_);
-    }
-  } else if (allocate) {
-    // Directory does not exist and should be allocated.
-    path_ = path;
-    std::filesystem::create_directories(path_);
-  }
-}
+    // Number of times a track has to be observed to be considered existent.
+    int min_num_observations = 20;
+  } const config;
+
+  // Construction.
+  explicit ExternalTracker(const Config& config);
+  virtual ~ExternalTracker() = default;
+
+  // Inputs.
+  void processInput(FrameData& data) override;
+
+ protected:
+  // Processing.
+  void associateTracks(const FrameData& data);
+  void updateTrackingDuration();
+  void addNewTrack(const MeasurementCluster& observation);
+  void updateTrack(const MeasurementCluster& observation, Track& track) const;
+
+ private:
+  TimeStamp processing_stamp_;
+};
+
+void declare_config(ExternalTracker::Config& config);
 
 }  // namespace khronos

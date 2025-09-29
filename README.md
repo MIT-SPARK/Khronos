@@ -53,16 +53,18 @@ An overview of Khronos is available on [YouTube](https://www.youtube.com/watch?v
 [<img src=https://github.com/MIT-SPARK/Khronos/assets/36043993/279fe8e8-60d9-44ee-af34-1947d4a1aeb0 alt="Khronos Youtube Video">](https://www.youtube.com/watch?v=YsH6YIL5_kc)
 
 # Setup
+
+> :warning: **Warning** <br>
+> The ROS2 version of Khronos is in active development and is unstable and may not fully be feature-complete.
+
+Khronos has been tested on Ubuntu 24.04 & ROS2 Jazzy. It **should** build on newer distributions. It **will not** build on older ROS2 distributions than Iron.
+
 ## Installation
-Setup a catkin workspace:
+Setup a ROS2 workspace:
 ```bash
-sudo apt install python3-catkin-tools python3-vcstool python3-tk
-mkdir -p ~/catkin_ws/src
-cd ~/catkin_ws
-catkin init
-catkin config --extend /opt/ros/$ROS_DISTRO
-catkin config --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKIMERA_VERIFY_GTSAM_CONFIG=OFF -DOPENGV_BUILD_WITH_MARCH_NATIVE=OFF
-catkin config --merge-devel
+sudo apt install python3-vcstool python3-tk
+mkdir -p ~/ros2_ws/src
+cd ~/ros2_ws/src
 ```
 
 Install system dependencies:
@@ -72,7 +74,7 @@ sudo apt install ros-$ROS_DISTRO-gtsam libgoogle-glog-dev nlohmann-json3-dev
 
 Get Khronos and all source dependencies:
 ```bash
-cd ~/catkin_ws/src
+cd ~/ros2_ws/src
 git clone git@github.com:MIT-SPARK/Khronos.git khronos
 # Use `https.rosinstall` if you do not have ssh key setup with github.com.
 vcs import . < khronos/install/ssh.rosinstall
@@ -80,7 +82,8 @@ vcs import . < khronos/install/ssh.rosinstall
 
 Build:
 ```bash
-catkin build khronos_ros
+cd ~/ros2_ws
+colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 ```
 
 ## Semantic Inference (Optional)
@@ -93,22 +96,22 @@ Note that the first time you run `semantic_inference`, it will download the pre-
 
 ## Download datasets
 
-Download the simulated datsets used in our paper [here](https://drive.google.com/drive/folders/1VQf-Q8nAuCAsq9wplB07oIpAiWpVVR7U?usp=sharing) under `tesse_cd`. For the real dataset, download the mezzanine rosbag (with pre-recorded semanticl labels) under `khronos_real`.
+Download the simulated datsets used in our paper [here](https://drive.google.com/drive/folders/1KOcX-jP2bTip_Sm48dvEd9KjxJZjJ6po?usp=drive_link) under `tesse_cd`. For the real dataset, download the mezzanine rosbag (with pre-recorded semantic labels) under `khronos_real`.
 
-The `tesse_cd_office.bag` dataset is the longer of the two simulated datasets and contains the most changes and dynamic objects.
+The `tesse_cd_office` dataset is the longer of the two simulated datasets and contains the most changes and dynamic objects.
 
-Optionally, run `rosbag decompress tesse_cd_office.bag` to unpack the rosbag for faster runtime.
+**Note:** ROS2 bags are directories, not single files. The downloaded datasets should be extracted to their respective directories.
 
 # Examples
 ## Run Khronos
 
-Open [uhumans2_khronos.launch](khronos_ros/launch/uhumans2_khronos.launch) and modify the bag path to the `tesse_cd` office rosbag.
+Open [uhumans2_khronos.launch.yaml](khronos_ros/launch/uhumans2_khronos.launch.yaml) and modify the bag path to the `tesse_cd` office rosbag directory.
 
 Run the following in commandline:
 
 ```bash
-source ~/catkin_ws/devel/setup.bash
-roslaunch khronos_ros uhumans2_khronos.launch
+source ~/ros2_ws/install/setup.bash
+ros2 launch khronos_ros uhumans2_khronos.launch.yaml
 ```
 
 RVIZ will launch automatically for real-time visualization. You should see the method build an incremental background mesh, detect and segment static and dynamic objects, and generate object nodes. Output will look like this:
@@ -123,9 +126,9 @@ At the end of rosbag playback, Khronos will have a fully completed scene reconst
 
 <img src="https://github.com/MIT-SPARK/Khronos/assets/32229998/66aeae1e-bc96-42b7-bcc2-a94f268d4acd" alt="Khronos End" width="500">
 
-After the rosbag has completed playback and the method is finished, call the following rosservice to guarantee that output is saved before termination:
+After the rosbag has completed playback and the method is finished, call the following service to guarantee that output is saved before termination:
 ```bash
-rosservice call /khronos_node/experiment/finish_mapping_and_save
+ros2 service call /khronos_node/experiment/finish_mapping_and_save std_srvs/srv/Empty
 ```
 
 You can now terminate Khronos.
@@ -134,15 +137,15 @@ To run Khronos with the apartment dataset, change the `dataset` from `tesse_cd_o
 
 ## Run Khronos on Real Data
 
-Download the mezzanine robsag [here](https://drive.google.com/file/d/1UJdbkW5BCj_vTdKEbfs3orG-Mg6NkWVU/view?usp=sharing).
+Download the mezzanine rosbag [here](https://drive.google.com/drive/folders/1Qja6KVHCfT6PaYcj2NcQy4o3LJxXc8Kc?usp=drive_link).
 
-To run Khronos on real data, use the `jackal_khronos.launch` file. To use pre-recorded semantic labels, set `use_prerecorded_semantics` to `true`:
+To run Khronos on real data, use the `jackal_khronos.launch.yaml` file. To use pre-recorded semantic labels, set `use_prerecorded_semantics` to `true`:
 
 ```bash
-roslaunch khronos_ros jackal_khronos.launch bag_path:=PATH_TO_BAG use_prerecorded_semantics:=true
+ros2 launch khronos_ros jackal_khronos.launch.yaml bag_path:=PATH_TO_BAG_DIR use_prerecorded_semantics:=true
 ```
 
-The rosbag will start paused by default, so after you see "Spinning Kimera-VIO" in the terminal, unpause the rosbag by pressing the spacebar in terminal. 
+**Note:** The ROS2 version uses `ianvs` for bag playback. Kimera-VIO is not yet ported to ROS2, so odometry transforms are published from recorded odometry messages via the `odom_to_tf.py` node. 
 
 Your ouptut will look something like this:
 
@@ -152,15 +155,20 @@ Your ouptut will look something like this:
 
 To run Khronos with semantic_inference, change the `use_gt_semantics` parameter in the launch file from `true` to `false`. Set `use_openset_semantics` to `true` for open-set segmentation.
 
+For example:
+```bash
+ros2 launch khronos_ros uhumans2_khronos.launch.yaml use_gt_semantics:=false use_openset_semantics:=true
+```
+
 ## Visualize 4D map
 
 To visualize the spatio-temporal map of the scene after running Khronos, run the following in commandline:
 
 ```bash
-roslaunch khronos_ros 4d_visualizer.launch
+ros2 launch khronos_ros 4d_visualizer.launch.yaml
 ```
 
-The visualizer will load the map located (by default) in [output/tmp](output/tmp/). If you save the map elsewhere, be sure to modify the path in [4d_visualizer.launch](khronos_ros/launch/4d_visualizer.launch).
+The visualizer will load the map located (by default) in [output/tmp](output/tmp/). If you save the map elsewhere, be sure to modify the path in [4d_visualizer.launch.yaml](khronos_ros/launch/4d_visualizer.launch.yaml).
 
 <!-- <img src="https://github.com/MIT-SPARK/Khronos/assets/32229998/d8072aab-a874-483f-aada-24607eb620be" alt="Khronos 4D Map" width="700"> -->
 
@@ -175,7 +183,7 @@ For more information on how to perform evaluation, see [this readme](khronos_eva
 # Contributing
 This is an open-source project and pull requests for features and fixes are very welcome! We follow the [Feature-Branch-Workflow](https://www.atlassian.com/git/tutorials/comparing-workflows/feature-branch-workflow) and the [google C++ style guide](https://google.github.io/styleguide/cppguide.html). To adhere to this, please setup the auto formatter and linter for khronos as follows:
 ```bash
-roscd khronos
+cd ~/ros2_ws/src/khronos
 pip install pre-commit
 pre-commit install
 ```
