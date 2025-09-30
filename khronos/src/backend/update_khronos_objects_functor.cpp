@@ -8,52 +8,13 @@
 #include <hydra/utils/mesh_utilities.h>
 #include <kimera_pgmo/deformation_graph.h>
 #include <kimera_pgmo/utils/common_functions.h>
+
 namespace khronos {
-
-using spark_dsg::KhronosObjectAttributes;
-
-struct AttributeMap {
-  std::vector<KhronosObjectAttributes*> attributes;
-
-  void push_back(KhronosObjectAttributes* attrs) { attributes.push_back(attrs); }
-
-  void sort() {
-    std::sort(attributes.begin(), attributes.end(), [](const auto& lhs, const auto& rhs) {
-      return lhs->first_observed_ns.front() < rhs->first_observed_ns.front();
-    });
-  }
-};
-
-size_t pgmoNumVertices(const AttributeMap& map) { return map.attributes.size(); }
-
-kimera_pgmo::traits::Pos pgmoGetVertex(const AttributeMap& map,
-                                       size_t i,
-                                       kimera_pgmo::traits::VertexTraits* traits) {
-  const auto& attrs = map.attributes[i];
-  if (traits) {
-    traits->stamp = attrs->first_observed_ns.front();
-  }
-
-  return attrs->position.cast<float>();
-}
-
-uint64_t pgmoGetVertexStamp(const AttributeMap& map, size_t i) {
-  return map.attributes[i]->first_observed_ns.front();
-}
-
-void pgmoSetVertex(AttributeMap& map,
-                   size_t i,
-                   const kimera_pgmo::traits::Pos& pos,
-                   const kimera_pgmo::traits::VertexTraits&) {
-  map.attributes[i]->position = pos.cast<double>();
-  map.attributes[i]->bounding_box.world_P_center = pos.cast<float>();
-}
 
 void declare_config(UpdateKhronosObjectsFunctor::Config& config) {
   using namespace config;
   name("UpdateKhronosObjectsFunctor::Config");
-  field(config.num_control_points, "num_control_points");
-  field(config.control_point_tolerance_s, "control_point_tolerance_s", "s");
+  field(config.deformation_interpolator, "deformation_interpolator");
   field(config.merge_proposer, "merge_proposer");
   field(config.merge_require_same_label, "merge_require_same_label");
   field(config.merge_require_no_co_visibility, "merge_require_no_co_visibility");
@@ -61,7 +22,9 @@ void declare_config(UpdateKhronosObjectsFunctor::Config& config) {
 }
 
 UpdateKhronosObjectsFunctor::UpdateKhronosObjectsFunctor(const Config& config)
-    : config(config::checkValid(config)), merge_proposer(config.merge_proposer) {}
+    : config(config::checkValid(config)),
+      merge_proposer(config.merge_proposer),
+      deformation_interpolator(config.deformation_interpolator) {}
 
 hydra::UpdateFunctor::Hooks UpdateKhronosObjectsFunctor::hooks() const {
   auto my_hooks = UpdateFunctor::hooks();
@@ -70,77 +33,6 @@ hydra::UpdateFunctor::Hooks UpdateKhronosObjectsFunctor::hooks() const {
   };
 
   return my_hooks;
-}
-
-void UpdateKhronosObjectsFunctor::interpFromValues(const LayerView& view,
-                                                   SharedDsgInfo& dsg,
-                                                   const UpdateInfo::ConstPtr& info) const {
-  if (!info->deformation_graph) {
-    return;
-  }
-
-  const auto this_robot = hydra::GlobalInfo::instance().getRobotPrefix().id;
-
-  std::map<char, AttributeMap> nodes;
-  for (const auto& node : view) {
-    size_t robot_id = this_robot;
-    if (info->node_to_robot_id) {
-      auto iter = info->node_to_robot_id->find(node.id);
-      if (iter == info->node_to_robot_id->end()) {
-        LOG(WARNING) << "Node " << NodeSymbol(node.id) << " does not belong to robot";
-      } else {
-        robot_id = iter->second;
-      }
-    }
-
-    const auto prefix = kimera_pgmo::GetVertexPrefix(robot_id);
-    auto robot_attrs = nodes.find(prefix);
-    if (robot_attrs == nodes.end()) {
-      robot_attrs = nodes.emplace(prefix, AttributeMap{}).first;
-    }
-
-    auto& attrs = node.attributes<KhronosObjectAttributes>();
-    auto cache_iter = cached_pos_.find(node.id);
-    if (cache_iter == cached_pos_.end()) {
-      cache_iter = cached_pos_.emplace(node.id, attrs.position).first;
-    } else if (attrs.is_active) {
-      // update cache if node is still active
-      cache_iter->second = attrs.position;
-    }
-
-    // set the position of the node to the original position before deformation
-    attrs.position = cache_iter->second;
-    robot_attrs->second.push_back(&attrs);
-  }
-
-  auto& dgraph = *info->deformation_graph;
-  for (auto& [prefix, attributes] : nodes) {
-    if (!dgraph.hasVertexKey(prefix)) {
-      continue;
-    }
-
-    const auto& control_points = dgraph.getInitialPositionsVertices(prefix);
-    if (control_points.size() < config.num_control_points) {
-      continue;
-    }
-
-    attributes.sort();  // make sure attributes are sorted by timestamp
-    std::vector<std::set<size_t>> vertex_graph_map_deformed;
-    kimera_pgmo::deformation::deformPoints(attributes,
-                                           vertex_graph_map_deformed,
-                                           attributes,
-                                           prefix,
-                                           control_points,
-                                           dgraph.getVertexStamps(prefix),
-                                           *dgraph.getValues(),
-                                           config.num_control_points,
-                                           config.control_point_tolerance_s,
-                                           nullptr);
-  }
-
-  for (const auto& node : view) {
-    dsg.graph->setNodeAttributes(node.id, node.attributes().clone());
-  }
 }
 
 void UpdateKhronosObjectsFunctor::call(const DynamicSceneGraph& unmerged,
@@ -160,7 +52,7 @@ void UpdateKhronosObjectsFunctor::call(const DynamicSceneGraph& unmerged,
   LayerView view = new_loopclosure ? LayerView(objects) : active_tracker.view(objects);
 
   // interpolate to update
-  interpFromValues(view, dsg, info);
+  deformation_interpolator.interpolateNodePositions(unmerged, *dsg.graph, info, view);
 }
 
 MergeList UpdateKhronosObjectsFunctor::findMerges(const DynamicSceneGraph& graph,

@@ -1,6 +1,7 @@
 #pragma once
 #include <config_utilities/factory.h>
 #include <hydra/backend/association_strategies.h>
+#include <hydra/backend/deformation_interpolator.h>
 #include <hydra/backend/merge_tracker.h>
 #include <hydra/backend/update_functions.h>
 #include <hydra/utils/active_window_tracker.h>
@@ -13,10 +14,8 @@ using hydra::UpdateInfo;
 using spark_dsg::LayerView;
 struct UpdateKhronosObjectsFunctor : public hydra::UpdateFunctor {
   struct Config {
-    //! Number of control points for deforming the places (if not in optimization)
-    size_t num_control_points = 4;
-    //! Timestamp tolerance when deforming the places (if not in optimization)
-    double control_point_tolerance_s = 10.0;
+    //! Interpolator for object nodes using deformation graph
+    hydra::DeformationInterpolator::Config deformation_interpolator;
     //! Require merges to have same semantic label
     bool merge_require_same_label = true;
     //! Require merges to not be co-visible
@@ -34,13 +33,11 @@ struct UpdateKhronosObjectsFunctor : public hydra::UpdateFunctor {
   void call(const DynamicSceneGraph& unmerged,
             SharedDsgInfo& dsg,
             const UpdateInfo::ConstPtr& info) const override;
-  void interpFromValues(const LayerView& view,
-                        SharedDsgInfo& dsg,
-                        const UpdateInfo::ConstPtr& info) const;
 
   MergeList findMerges(const DynamicSceneGraph& graph, const UpdateInfo::ConstPtr& info) const;
 
   const hydra::MergeProposer merge_proposer;
+  const hydra::DeformationInterpolator deformation_interpolator;
 
   mutable hydra::ActiveWindowTracker active_tracker;
   mutable std::unordered_map<NodeId, Eigen::Vector3d> cached_pos_;
