@@ -63,7 +63,7 @@ void RealDynamicObjectGroundTruthBuilder::run() {
   std::cout << "Ground truth dynamic objects extraction complete." << std::endl;
 }
 
-void RealDynamicObjectGroundTruthBuilder::mouseClickCallback(int event, int x, int y, int flags) {
+void RealDynamicObjectGroundTruthBuilder::mouseClickCallback(int event, int x, int y, int /* flags */) {
   if (event == cv::EVENT_LBUTTONDOWN) {
     // Get depth image to read directly
     cv_bridge::CvImagePtr cv_ptr_depth;
