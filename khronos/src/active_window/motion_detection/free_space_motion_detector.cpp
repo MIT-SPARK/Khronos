@@ -57,6 +57,7 @@ void declare_config(FreeSpaceMotionDetector::Config& config) {
   field(config.max_cluster_size, "max_cluster_size");
   field(config.min_separation_distance, "min_separation_distance", "voxels");
   field(config.max_range, "max_range", "m");
+  field(config.min_z_coordinate, "min_z_coordinate", "m");
   field<ThreadNumConversion>(config.num_threads, "num_threads");
 
   check(config.num_threads, GT, 0, "num_threads");
@@ -76,6 +77,7 @@ void FreeSpaceMotionDetector::processInput(const VolumetricMap& map, FrameData& 
   // Detect all moving object seeds.
   GlobalIndexSet voxel_seeds;
   BlockToPointsMap point_map;
+  min_z_world_ = data.input.getSensorPose().translation().z() + config.min_z_coordinate;
   setUpPointMap(data, *map.getTrackingLayer(), point_map, voxel_seeds);
 
   // Cluster them through voxels.
@@ -171,6 +173,10 @@ void FreeSpaceMotionDetector::setUpPointMapPart(const FrameData& data,
 
       const auto& vertex = data.input.vertex_map.at<InputData::VertexType>(v, u);
       const Point p_W(vertex[0], vertex[1], vertex[2]);
+      if (p_W.z() < min_z_world_) {
+        continue;
+      }
+
       const auto block = tracking_layer.getBlockPtr(p_W);
       if (!block) {
         continue;
