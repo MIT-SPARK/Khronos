@@ -27,6 +27,8 @@ Khronos is a unified approach that can reason about short-term dynamics and long
 
 
 # News
+* [10/2025] We've released the **ROS2** version of Khronos!
+* [07/2025] We've released several new updates, including **Open-set** datasets and real-time setups!
 * [07/2024] Khronos won the **Outstanding Systems Paper Award** at RSS in Delft!
 
 # Paper
