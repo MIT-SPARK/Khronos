@@ -88,6 +88,10 @@ class FreeSpaceMotionDetector : public MotionDetector {
     // Maximum range within which points are considered in meters.
     float max_range = 10000.f;
 
+    // If set, only consider points above this z-coordinate in the sensor frame. This is a simple
+    // form of ground plane removal.
+    float min_z_coordinate = -10000.f;
+
     // Number of threads to use.
     int num_threads = hydra::GlobalInfo::instance().getConfig().default_num_threads;
   } const config;
@@ -194,6 +198,7 @@ class FreeSpaceMotionDetector : public MotionDetector {
 
   // Variables.
   TimeStamp processing_stamp_;
+  float min_z_world_;
 };
 
 void declare_config(FreeSpaceMotionDetector::Config& config);

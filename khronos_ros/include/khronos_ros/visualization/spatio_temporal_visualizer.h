@@ -110,9 +110,7 @@ class SpatioTemporalVisualizer {
     DynamicVisualizerConfig dynamic_config;
 
     // Config of the mesh visualizer.
-    hydra::MeshPlugin::Config mesh{
-        true,
-        config::VirtualConfig<hydra::MeshColoring>(hydra::SemanticMeshColoring::Config())};
+    hydra::MeshPlugin::Config mesh;
 
     //! Config for underlying scene graph visualizer
     hydra::SceneGraphRenderer::Config scene_graph;

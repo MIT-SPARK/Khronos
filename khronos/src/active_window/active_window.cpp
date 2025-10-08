@@ -54,7 +54,6 @@ void declare_config(ActiveWindow::Config& config) {
   field(config.verbosity, "verbosity");
   field(config.detach_object_extraction, "detach_object_extraction");
   field(config.min_output_separation, "min_output_separation", "s");
-
   field(config.projective_integrator, "projective_integrator");
   field(config.tracking_integrator, "tracking_integrator");
   config.motion_detector.setOptional();
@@ -273,7 +272,7 @@ std::unique_ptr<FrameData> ActiveWindow::createData(const hydra::InputPacket& in
   // check for this if these modules are disabled.
 
   // Normalize raw input packet into the standard format.
-  auto input_data = hydra::conversions::parseInputPacket(input, true);
+  auto input_data = hydra::conversions::parseInputPacket(input, true, map_.hasSemantics());
   if (!input_data) {
     LOG(ERROR) << "[Khronos Active Window] Input packet preprocessing failed. Skipping frame.";
     return nullptr;
