@@ -46,6 +46,7 @@ active_window:
     voxel_size: 0.1 # m
     truncation_distance: 0.2 # m (Usually 2-3x voxel size)
     voxels_per_side: 16
+    with_semantics: true  # Enable semantic layer for object detection
 
   # Motion Detector. The motion detector is optional, by not setting the 'type' param no motion detection will be performed.
   motion_detector:
