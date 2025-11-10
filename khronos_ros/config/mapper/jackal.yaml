@@ -102,6 +102,7 @@ active_window:
 frontend:
   verbosity: 1
   enable_mesh_objects: false
+  overwrite_mesh_timestamps: true
 
   pgmo:
     time_horizon: 60.0

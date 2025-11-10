@@ -45,5 +45,5 @@ renderer:
       z_offset_scale: 0.0
       visualize: true
       nodes: {scale: 0.2, alpha: 0.9, use_sphere: true}
-      edges: {scale: 0.05, alpha: 0.9}
+      edges: {scale: 0.05, alpha: 0.9, draw_interlayer: false}
       text: {draw: false}  # Disable text labels for dynamic agents
