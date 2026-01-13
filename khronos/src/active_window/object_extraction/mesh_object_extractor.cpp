@@ -236,10 +236,17 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
           << map_config.voxel_size << " [m]";
 
   // Perform 3D reconstruction using projective updates over all frames.
-  ObjectIntegrator integrator(config.projective_integrator);
+  hydra::SensorMap<ObjectIntegrator> integrator_map(config.projective_integrator);
   for (const auto& [frame_data, segment_id] : frames) {
-    integrator.setFrameData(frame_data.get(), segment_id);
-    integrator.updateMap(frame_data->input, map, false);
+    const auto sensor_name = frame_data->input.getSensor().name;
+    const auto integrator = integrator_map.get(sensor_name);
+    if (!integrator) {
+      CLOG(2) << "Skipping Unknown sensor '" << sensor_name << "'";
+      continue;
+    }
+
+    integrator->setFrameData(frame_data.get(), segment_id);
+    integrator->updateMap(frame_data->input, map, false);
   }
 
   // Erase low_confidence voxels to extract the object of interest.

@@ -37,8 +37,10 @@
 
 #pragma once
 
+#include <cstdint>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -153,6 +155,7 @@ class ConnectedSemantics : public ObjectDetector {
                                      ConnectedSemantics,
                                      ConnectedSemantics::Config>("ConnectedSemantics");
 
+  std::function<bool(uint32_t)> is_object_;
   const spatial_hash::NeighborSearch neighbor_search_;
 
   // Variables.

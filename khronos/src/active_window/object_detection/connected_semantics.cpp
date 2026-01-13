@@ -49,12 +49,18 @@ void declare_config(ConnectedSemantics::Config& config) {
   field(config.use_full_connectivity, "use_full_connectivity");
   field(config.min_cluster_size, "min_cluster_size");
   field(config.max_cluster_size, "max_cluster_size");
-  field(config.max_range, "max_range", "m");
   field(config.use_3d, "use_3d");
+  field(config.grid_size, "grid_size", "m");
+  field(config.max_range, "max_range", "m");
+  check(config.grid_size, GT, 0.0, "grid_size");
 }
 
 ConnectedSemantics::ConnectedSemantics(const Config& config)
-    : config(config::checkValid(config)), neighbor_search_(config.use_full_connectivity ? 26 : 6) {}
+    : config(config::checkValid(config)), neighbor_search_(config.use_full_connectivity ? 26 : 6) {
+  is_object_ = [](uint32_t label) {
+    return hydra::GlobalInfo::instance().getLabelSpaceConfig().object_labels.count(label) != 0;
+  };
+}
 
 void ConnectedSemantics::processInput(const VolumetricMap& /* map */, FrameData& data) {
   processing_stamp_ = data.input.timestamp_ns;
@@ -131,7 +137,7 @@ ConnectedSemantics::SemanticVoxelPixelMaps ConnectedSemantics::computeCandidateV
         }
       }
       const int semantic_id = data.input.label_image.at<InputData::LabelType>(v, u);
-      if (!hydra::GlobalInfo::instance().getLabelSpaceConfig().isObject(semantic_id)) {
+      if (!is_object_(semantic_id)) {
         continue;
       }
       const auto& point = data.input.vertex_map.at<InputData::VertexType>(v, u);
@@ -154,7 +160,7 @@ void ConnectedSemantics::semanticClustering2D(FrameData& data) {
         continue;
       }
       const int semantic_id = data.input.label_image.at<InputData::LabelType>(v, u);
-      if (!hydra::GlobalInfo::instance().getLabelSpaceConfig().isObject(semantic_id)) {
+      if (!is_object_(semantic_id)) {
         continue;
       }
       growCluster2D(u, v, data);

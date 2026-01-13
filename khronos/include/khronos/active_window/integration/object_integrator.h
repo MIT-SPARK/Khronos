@@ -50,6 +50,8 @@ namespace khronos {
  */
 class ObjectIntegrator : public hydra::ProjectiveIntegrator {
  public:
+  using hydra::ProjectiveIntegrator::Config;
+
   // Construction.
   explicit ObjectIntegrator(const hydra::ProjectiveIntegrator::Config& config);
   ~ObjectIntegrator() = default;

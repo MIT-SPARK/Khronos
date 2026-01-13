@@ -26,13 +26,24 @@ launch:
   - arg: {name: sensor_min_range, default: '0.1'}
   - arg: {name: sensor_max_range, default: '5.0'}
   # Semantics: Use these for ground truth semantic labels from uH2
-  - arg: {name: labelspace_config, default: $(find-pkg-share hydra)/config/label_spaces/$(var dataset)_label_space.yaml, if: $(var use_gt_semantics)}
-  - arg: {name: label_remap_config, default: $(find-pkg-share hydra)/config/label_remaps/$(var dataset).yaml, if: $(var use_gt_semantics)}
-  - arg: {name: labelspace_config, default: $(find-pkg-share hydra)/config/label_spaces/ade20k_indoor_label_space.yaml, unless: $(var use_gt_semantics)}
+  - arg:
+      name: labelspace_config
+      if: $(var use_gt_semantics)
+      default: $(find-pkg-share hydra)/config/label_spaces/$(var dataset)_label_space.yaml
+  - arg:
+      name: label_remap_config
+      if: $(var use_gt_semantics)
+      default: $(find-pkg-share hydra)/config/label_remaps/$(var dataset).yaml
+  - arg:
+      name: labelspace_config
+      unless: $(var use_gt_semantics)
+      default: $(find-pkg-share hydra)/config/label_spaces/ade20k_indoor_label_space.yaml
   - arg: {name: label_remap_config, default: '', unless: $(var use_gt_semantics)}
   - arg: {name: semantic_colormap_config, default: ''}
   # Construct extra_yaml based on whether we have GT semantics
-  - let: {name: extra_yaml_gt, value: '{semantic_label_remap_filepath: $(var label_remap_config), semantic_colormap_file: $(var semantic_colormap_config)}'}
+  - let:
+      name: extra_yaml_gt
+      value: '{semantic_label_remap_filepath: $(var label_remap_config), semantic_colormap_file: $(var semantic_colormap_config)}'
   - let: {name: extra_yaml_no_gt, value: '{semantic_colormap_file: $(var semantic_colormap_config)}'}
   - let: {name: extra_yaml, value: $(if $(var use_gt_semantics) $(var extra_yaml_gt) $(var extra_yaml_no_gt))}
   # Input topics
@@ -55,19 +66,19 @@ launch:
         - {name: paused, value: $(var paused)}
         - {name: use_gt_semantics, value: $(var use_gt_semantics)}
         - {name: use_openset_semantics, value: $(var use_openset_semantics)}
-# TODO(marcus): re-enable if/after kimera is upgraded to ros2
-#  - include:
-      #file: $(find-pkg-share hydra_vio_configs)/launch/uh2_vio.launch
-      #arg:
-        #- {name: odom_frame_id, value: odom}
-        #- {name: map_frame_id, value: map}
-        #- {name: should_use_sim_time, value: $(var sim_time_required)}
-        #- {name: glog_to_dir, value: 'true'}
-        #- {name: use_lcd, value: 'true'}
-        #- {name: lcd_no_detection, value: 'false'}
-          ## clean, noisy
-        #- {name: imu_topic, value: /tesse/imu/noisy/imu}
-        #- {name: log_output_path, value: $(var output_dir)}
+  # TODO(marcus): re-enable if/after kimera is upgraded to ros2
+  #  - include:
+  #file: $(find-pkg-share hydra_vio_configs)/launch/uh2_vio.launch
+  #arg:
+  #- {name: odom_frame_id, value: odom}
+  #- {name: map_frame_id, value: map}
+  #- {name: should_use_sim_time, value: $(var sim_time_required)}
+  #- {name: glog_to_dir, value: 'true'}
+  #- {name: use_lcd, value: 'true'}
+  #- {name: lcd_no_detection, value: 'false'}
+  ## clean, noisy
+  #- {name: imu_topic, value: /tesse/imu/noisy/imu}
+  #- {name: log_output_path, value: $(var output_dir)}
   - include:
       file: $(find-pkg-share khronos_ros)/launch/khronos.launch.yaml
       arg:
@@ -78,5 +89,15 @@ launch:
         - {name: evaluate, value: $(var evaluate)}
         - {name: sensor_min_range, value: $(var sensor_min_range)}
         - {name: sensor_max_range, value: $(var sensor_max_range)}
-  - node: {if: $(var use_gt_frame), pkg: tf2_ros, exec: static_transform_publisher, name: map_static_tf, args: --child-frame-id map --frame-id world}
-  - node: {if: $(var use_gt_frame), pkg: tf2_ros, exec: static_transform_publisher, name: odom_static_tf, args: --child-frame-id odom --frame-id map}
+  - node:
+      if: $(var use_gt_frame)
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: map_static_tf
+      args: --child-frame-id map --frame-id world
+  - node:
+      if: $(var use_gt_frame)
+      pkg: tf2_ros
+      exec: static_transform_publisher
+      name: odom_static_tf
+      args: --child-frame-id odom --frame-id map

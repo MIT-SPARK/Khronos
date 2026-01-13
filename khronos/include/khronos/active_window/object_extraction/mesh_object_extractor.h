@@ -44,6 +44,7 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/global_info.h>
+#include <hydra/input/sensor_map.h>
 #include <hydra/reconstruction/mesh_integrator.h>
 
 #include "khronos/active_window/integration/object_integrator.h"
@@ -95,7 +96,7 @@ class MeshObjectExtractor : public ObjectExtractor {
     // for debugging.
     bool visualize_classification = false;
 
-    hydra::ProjectiveIntegrator::Config projective_integrator;
+    hydra::SensorMap<ObjectIntegrator>::Config projective_integrator;
     hydra::MeshIntegratorConfig mesh_integrator;
   } const config;
 
