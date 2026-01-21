@@ -194,6 +194,18 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& 
   ++num_frames_processed_;
 
   Timer sink_timer("active_window/sinks", latest_stamp_);
+  // local change detection using sinks/module
+  /*
+  Input:
+    1. vocumetric map
+    2. tracks (optional)
+  Init:
+    1. prior maps
+  Output:
+    1. changed (add/remove) object nodes
+    new objects
+    
+  */
   KhronosSink::callAll(sinks_, *data, map_, tracks_);
   sink_timer.stop();
 
