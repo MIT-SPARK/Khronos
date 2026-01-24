@@ -35,39 +35,174 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#include <config_utilities/types/path.h>
 #include "khronos/active_window/change_detection/active_window_change_detector.h"
+
+#include <config_utilities/types/path.h>
+#include <spark_dsg/node_attributes.h>
+#include <spark_dsg/scene_graph_types.h>
 
 namespace khronos {
 namespace {
 
-static const auto registration =
-    config::RegistrationWithConfig<ActiveWindow::KhronosSink,
-                                   ActiveWindowChangeDetector,
-                                   ActiveWindowChangeDetector::Config>("ActiveWindowChangeDetector");
+static const auto registration = config::RegistrationWithConfig<ActiveWindow::KhronosSink,
+                                                                ActiveWindowChangeDetector,
+                                                                ActiveWindowChangeDetector::Config>(
+    "ActiveWindowChangeDetector");
 }
 
 void declare_config(ActiveWindowChangeDetector::Config& config) {
   using namespace config;
   name("ActiveWindowChangeDetector");
   field(config.verbosity, "verbosity");
+  field(config.removal_vertex_free_ratio_threshold, "removal_vertex_free_ratio_threshold");
   field<Path::Absolute>(config.prior_map_path, "prior_map_path");
   check<Path::Exists>(config.prior_map_path, "prior_map_path");
-//   check<Path::Extension>(config.prior_map_path, "prior_map_path", ".spark_dsg"); // Add the check back sometimes. 
+  //   check<Path::Extension>(config.prior_map_path, "prior_map_path", ".spark_dsg"); // Add the
+  //   check back sometimes.
 }
 
 ActiveWindowChangeDetector::ActiveWindowChangeDetector(const Config& config)
-    : config(config::checkValid(config)){
+    : config(config::checkValid(config)) {
+  LOG(INFO) << "[Khronos Active Window Change Detector] Initialized with prior map path: "
+            << config.prior_map_path;
+  CLOG(1) << "[Khronos Active Window Change Detector] Verbosity level: " << config.verbosity;
+  loadPriorMap();
+  LOG(INFO) << "[Khronos Active Window Change Detector] Loaded prior scene graph with "
+            << (prior_graph_ ? std::to_string(prior_graph_->numNodes()) + " nodes." : "0 nodes.");
 
+  // test(multy)
+  spark_dsg::NodeSymbol object_symbol('O', 0);
+  const auto& object_node = prior_graph_->getNode(object_symbol);
+  const auto& object_attrs = object_node.attributes();
+  // print out the attributes info
+  LOG(INFO) << "[Khronos Active Window Change Detector] Example object node attributes: "
+            << object_attrs;
 }
 
 void ActiveWindowChangeDetector::call(const FrameData& data,
                                       const VolumetricMap& map,
                                       const Tracks& tracks) const {
+  // 1. Find all object nodes in the prior graph within current volumetric map bounds
+  const auto objects_id_in_bounds = findPriorObjectsInMapBounds(map);
+
+  std::vector<spark_dsg::NodeId> removed_objects;
+
+  // 2. For each object node, get mesh vertices and transform to current frame
+  for (const auto object_id : objects_id_in_bounds) {
+    const auto& object_node = prior_graph_->getNode(object_id);
+
+    // Cast to KhronosObjectAttributes to access mesh
+    const auto* khronos_attrs = object_node.tryAttributes<KhronosObjectAttributes>();
+    if (!khronos_attrs) {
+      CLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+              << " does not have KhronosObjectAttributes, skipping";
+      continue;
+    }
+
+    const auto& mesh = khronos_attrs->mesh;
+    const auto& bbox = khronos_attrs->bounding_box;
+
+    if (mesh.numVertices() == 0) {
+      continue;
+    }
+
+    int num_vertices_in_free_space = 0;
+
+    // 3. For each vertex, check if it's in free space
+    for (size_t i = 0; i < mesh.numVertices(); ++i) {
+      // Transform: local → prior_world → current_world
+      const Eigen::Vector3f vertex_local = mesh.pos(i);
+      const Eigen::Vector3f vertex_prior_world = bbox.pointToWorldFrame(vertex_local);
+      const Point vertex_current = transformPriorToCurrentFrame(vertex_prior_world.cast<double>());
+
+      if (isPriorPointFree(vertex_current, map)) {
+        ++num_vertices_in_free_space;
+      }
+    }
+
+    // 4. If more than threshold% of vertices are in free space, mark as removed
+    const float free_ratio = static_cast<float>(num_vertices_in_free_space) /
+                             static_cast<float>(mesh.numVertices());
+
+    if (free_ratio >= config.removal_vertex_free_ratio_threshold) {
+      removed_objects.push_back(object_id);
+      CLOG(1) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+              << " detected as REMOVED (free ratio: " << free_ratio << ")";
+    } else {
+      CLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+              << " still present (free ratio: " << free_ratio << ")";
+    }
+  }
+
+  LOG(INFO) << "[ActiveWindowChangeDetector] Detected " << removed_objects.size()
+            << " removed objects out of " << objects_id_in_bounds.size() << " checked";
 }
 
-void ActiveWindowChangeDetector::loadPriorMap(/* params */) { 
-    
+void ActiveWindowChangeDetector::loadPriorMap(/* params */) {
+  prior_graph_ =
+      DynamicSceneGraph::load(config.prior_map_path / "hydra" / "backend" / "dsg_with_mesh.json");
+}
+
+bool ActiveWindowChangeDetector::isPriorPointFree(const Point& point_in_map,
+                                                  const VolumetricMap& map) const {
+  auto* voxel = map.getTrackingLayer()->getVoxelPtr(point_in_map);
+  if (voxel && voxel->ever_free) {
+    return true;
+  }
+  return false;
+}
+
+bool ActiveWindowChangeDetector::isPointInMapBounds(const Point& point,
+                                                    const VolumetricMap& map) const {
+  // A point is "in bounds" if the map has an allocated block at that location
+  const auto& tsdf_layer = map.getTsdfLayer();
+  return tsdf_layer.getBlockPtr(tsdf_layer.getBlockIndex(point.cast<float>())) != nullptr;
+}
+
+std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMapBounds(
+    const VolumetricMap& map) const {
+  std::vector<spark_dsg::NodeId> objects_in_bounds;
+
+  if (!prior_graph_ || !prior_graph_->hasLayer(DsgLayers::OBJECTS)) {
+    LOG(WARNING) << "[ActiveWindowChangeDetector] Prior graph has no OBJECTS layer";
+    return objects_in_bounds;
+  }
+
+  const auto& objects_layer = prior_graph_->getLayer(DsgLayers::OBJECTS);
+
+  for (const auto& [node_id, node] : objects_layer.nodes()) {
+    const auto& attrs = node->attributes();
+    // Transform position from prior map frame to current map frame
+    const Point position_in_current = transformPriorToCurrentFrame(attrs.position);
+
+    if (isPointInMapBounds(position_in_current, map)) {
+      objects_in_bounds.push_back(node_id);
+      CLOG(3) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node_id).str()
+              << " is within map bounds at position (current frame): "
+              << position_in_current.transpose();
+    }
+  }
+
+  CLOG(1) << "[ActiveWindowChangeDetector] Found " << objects_in_bounds.size()
+          << " prior objects within current map bounds";
+
+  return objects_in_bounds;
+}
+
+void ActiveWindowChangeDetector::setCurrentToPriorTransform(
+    const Eigen::Isometry3d& current_T_prior) {
+  current_T_prior_ = current_T_prior;
+  LOG(INFO) << "[ActiveWindowChangeDetector] Updated current_T_prior transform:\n"
+            << "  Translation: " << current_T_prior_.translation().transpose() << "\n"
+            << "  Rotation (quaternion wxyz): "
+            << Eigen::Quaterniond(current_T_prior_.rotation()).coeffs().transpose();
+}
+
+Point ActiveWindowChangeDetector::transformPriorToCurrentFrame(
+    const Eigen::Vector3d& point_in_prior) const {
+  // Transform: current_point = current_T_prior * prior_point
+  const Eigen::Vector3d point_in_current = current_T_prior_ * point_in_prior;
+  return point_in_current.cast<float>();
 }
 
 }  // namespace khronos

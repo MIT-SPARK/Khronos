@@ -37,8 +37,8 @@
 
 #pragma once
 
-
 #include <filesystem>
+#include <vector>
 
 #include "khronos/active_window/active_window.h"
 
@@ -49,10 +49,12 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   // Config.
   struct Config {
     //! Verbosity level.
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity; 
+    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
 
     //! Path to prior map to use for change detection.
     std::filesystem::path prior_map_path;
+
+    float removal_vertex_free_ratio_threshold = 0.8f;
   } const config;
 
   // Construction.
@@ -70,11 +72,43 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
 
   void loadPriorMap(/* params */);
 
- private:
-  // prior map 
+  bool isPriorPointFree(const Point& point_in_map, const VolumetricMap& map) const;
 
-  // relative pose to the prior map (pose lookup, prior map frame relative to the current map frame) 
- 
+  /**
+   * @brief Check if a point is within allocated map bounds (has an allocated block).
+   * @param point The point to check in world frame.
+   * @param map The volumetric map to check against.
+   * @return True if the point is within an allocated block of the map.
+   */
+  bool isPointInMapBounds(const Point& point, const VolumetricMap& map) const;
+
+  /**
+   * @brief Find all prior object nodes whose centroid is within the current volumetric map bounds.
+   * @param map The current volumetric map.
+   * @return Vector of node IDs for objects within map bounds.
+   */
+  std::vector<spark_dsg::NodeId> findPriorObjectsInMapBounds(const VolumetricMap& map) const;
+
+  /**
+   * @brief Set the transform from prior map frame to current map frame.
+   * @param current_T_prior Transform that converts points from prior map frame to current frame.
+   */
+  void setCurrentToPriorTransform(const Eigen::Isometry3d& current_T_prior);
+
+  /**
+   * @brief Transform a point from prior map frame to current map frame.
+   * @param point_in_prior Point in the prior map's world frame.
+   * @return Point transformed to the current map's world frame.
+   */
+  Point transformPriorToCurrentFrame(const Eigen::Vector3d& point_in_prior) const;
+
+ private:
+  // Prior map as a 3D scene graph.
+  DynamicSceneGraph::Ptr prior_graph_;
+
+  // Transform from prior map frame to current map frame.
+  // current_point = current_T_prior_ * prior_point
+  Eigen::Isometry3d current_T_prior_ = Eigen::Isometry3d::Identity();
 };
 
 void declare_config(ActiveWindowChangeDetector::Config& config);
