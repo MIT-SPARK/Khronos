@@ -54,6 +54,7 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! Path to prior map to use for change detection.
     std::filesystem::path prior_map_path;
 
+    //! Ratio of free prior map points of an object's vertices to consider it removed.
     float removal_vertex_free_ratio_threshold = 0.8f;
   } const config;
 
@@ -62,15 +63,14 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   virtual ~ActiveWindowChangeDetector() = default;
 
   /**
-   * @brief TODO
-   * @param map The current map to visualize.
-   * @param data The current data after processing to visualize.
-   * @param tracks The current tracks in the active window to visualize. If a bounding box for a
-   * track is newly computed it will be stored in the track.
+   * @brief TODO(multy): documentation
+   * @param map The current volumetric map that the active window is building.
+   * @param data The current data after processing.
+   * @param tracks The current tracks in the active window.
    */
   void call(const FrameData& data, const VolumetricMap& map, const Tracks& tracks) const override;
 
-  void loadPriorMap(/* params */);
+  void loadPriorMap();
 
   bool isPriorPointFree(const Point& point_in_map, const VolumetricMap& map) const;
 
@@ -103,11 +103,11 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   Point transformPriorToCurrentFrame(const Eigen::Vector3d& point_in_prior) const;
 
  private:
-  // Prior map as a 3D scene graph.
+  //! Prior map as a 3D scene graph.
   DynamicSceneGraph::Ptr prior_graph_;
 
-  // Transform from prior map frame to current map frame.
-  // current_point = current_T_prior_ * prior_point
+  //! Transform from prior map frame to current map frame.
+  //! current_point = current_T_prior_ * prior_point
   Eigen::Isometry3d current_T_prior_ = Eigen::Isometry3d::Identity();
 };
 

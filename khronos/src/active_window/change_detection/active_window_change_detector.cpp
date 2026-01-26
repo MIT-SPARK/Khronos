@@ -63,20 +63,11 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
 
 ActiveWindowChangeDetector::ActiveWindowChangeDetector(const Config& config)
     : config(config::checkValid(config)) {
-  LOG(INFO) << "[Khronos Active Window Change Detector] Initialized with prior map path: "
-            << config.prior_map_path;
-  CLOG(1) << "[Khronos Active Window Change Detector] Verbosity level: " << config.verbosity;
+  CLOG(1) << "[Khronos Active Window Change Detector] Initialized with prior map path: "
+          << config.prior_map_path;
   loadPriorMap();
-  LOG(INFO) << "[Khronos Active Window Change Detector] Loaded prior scene graph with "
-            << (prior_graph_ ? std::to_string(prior_graph_->numNodes()) + " nodes." : "0 nodes.");
-
-  // test(multy)
-  spark_dsg::NodeSymbol object_symbol('O', 0);
-  const auto& object_node = prior_graph_->getNode(object_symbol);
-  const auto& object_attrs = object_node.attributes();
-  // print out the attributes info
-  LOG(INFO) << "[Khronos Active Window Change Detector] Example object node attributes: "
-            << object_attrs;
+  CLOG(1) << "[Khronos Active Window Change Detector] Loaded prior scene graph with "
+          << (prior_graph_ ? std::to_string(prior_graph_->numNodes()) + " nodes." : "0 nodes.");
 }
 
 void ActiveWindowChangeDetector::call(const FrameData& data,
@@ -120,13 +111,13 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
       }
     }
 
-    // 4. If more than threshold% of vertices are in free space, mark as removed
-    const float free_ratio = static_cast<float>(num_vertices_in_free_space) /
-                             static_cast<float>(mesh.numVertices());
+    // 4. If more than threshold % of vertices are in free space, mark as removed
+    const float free_ratio =
+        static_cast<float>(num_vertices_in_free_space) / static_cast<float>(mesh.numVertices());
 
     if (free_ratio >= config.removal_vertex_free_ratio_threshold) {
       removed_objects.push_back(object_id);
-      CLOG(1) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+      CLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
               << " detected as REMOVED (free ratio: " << free_ratio << ")";
     } else {
       CLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
@@ -134,29 +125,35 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
     }
   }
 
-  LOG(INFO) << "[ActiveWindowChangeDetector] Detected " << removed_objects.size()
-            << " removed objects out of " << objects_id_in_bounds.size() << " checked";
+  // 5. TODO (multy): need ways to report the problem or even visualize it.
+  CLOG(1) << "[ActiveWindowChangeDetector] Detected " << removed_objects.size()
+          << " removed objects out of " << objects_id_in_bounds.size() << " checked";
+  // print out removed object ids
+  CLOG(1) << "[ActiveWindowChangeDetector] Object ";
+  for (const auto& id : removed_objects) {
+    CLOG(1) << spark_dsg::NodeSymbol(id).str() << ", ";
+  }
+  CLOG(1) << " are removed";
 }
 
-void ActiveWindowChangeDetector::loadPriorMap(/* params */) {
-  prior_graph_ =
-      DynamicSceneGraph::load(config.prior_map_path / "hydra" / "backend" / "dsg_with_mesh.json");
+void ActiveWindowChangeDetector::loadPriorMap() {
+  // NOTE(multy): required to load the full path to the DSG file.
+  // TODO(multy): in documentation might require to set a prior map path that's different from the
+  // DCIST env variable.
+  prior_graph_ = DynamicSceneGraph::load(config.prior_map_path);
 }
 
 bool ActiveWindowChangeDetector::isPriorPointFree(const Point& point_in_map,
                                                   const VolumetricMap& map) const {
-  auto* voxel = map.getTrackingLayer()->getVoxelPtr(point_in_map);
-  if (voxel && voxel->ever_free) {
-    return true;
-  }
-  return false;
+  const auto* voxel = map.getTrackingLayer()->getVoxelPtr(point_in_map);
+  return voxel && voxel->ever_free;
 }
 
 bool ActiveWindowChangeDetector::isPointInMapBounds(const Point& point,
                                                     const VolumetricMap& map) const {
   // A point is "in bounds" if the map has an allocated block at that location
   const auto& tsdf_layer = map.getTsdfLayer();
-  return tsdf_layer.getBlockPtr(tsdf_layer.getBlockIndex(point.cast<float>())) != nullptr;
+  return tsdf_layer.hasBlock(point.cast<float>());
 }
 
 std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMapBounds(
@@ -192,14 +189,16 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
 void ActiveWindowChangeDetector::setCurrentToPriorTransform(
     const Eigen::Isometry3d& current_T_prior) {
   current_T_prior_ = current_T_prior;
-  LOG(INFO) << "[ActiveWindowChangeDetector] Updated current_T_prior transform:\n"
-            << "  Translation: " << current_T_prior_.translation().transpose() << "\n"
-            << "  Rotation (quaternion wxyz): "
-            << Eigen::Quaterniond(current_T_prior_.rotation()).coeffs().transpose();
+  CLOG(1) << "[ActiveWindowChangeDetector] Updated current_T_prior transform:\n"
+          << "  Translation: " << current_T_prior_.translation().transpose() << "\n"
+          << "  Rotation (quaternion wxyz): "
+          << Eigen::Quaterniond(current_T_prior_.rotation()).coeffs().transpose();
 }
 
 Point ActiveWindowChangeDetector::transformPriorToCurrentFrame(
     const Eigen::Vector3d& point_in_prior) const {
+  // TODO(multy): In the future, consider transforming the prior map once to the current map frame
+  // instead of transforming each point.
   // Transform: current_point = current_T_prior * prior_point
   const Eigen::Vector3d point_in_current = current_T_prior_ * point_in_prior;
   return point_in_current.cast<float>();
