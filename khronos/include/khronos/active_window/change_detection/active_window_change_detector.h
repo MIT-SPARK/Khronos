@@ -42,14 +42,20 @@
 
 #include "khronos/active_window/active_window.h"
 
+#include "hydra/utils/logging.h"
+
 namespace khronos {
 
 class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
  public:
   // Config.
-  struct Config {
+  struct Config : hydra::VerbosityConfig {
     //! Verbosity level.
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+    // int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+    // TODO(multy): after hydra is updated, should change it to also include a prefix like: "[Active
+    // Window Change Detector] "
+    Config()
+        : hydra::VerbosityConfig{hydra::GlobalInfo::instance().getConfig().default_verbosity} {}
 
     //! Path to prior map to use for change detection.
     std::filesystem::path prior_map_path;

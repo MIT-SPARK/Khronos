@@ -63,10 +63,10 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
 
 ActiveWindowChangeDetector::ActiveWindowChangeDetector(const Config& config)
     : config(config::checkValid(config)) {
-  CLOG(1) << "[Khronos Active Window Change Detector] Initialized with prior map path: "
+  MLOG(1) << "[Khronos Active Window Change Detector] Initialized with prior map path: "
           << config.prior_map_path;
   loadPriorMap();
-  CLOG(1) << "[Khronos Active Window Change Detector] Loaded prior scene graph with "
+  MLOG(1) << "[Khronos Active Window Change Detector] Loaded prior scene graph with "
           << (prior_graph_ ? std::to_string(prior_graph_->numNodes()) + " nodes." : "0 nodes.");
 }
 
@@ -85,7 +85,7 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
     // Cast to KhronosObjectAttributes to access mesh
     const auto* khronos_attrs = object_node.tryAttributes<KhronosObjectAttributes>();
     if (!khronos_attrs) {
-      CLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+      MLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
               << " does not have KhronosObjectAttributes, skipping";
       continue;
     }
@@ -117,23 +117,23 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
 
     if (free_ratio >= config.removal_vertex_free_ratio_threshold) {
       removed_objects.push_back(object_id);
-      CLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+      MLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
               << " detected as REMOVED (free ratio: " << free_ratio << ")";
     } else {
-      CLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+      MLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
               << " still present (free ratio: " << free_ratio << ")";
     }
   }
 
   // 5. TODO (multy): need ways to report the problem or even visualize it.
-  CLOG(1) << "[ActiveWindowChangeDetector] Detected " << removed_objects.size()
+  MLOG(1) << "[ActiveWindowChangeDetector] Detected " << removed_objects.size()
           << " removed objects out of " << objects_id_in_bounds.size() << " checked";
   // print out removed object ids
-  CLOG(1) << "[ActiveWindowChangeDetector] Object ";
+  MLOG(1) << "[ActiveWindowChangeDetector] Object ";
   for (const auto& id : removed_objects) {
-    CLOG(1) << spark_dsg::NodeSymbol(id).str() << ", ";
+    MLOG(1) << spark_dsg::NodeSymbol(id).str() << ", ";
   }
-  CLOG(1) << " are removed";
+  MLOG(1) << " are removed";
 }
 
 void ActiveWindowChangeDetector::loadPriorMap() {
@@ -174,13 +174,13 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
 
     if (isPointInMapBounds(position_in_current, map)) {
       objects_in_bounds.push_back(node_id);
-      CLOG(3) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node_id).str()
+      MLOG(3) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node_id).str()
               << " is within map bounds at position (current frame): "
               << position_in_current.transpose();
     }
   }
 
-  CLOG(1) << "[ActiveWindowChangeDetector] Found " << objects_in_bounds.size()
+  MLOG(1) << "[ActiveWindowChangeDetector] Found " << objects_in_bounds.size()
           << " prior objects within current map bounds";
 
   return objects_in_bounds;
@@ -189,7 +189,7 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
 void ActiveWindowChangeDetector::setCurrentToPriorTransform(
     const Eigen::Isometry3d& current_T_prior) {
   current_T_prior_ = current_T_prior;
-  CLOG(1) << "[ActiveWindowChangeDetector] Updated current_T_prior transform:\n"
+  MLOG(1) << "[ActiveWindowChangeDetector] Updated current_T_prior transform:\n"
           << "  Translation: " << current_T_prior_.translation().transpose() << "\n"
           << "  Rotation (quaternion wxyz): "
           << Eigen::Quaterniond(current_T_prior_.rotation()).coeffs().transpose();
