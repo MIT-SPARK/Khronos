@@ -11,8 +11,10 @@
 #include <pcl/filters/extract_indices.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/point_types.h>
+#define PCL_NO_PRECOMPILE
 #include <pcl/search/kdtree.h>
 #include <pcl/segmentation/extract_clusters.h>
+#undef PCL_NO_PRECOMPILE
 #include <spark_dsg/colormaps.h>
 
 #include "khronos_eval/utils/io_utils.h"
