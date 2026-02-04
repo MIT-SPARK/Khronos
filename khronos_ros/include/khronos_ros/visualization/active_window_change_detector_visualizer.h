@@ -41,29 +41,32 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/global_info.h>
+#include <hydra/utils/logging.h>
 #include <hydra_visualizer/plugins/mesh_plugin.h>
 #include <hydra_visualizer/scene_graph_renderer.h>
 #include <ianvs/node_handle.h>
-#include <khronos/active_window/active_window.h>
 #include <spark_dsg/dynamic_scene_graph.h>
+
+#include "khronos/active_window/change_detection/active_window_change_detector.h"
 
 namespace khronos {
 
-class ActiveWindowChangeDetectorVisualizer : public ActiveWindow::KhronosSink {
+class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::ActiveWindowCDSink {
  public:
-  struct Config {
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+  struct Config : hydra::VerbosityConfig {
+    // TODO(multy): after hydra is updated, should change it to also include a prefix like: "[Active
+    // Window Change Detector Visualizer] "
+    // int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+    Config()
+        : hydra::VerbosityConfig{hydra::GlobalInfo::instance().getConfig().default_verbosity} {}
 
-    // Frame in which to publish visualizations.
+    //! Frame in which to publish visualizations.
     std::string global_frame_name = hydra::GlobalInfo::instance().getFrames().map;
 
-    // Path to prior map DSG file.
-    std::filesystem::path prior_map_path;
-
-    // Scene graph renderer config.
+    //! Scene graph renderer config.
     hydra::SceneGraphRenderer::Config renderer;
 
-    // Mesh plugin config (optional - if coloring is not set, uses mesh colors).
+    //! Mesh plugin config (optional - if coloring is not set, uses mesh colors).
     hydra::MeshPlugin::Config mesh;
   } const config;
 
@@ -72,18 +75,13 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindow::KhronosSink {
   virtual ~ActiveWindowChangeDetectorVisualizer() = default;
 
   // KhronosSink callback - called each frame.
-  void call(const FrameData& data,
-            const VolumetricMap& map,
-            const Tracks& tracks) const override;
-
-  // Load/reload the prior graph from file.
-  void loadPriorGraph();
+  void call(const DynamicSceneGraph::Ptr& dsg,
+            const std::vector<spark_dsg::NodeId>& removed_object_ids) const override;
 
  private:
-  void drawPriorGraph() const;
+  void drawPriorGraph(const DynamicSceneGraph::Ptr& dsg) const;
 
   ianvs::NodeHandle nh_;
-  spark_dsg::DynamicSceneGraph::Ptr prior_graph_;
   std::shared_ptr<hydra::SceneGraphRenderer> renderer_;
   std::shared_ptr<hydra::MeshPlugin> mesh_plugin_;
   mutable bool has_drawn_ = false;

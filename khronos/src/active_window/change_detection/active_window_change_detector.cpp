@@ -56,18 +56,26 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.verbosity, "verbosity");
   field(config.removal_vertex_free_ratio_threshold, "removal_vertex_free_ratio_threshold");
   field<Path::Absolute>(config.prior_map_path, "prior_map_path");
+  field(config.awcd_sinks, "awcd_sinks");
   check<Path::Exists>(config.prior_map_path, "prior_map_path");
   //   check<Path::Extension>(config.prior_map_path, "prior_map_path", ".spark_dsg"); // Add the
   //   check back sometimes.
 }
 
 ActiveWindowChangeDetector::ActiveWindowChangeDetector(const Config& config)
-    : config(config::checkValid(config)) {
+    : config(config::checkValid(config)),
+      sinks_(ActiveWindowCDSink::instantiate(config.awcd_sinks)) {
   MLOG(1) << "[Khronos Active Window Change Detector] Initialized with prior map path: "
           << config.prior_map_path;
   loadPriorMap();
   MLOG(1) << "[Khronos Active Window Change Detector] Loaded prior scene graph with "
           << (prior_graph_ ? std::to_string(prior_graph_->numNodes()) + " nodes." : "0 nodes.");
+}
+
+void ActiveWindowChangeDetector::addKhronosSink(const ActiveWindowCDSink::Ptr& sink) {
+  if (sink) {
+    sinks_.push_back(sink);
+  }
 }
 
 void ActiveWindowChangeDetector::call(const FrameData& data,
@@ -76,7 +84,7 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   // 1. Find all object nodes in the prior graph within current volumetric map bounds
   const auto objects_id_in_bounds = findPriorObjectsInMapBounds(map);
 
-  std::vector<spark_dsg::NodeId> removed_objects;
+  std::vector<spark_dsg::NodeId> removed_object_ids;
 
   // 2. For each object node, get mesh vertices and transform to current frame
   for (const auto object_id : objects_id_in_bounds) {
@@ -116,7 +124,7 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
         static_cast<float>(num_vertices_in_free_space) / static_cast<float>(mesh.numVertices());
 
     if (free_ratio >= config.removal_vertex_free_ratio_threshold) {
-      removed_objects.push_back(object_id);
+      removed_object_ids.push_back(object_id);
       MLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
               << " detected as REMOVED (free ratio: " << free_ratio << ")";
     } else {
@@ -126,14 +134,11 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   }
 
   // 5. TODO (multy): need ways to report the problem or even visualize it.
-  MLOG(1) << "[ActiveWindowChangeDetector] Detected " << removed_objects.size()
+  MLOG(1) << "[ActiveWindowChangeDetector] Detected " << removed_object_ids.size()
           << " removed objects out of " << objects_id_in_bounds.size() << " checked";
-  // print out removed object ids
-  MLOG(1) << "[ActiveWindowChangeDetector] Object ";
-  for (const auto& id : removed_objects) {
-    MLOG(1) << spark_dsg::NodeSymbol(id).str() << ", ";
-  }
-  MLOG(1) << " are removed";
+
+  // 6. Call all sinks with the removed objects
+  ActiveWindowCDSink::callAll(sinks_, prior_graph_, removed_object_ids);
 }
 
 void ActiveWindowChangeDetector::loadPriorMap() {
