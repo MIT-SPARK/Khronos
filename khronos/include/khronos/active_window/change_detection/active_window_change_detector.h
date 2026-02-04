@@ -40,14 +40,18 @@
 #include <filesystem>
 #include <vector>
 
-#include "khronos/active_window/active_window.h"
+#include <hydra/common/output_sink.h>
+#include <hydra/utils/logging.h>
 
-#include "hydra/utils/logging.h"
+#include "khronos/active_window/active_window.h"
 
 namespace khronos {
 
 class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
  public:
+  using ActiveWindowCDSink =
+      hydra::OutputSink<const DynamicSceneGraph::Ptr&, const std::vector<spark_dsg::NodeId>&>;
+
   // Config.
   struct Config : hydra::VerbosityConfig {
     //! Verbosity level.
@@ -62,11 +66,22 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
 
     //! Ratio of free prior map points of an object's vertices to consider it removed.
     float removal_vertex_free_ratio_threshold = 0.8f;
+
+    //! Sinks for the change detector output.
+    std::vector<ActiveWindowCDSink::Factory> awcd_sinks;
   } const config;
 
   // Construction.
   explicit ActiveWindowChangeDetector(const Config& config);
   virtual ~ActiveWindowChangeDetector() = default;
+
+  // Module setup.
+  /**
+   * @brief Add a sink to the active window. The sink will be called whenever the active window
+   * finishes processing a frame.
+   * @param sink The sink to add.
+   */
+  void addKhronosSink(const ActiveWindowCDSink::Ptr& sink);
 
   /**
    * @brief TODO(multy): documentation
@@ -115,6 +130,9 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   //! Transform from prior map frame to current map frame.
   //! current_point = current_T_prior_ * prior_point
   Eigen::Isometry3d current_T_prior_ = Eigen::Isometry3d::Identity();
+
+  //! Sinks for the change detector output.
+  ActiveWindowCDSink::List sinks_;
 };
 
 void declare_config(ActiveWindowChangeDetector::Config& config);

@@ -32,6 +32,7 @@ add_library(
   src/khronos_pipeline.cpp
   src/visualization/active_window_visualizer.cpp
   src/visualization/implicit_shape_plugin.cpp
+  src/visualization/active_window_change_detector_visualizer.cpp
   src/visualization/visualization_utils.cpp
   src/visualization/spatio_temporal_visualizer.cpp)
 target_include_directories(
