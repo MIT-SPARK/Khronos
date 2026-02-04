@@ -44,10 +44,15 @@
 #include <hydra/utils/logging.h>
 #include <hydra_visualizer/plugins/mesh_plugin.h>
 #include <hydra_visualizer/scene_graph_renderer.h>
+#include <hydra_visualizer/utils/marker_tracker.h>
 #include <ianvs/node_handle.h>
+#include <rclcpp/time.hpp>
 #include <spark_dsg/dynamic_scene_graph.h>
+#include <std_msgs/msg/color_rgba.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include "khronos/active_window/change_detection/active_window_change_detector.h"
+
 
 namespace khronos {
 
@@ -68,6 +73,12 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
 
     //! Mesh plugin config (optional - if coloring is not set, uses mesh colors).
     hydra::MeshPlugin::Config mesh;
+
+    //! Publisher queue sizes.
+    int queue_size = 10;
+
+    //! Width in meters of lines indicating bounding boxes.
+    float bounding_box_line_width = 0.4f;
   } const config;
 
   explicit ActiveWindowChangeDetectorVisualizer(const Config& config,
@@ -81,10 +92,25 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
  private:
   void drawPriorGraph(const DynamicSceneGraph::Ptr& dsg) const;
 
+  void visualizeChangedObjects(const DynamicSceneGraph::Ptr& dsg,
+                               const std::vector<spark_dsg::NodeId>& removed_object_ids) const;
+
+  // ROS
   ianvs::NodeHandle nh_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr object_bbox_pub_;
+
+  // Renderer and plugins
   std::shared_ptr<hydra::SceneGraphRenderer> renderer_;
   std::shared_ptr<hydra::MeshPlugin> mesh_plugin_;
+
+  // Variables
   mutable bool has_drawn_ = false;
+  mutable rclcpp::Time stamp_;
+  mutable bool stamp_is_set_ = false;
+  mutable hydra::MarkerTracker object_bbox_tracker_;
+
+  // Time stamp caching for synchronization of multiple visualizations.
+  rclcpp::Time getStamp() const { return stamp_is_set_ ? stamp_ : nh_.now(); }
 };
 
 void declare_config(ActiveWindowChangeDetectorVisualizer::Config& config);
