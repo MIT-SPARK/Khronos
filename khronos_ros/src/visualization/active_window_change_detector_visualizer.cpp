@@ -93,12 +93,11 @@ void ActiveWindowChangeDetectorVisualizer::call(
   drawPriorGraph(dsg);
 
   // print out removed object ids
-  MLOG(1) << "[ActiveWindowChangeDetectorVisualizer] Object ";
+  MLOG(3) << "[ActiveWindowChangeDetectorVisualizer] Object ";
   for (const auto& id : removed_object_ids) {
-    MLOG(1) << spark_dsg::NodeSymbol(id).str() << ", ";
+    MLOG(3) << spark_dsg::NodeSymbol(id).str() << ", ";
   }
-  MLOG(1) << " are removed";
-
+  MLOG(3) << " are removed";
   // set stamps for all visualizations
   stamp_ = nh_.now();
   stamp_is_set_ = true;
@@ -110,6 +109,7 @@ void ActiveWindowChangeDetectorVisualizer::call(
 
 void ActiveWindowChangeDetectorVisualizer::drawPriorGraph(const DynamicSceneGraph::Ptr& dsg) const {
   if (!dsg) {
+    MLOG(2) << "[ChangeDetectorVisualizer] No prior graph provided, skipping draw";
     return;
   }
 
