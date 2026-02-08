@@ -78,7 +78,7 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
     int queue_size = 10;
 
     //! Width in meters of lines indicating bounding boxes.
-    float bounding_box_line_width = 0.4f;
+    float bounding_box_line_width = 0.1f;
   } const config;
 
   explicit ActiveWindowChangeDetectorVisualizer(const Config& config,

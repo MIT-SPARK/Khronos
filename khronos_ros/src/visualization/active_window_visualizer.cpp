@@ -75,9 +75,15 @@ void declare_config(ActiveWindowVisualizer::Config& config) {
   field(config.id_color_revolutions, "id_color_revolutions");
   field(config.bounding_box_line_width, "bounding_box_line_width");
   field(config.sensor_displays, "sensor_displays");
+  field(config.marker_opacity, "marker_opacity");
+  field(config.num_slices, "num_slices");
+  field(config.slice_distance_multiplier, "slice_distance_multiplier");
 
   check(config.queue_size, GT, 0, "queue_size");
+  check(config.num_slices, GT, 0, "num_slices");
   check(config.dynamic_point_scale, GT, 0, "dynamic_point_scale");
+  check(config.marker_opacity, GE, 0, "marker_opacity");
+  check(config.marker_opacity, LE, 255, "marker_opacity");
   checkCondition(!config.global_frame_name.empty(), "param 'global_frame_name' must not be empty");
   check(config.id_color_revolutions, GT, 0, "id_color_revolutions");
   check(config.bounding_box_line_width, GT, 0, "bounding_box_line_width");
@@ -364,35 +370,50 @@ void ActiveWindowVisualizer::visualizeEverFreeSlice(const VolumetricMap& map,
   if (config.slice_height_is_relative) {
     slice_height += robot_height;
   }
-  const Point slice_coords(0, 0, slice_height);
-  const VoxelKey slice_key = map.getTrackingLayer()->getVoxelKey(slice_coords);
+  // const Point slice_coords(0, 0, slice_height);
+  // const VoxelKey slice_key = map.getTrackingLayer()->getVoxelKey(slice_coords);
+
+  std::vector<VoxelKey> slice_keys;
+  for (int i = 0; i < config.num_slices; ++i) {
+    int num_distance = (i + 1) / 2;
+    float current_slice_height = slice_height + std::pow(-1, i) * num_distance *
+                                                    config.slice_distance_multiplier *
+                                                    map.config.voxel_size;
+    const Point current_slice_coords(0, 0, current_slice_height);
+    slice_keys.push_back(layer.getVoxelKey(current_slice_coords));
+  }
 
   // Visualize.
-  for (const TrackingBlock& block : layer) {
-    if (block.index.z() != slice_key.first.z()) {
-      continue;
-    }
+  for (const VoxelKey& slice_key : slice_keys) {
+    for (const TrackingBlock& block : layer) {
+      if (block.index.z() != slice_key.first.z()) {
+        continue;
+      }
 
-    for (size_t x = 0; x < block.voxels_per_side; ++x) {
-      for (size_t y = 0; y < block.voxels_per_side; ++y) {
-        const VoxelIndex voxel_index(x, y, slice_key.second.z());
-        const TrackingVoxel& voxel = block.getVoxel(voxel_index);
+      for (size_t x = 0; x < block.voxels_per_side; ++x) {
+        for (size_t y = 0; y < block.voxels_per_side; ++y) {
+          const VoxelIndex voxel_index(x, y, slice_key.second.z());
+          const TrackingVoxel& voxel = block.getVoxel(voxel_index);
 
-        const bool is_unknown = voxel.last_observed == 0u;
-        if (is_unknown && !config.show_unknown_voxels) {
-          continue;
-        }
+          const bool is_unknown = voxel.last_observed == 0u;
+          if (is_unknown && !config.show_unknown_voxels) {
+            continue;
+          }
 
-        Point coords = block.getVoxelPosition(voxel_index);
-        msg.points.emplace_back(setPoint(coords));
-        if (is_unknown) {
-          msg.colors.emplace_back(setColor(Color::gray()));
-        } else if (voxel.ever_free) {
-          // Free voxel.
-          msg.colors.emplace_back(setColor(Color::green()));
-        } else {
-          // Occupied voxel.
-          msg.colors.emplace_back(setColor(Color::red()));
+          Point coords = block.getVoxelPosition(voxel_index);
+          msg.points.emplace_back(setPoint(coords));
+          if (is_unknown) {
+            msg.colors.emplace_back(
+                setColor(Color(125, 125, 125, config.marker_opacity)));  // Gray for unknown.
+          } else if (voxel.ever_free) {
+            // Free voxel.
+            msg.colors.emplace_back(
+                setColor(Color(0, 255, 0, config.marker_opacity)));  // Green for ever free.
+          } else {
+            // Occupied voxel.
+            msg.colors.emplace_back(
+                setColor(Color(255, 0, 0, config.marker_opacity)));  // Red for occupied.
+          }
         }
       }
     }
