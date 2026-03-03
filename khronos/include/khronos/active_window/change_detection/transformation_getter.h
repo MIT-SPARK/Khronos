@@ -38,57 +38,55 @@
 #pragma once
 
 #include <memory>
-#include <string>
+#include <optional>
 
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
-
-#include "khronos/active_window/change_detection/active_window_change_detector.h"
+#include <Eigen/Geometry>
+#include <config_utilities/config_utilities.h>
+#include <hydra/common/global_info.h>
+#include <hydra/utils/logging.h>
 
 namespace khronos {
 
 /**
- * @brief ROS-aware subclass of ActiveWindowChangeDetector that uses TF2 to obtain
- * the current_T_prior initial guess automatically after hydra_multi processes a
- * ROMAN loop closure and publishes the updated map→{robot}/odom transform.
+ * @brief Abstract interface for obtaining the current_T_prior transform.
  *
- * Loaded as a plugin into hydra_ros_node via `type: ActiveWindowChangeDetectorRos`
- * in the khronos_sinks list.  No modifications to existing pipeline code required.
+ * Implementations may query TF, return identity, or use any other source.
+ * Returns std::nullopt when no valid transform is available (e.g. TF lookup
+ * failure, or change below threshold); the caller skips the update in that case.
  */
-class ActiveWindowChangeDetectorRos : public ActiveWindowChangeDetector {
+class TransformationGetter {
  public:
-  struct Config : ActiveWindowChangeDetector::Config {
-    //! Frame ID of the prior map (hydra_multi world_frame, typically "map").
-    std::string prior_frame_id = "map";
-    //! Robot odometry frame published by hydra_multi.
-    //! If empty, falls back to hydra::GlobalInfo::instance().getFrames().odom.
-    std::string robot_frame_id = "";
-    //! Minimum translation change [m] before re-triggering ICP.
-    double tf_change_threshold_m = 0.05;
-  } const config;
-
-  explicit ActiveWindowChangeDetectorRos(const Config& config);
-  ~ActiveWindowChangeDetectorRos() override = default;
+  using Ptr = std::unique_ptr<TransformationGetter>;
+  virtual ~TransformationGetter() = default;
 
   /**
-   * @brief Looks up the latest map→robot_frame TF, checks for significant change,
-   * calls notifyLoopClosure() if needed, then invokes the parent call().
+   * @brief Get the latest odom_T_prior (current_T_prior) transform.
+   * @return The transform, or nullopt if unavailable / no significant change.
    */
-  void call(const FrameData& data,
-            const VolumetricMap& map,
-            const Tracks& tracks) const override;
-
- private:
-  //! Returns robot_frame_id from config if set, otherwise GlobalInfo odom frame.
-  std::string getRobotFrame() const;
-
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
-
-  mutable Eigen::Isometry3d last_tf_guess_ = Eigen::Isometry3d::Identity();
-  mutable bool has_last_tf_ = false;
+  virtual std::optional<Eigen::Isometry3d> getTransformation() const = 0;
 };
 
-void declare_config(ActiveWindowChangeDetectorRos::Config& config);
+/**
+ * @brief Always returns Eigen::Isometry3d::Identity() — useful when no prior
+ * map relocalization is needed (prior and current frames are the same).
+ */
+class IdentityTransformationGetter : public TransformationGetter {
+ public:
+  struct Config : hydra::VerbosityConfig {
+    Config()
+        : hydra::VerbosityConfig{hydra::GlobalInfo::instance().getConfig().default_verbosity} {}
+  } const config;
+
+  explicit IdentityTransformationGetter(const Config& config);
+
+  /**
+   * @brief Returns nullopt — the transform remains at its default (Identity).
+   * Use this getter when no relocalization is needed (prior and current frames
+   * are the same).
+   */
+  std::optional<Eigen::Isometry3d> getTransformation() const override;
+};
+
+void declare_config(IdentityTransformationGetter::Config& config);
 
 }  // namespace khronos

@@ -35,49 +35,44 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#include "khronos_ros/active_window/active_window_change_detector_ros.h"
+#include "khronos_ros/active_window/tf_transformation_getter.h"
 
 #include <config_utilities/config.h>
-#include <config_utilities/types/path.h>
 #include <config_utilities/validation.h>
 #include <hydra/common/global_info.h>
+#include <hydra/utils/logging.h>
 #include <ianvs/node_handle.h>
 #include <tf2/exceptions.h>
 
 namespace khronos {
 namespace {
 
-static const auto registration_ros =
-    config::RegistrationWithConfig<ActiveWindow::KhronosSink,
-                                   ActiveWindowChangeDetectorRos,
-                                   ActiveWindowChangeDetectorRos::Config>(
-        "ActiveWindowChangeDetectorRos");
+static const auto registration =
+    config::RegistrationWithConfig<TransformationGetter,
+                                   TFTransformationGetter,
+                                   TFTransformationGetter::Config>("TFTransformationGetter");
 
 }  // namespace
 
-void declare_config(ActiveWindowChangeDetectorRos::Config& config) {
+void declare_config(TFTransformationGetter::Config& config) {
   using namespace config;
-  name("ActiveWindowChangeDetectorRos");
-  // Declare all parent fields first.
-  base<ActiveWindowChangeDetector::Config>(config);
-  // New fields for this subclass.
+  name("TFTransformationGetter");
+  field(config.verbosity, "verbosity");
   field(config.prior_frame_id, "prior_frame_id");
   field(config.robot_frame_id, "robot_frame_id");
   field(config.tf_change_threshold_m, "tf_change_threshold_m");
 }
 
-ActiveWindowChangeDetectorRos::ActiveWindowChangeDetectorRos(const Config& cfg)
-    : ActiveWindowChangeDetector(cfg), config(cfg) {
+TFTransformationGetter::TFTransformationGetter(const Config& cfg)
+    : config(config::checkValid(cfg)) {
   auto nh = ianvs::NodeHandle::this_node();
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(nh.clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
-  MLOG(1) << "[ActiveWindowChangeDetectorRos] TF listener created ("
-          << config.prior_frame_id << " -> " << getRobotFrame() << ")";
+  MLOG(1) << "[TFTransformationGetter] TF listener created (" << config.prior_frame_id << " -> "
+          << getRobotFrame() << ")";
 }
 
-void ActiveWindowChangeDetectorRos::call(const FrameData& data,
-                                         const VolumetricMap& map,
-                                         const Tracks& tracks) const {
+std::optional<Eigen::Isometry3d> TFTransformationGetter::getTransformation() const {
   try {
     const auto tf =
         tf_buffer_->lookupTransform(config.prior_frame_id, getRobotFrame(), tf2::TimePointZero);
@@ -89,28 +84,25 @@ void ActiveWindowChangeDetectorRos::call(const FrameData& data,
     map_T_odom.translation() << t.x, t.y, t.z;
     map_T_odom.linear() = Eigen::Quaterniond(r.w, r.x, r.y, r.z).toRotationMatrix();
 
-    // current_T_prior = inverse of map_T_odom (odom frame is treated as "current").
+    // current_T_prior = inverse of map_T_odom (odom frame is "current").
     const Eigen::Isometry3d current_T_prior = map_T_odom.inverse();
 
-    const double delta =
-        (current_T_prior.translation() - last_tf_guess_.translation()).norm();
-    if (!has_last_tf_ || delta > config.tf_change_threshold_m) {
-      MLOG(1) << "[ActiveWindowChangeDetectorRos] TF changed by " << delta
-              << " m, triggering ICP.";
-      notifyLoopClosure(current_T_prior);
-      last_tf_guess_ = current_T_prior;
-      has_last_tf_ = true;
+    const double delta = (current_T_prior.translation() - last_reported_.translation()).norm();
+    if (has_last_ && delta <= config.tf_change_threshold_m) {
+      return std::nullopt;
     }
-  } catch (const tf2::TransformException& e) {
-    MLOG(3) << "[ActiveWindowChangeDetectorRos] TF lookup failed: " << e.what();
-  }
 
-  ActiveWindowChangeDetector::call(data, map, tracks);
+    MLOG(1) << "[TFTransformationGetter] TF changed by " << delta << " m, reporting new transform.";
+    last_reported_ = current_T_prior;
+    has_last_ = true;
+    return current_T_prior;
+  } catch (const tf2::TransformException& e) {
+    MLOG(3) << "[TFTransformationGetter] TF lookup failed: " << e.what();
+    return std::nullopt;
+  }
 }
 
-// function that give map -> odom, in our case it's just tf lookup. 
-
-std::string ActiveWindowChangeDetectorRos::getRobotFrame() const {
+std::string TFTransformationGetter::getRobotFrame() const {
   if (!config.robot_frame_id.empty()) {
     return config.robot_frame_id;
   }

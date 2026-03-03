@@ -38,7 +38,6 @@
 #pragma once
 
 #include <filesystem>
-#include <mutex>
 #include <optional>
 #include <vector>
 
@@ -46,23 +45,19 @@
 #include <hydra/utils/logging.h>
 
 #include "khronos/active_window/active_window.h"
+#include "khronos/active_window/change_detection/transformation_getter.h"
 #include "khronos/utils/icp_registration_utils.h"
 
 namespace khronos {
 
 class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
  public:
-  using ActiveWindowCDSink =
-      hydra::OutputSink<const DynamicSceneGraph::Ptr&,
-                        const std::vector<spark_dsg::NodeId>&,
-                        const Eigen::Isometry3d&>;
+  using ActiveWindowCDSink = hydra::OutputSink<const DynamicSceneGraph::Ptr&,
+                                               const std::vector<spark_dsg::NodeId>&,
+                                               const Eigen::Isometry3d&>;
 
   // Config.
   struct Config : hydra::VerbosityConfig {
-    //! Verbosity level.
-    // int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
-    // TODO(multy): after hydra is updated, should change it to also include a prefix like: "[Active
-    // Window Change Detector] "
     Config()
         : hydra::VerbosityConfig{hydra::GlobalInfo::instance().getConfig().default_verbosity} {}
 
@@ -75,7 +70,11 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! Sinks for the change detector output.
     std::vector<ActiveWindowCDSink::Factory> awcd_sinks;
 
-    //! Enable ICP refinement on roman loop closure events.
+    //! Plugin that provides the odom_T_prior (current_T_prior) transform each frame.
+    config::VirtualConfig<TransformationGetter> transformation_getter{
+        IdentityTransformationGetter::Config{}};
+
+    //! Enable ICP refinement on the transform returned by transformation_getter.
     bool enable_icp_refinement = false;
     //! If true, invert the roman LC transform before using as ICP initial guess.
     //! Verify at runtime: if ICP delta is > ~2m, flip this flag.
@@ -138,24 +137,20 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   void setCurrentToPriorTransform(const Eigen::Isometry3d& current_T_prior) const;
 
   /**
-   * @brief Called from ROS subscriber thread on each ROMAN loop closure.
-   * Stores initial guess; consumed on next call().
-   */
-  void notifyLoopClosure(const Eigen::Isometry3d& current_T_prior_initial) const;
-
-  /**
    * @brief Transform a point from prior map frame to current map frame.
    * @param point_in_prior Point in the prior map's world frame.
    * @return Point transformed to the current map's world frame.
    */
   Point transformPriorToCurrentFrame(const Eigen::Vector3d& point_in_prior) const;
 
- private:
+ protected:
   /// Runs small_gicp ICP using current map mesh vs prior DSG background mesh.
   /// Updates current_T_prior_ if ICP converges with sufficient inliers.
-  void runIcpRefinement(const FrameData& data, const VolumetricMap& map,
+  void runIcpRefinement(const FrameData& data,
+                        const VolumetricMap& map,
                         const Eigen::Isometry3d& initial) const;
 
+ private:
   //! Prior map as a 3D scene graph.
   DynamicSceneGraph::Ptr prior_graph_;
 
@@ -163,11 +158,8 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   //! current_point = current_T_prior_ * prior_point
   mutable Eigen::Isometry3d current_T_prior_ = Eigen::Isometry3d::Identity();
 
-  //! Mutex protecting pending_lc_guess_ across threads.
-  mutable std::mutex lc_mutex_;
-
-  //! Pending loop closure initial guess, set by notifyLoopClosure(), consumed in call().
-  mutable std::optional<Eigen::Isometry3d> pending_lc_guess_;
+  //! Plugin that provides the odom_T_prior transform.
+  TransformationGetter::Ptr transformation_getter_;
 
   //! Sinks for the change detector output.
   ActiveWindowCDSink::List sinks_;

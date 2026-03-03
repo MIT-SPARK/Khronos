@@ -43,6 +43,7 @@ add_library(khronos::${PROJECT_NAME}_registration ALIAS ${PROJECT_NAME}_registra
 add_library(${PROJECT_NAME}
         src/active_window/active_window.cpp
         src/active_window/change_detection/active_window_change_detector.cpp
+        src/active_window/change_detection/transformation_getter.cpp
         src/active_window/data/frame_data_buffer.cpp
         src/active_window/data/track.cpp
         src/active_window/integration/object_integrator.cpp
