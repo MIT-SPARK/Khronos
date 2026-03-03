@@ -22,6 +22,7 @@
   <depend>spark_dsg</depend>
   <depend>kimera_pgmo</depend>
   <depend>hydra</depend>
+  <depend>small_gicp</depend>
 
   <export>
       <build_type>cmake</build_type>

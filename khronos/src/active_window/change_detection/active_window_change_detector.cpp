@@ -41,6 +41,8 @@
 #include <spark_dsg/node_attributes.h>
 #include <spark_dsg/scene_graph_types.h>
 
+#include "khronos/utils/icp_registration_utils.h"
+
 namespace khronos {
 namespace {
 
@@ -57,6 +59,13 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.removal_vertex_free_ratio_threshold, "removal_vertex_free_ratio_threshold");
   field<Path::Absolute>(config.prior_map_path, "prior_map_path");
   field(config.awcd_sinks, "awcd_sinks");
+  field(config.enable_icp_refinement, "enable_icp_refinement");
+  field(config.invert_roman_lc_transform, "invert_roman_lc_transform");
+  field(config.icp_crop_radius, "icp_crop_radius");
+  field(config.icp_num_threads, "icp_num_threads");
+  field(config.icp_downsampling_resolution, "icp_downsampling_resolution");
+  field(config.icp_max_correspondence_distance, "icp_max_correspondence_distance");
+  field(config.icp_min_inliers, "icp_min_inliers");
   check<Path::Exists>(config.prior_map_path, "prior_map_path");
   //   check<Path::Extension>(config.prior_map_path, "prior_map_path", ".spark_dsg"); // Add the
   //   check back sometimes.
@@ -70,6 +79,8 @@ ActiveWindowChangeDetector::ActiveWindowChangeDetector(const Config& config)
   loadPriorMap();
   MLOG(1) << "[Khronos Active Window Change Detector] Loaded prior scene graph with "
           << (prior_graph_ ? std::to_string(prior_graph_->numNodes()) + " nodes." : "0 nodes.");
+  // print out the config 
+  MLOG(1) << "[Khronos Active Window Change Detector] Config: " << config;
 }
 
 void ActiveWindowChangeDetector::addKhronosSink(const ActiveWindowCDSink::Ptr& sink) {
@@ -81,6 +92,24 @@ void ActiveWindowChangeDetector::addKhronosSink(const ActiveWindowCDSink::Ptr& s
 void ActiveWindowChangeDetector::call(const FrameData& data,
                                       const VolumetricMap& map,
                                       const Tracks& tracks) const {
+  // Consume pending loop closure and run ICP refinement.
+  if (config.enable_icp_refinement) {
+    std::optional<Eigen::Isometry3d> pending;
+    {
+      std::lock_guard<std::mutex> lock(lc_mutex_);
+      pending = std::move(pending_lc_guess_);
+      pending_lc_guess_.reset();
+    }
+    if (pending.has_value()) {
+      runIcpRefinement(data, map, pending.value());
+    }
+  }
+
+  // tf = prior_map_localizaer.tf_lookup("map", "odom") 
+  // make a virtual class in change_detection folder, (a new header file)
+  // in the ros side 
+  // look at tf_lookup in hydra_ros as reference. 
+
   // 1. Find all object nodes in the prior graph within current volumetric map bounds
   const auto objects_id_in_bounds = findPriorObjectsInMapBounds(map);
 
@@ -134,11 +163,11 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   }
 
   // 5. TODO (multy): need ways to report the problem or even visualize it.
-  MLOG(1) << "[ActiveWindowChangeDetector] Detected " << removed_object_ids.size()
+  MLOG(2) << "[ActiveWindowChangeDetector] Detected " << removed_object_ids.size()
           << " removed objects out of " << objects_id_in_bounds.size() << " checked";
 
   // 6. Call all sinks with the removed objects
-  ActiveWindowCDSink::callAll(sinks_, prior_graph_, removed_object_ids);
+  ActiveWindowCDSink::callAll(sinks_, prior_graph_, removed_object_ids, current_T_prior_);
 }
 
 void ActiveWindowChangeDetector::loadPriorMap() {
@@ -185,14 +214,14 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
     }
   }
 
-  MLOG(1) << "[ActiveWindowChangeDetector] Found " << objects_in_bounds.size()
+  MLOG(2) << "[ActiveWindowChangeDetector] Found " << objects_in_bounds.size()
           << " prior objects within current map bounds";
 
   return objects_in_bounds;
 }
 
 void ActiveWindowChangeDetector::setCurrentToPriorTransform(
-    const Eigen::Isometry3d& current_T_prior) {
+    const Eigen::Isometry3d& current_T_prior) const {
   current_T_prior_ = current_T_prior;
   MLOG(1) << "[ActiveWindowChangeDetector] Updated current_T_prior transform:\n"
           << "  Translation: " << current_T_prior_.translation().transpose() << "\n"
@@ -207,6 +236,88 @@ Point ActiveWindowChangeDetector::transformPriorToCurrentFrame(
   // Transform: current_point = current_T_prior * prior_point
   const Eigen::Vector3d point_in_current = current_T_prior_ * point_in_prior;
   return point_in_current.cast<float>();
+}
+
+void ActiveWindowChangeDetector::notifyLoopClosure(const Eigen::Isometry3d& T) const{
+  std::lock_guard<std::mutex> lock(lc_mutex_);
+  pending_lc_guess_ = T;
+ 
+  // replace the transformation with the loop closure result 
+  if (!config.enable_icp_refinement) {
+    setCurrentToPriorTransform(T);
+  } else {
+    MLOG(1) << "[ActiveWindowChangeDetector] Loop closure received, ICP scheduled.";
+  }
+   
+}
+
+void ActiveWindowChangeDetector::runIcpRefinement(const FrameData& data,
+                                                  const VolumetricMap& map,
+                                                  const Eigen::Isometry3d& initial) const {
+  if (!prior_graph_ || !prior_graph_->mesh() || prior_graph_->mesh()->points.empty()) {
+    LOG(WARNING) << "[ActiveWindowChangeDetector] No prior background mesh for ICP.";
+    return;
+  }
+
+  const Eigen::Vector3f robot_cur = data.input.world_T_body.translation().cast<float>();
+  const Eigen::Isometry3f prior_T_current = initial.inverse().cast<float>();
+  const Eigen::Vector3f robot_prior = prior_T_current * robot_cur;
+  const float r = config.icp_crop_radius;
+
+  // Collect current mesh points and pre-transform to prior frame.
+  std::vector<Eigen::Vector3f> source;
+  for (const auto& block : map.getMeshLayer()) {
+    for (const auto& pt : block.points) {
+      if ((pt - robot_cur).norm() <= r) {
+        source.push_back(prior_T_current * pt);
+      }
+    }
+  }
+
+  // Collect prior background mesh points near robot in prior frame.
+  std::vector<Eigen::Vector3f> target;
+  for (const auto& pt : prior_graph_->mesh()->points) {
+    if ((pt - robot_prior).norm() <= r) {
+      target.push_back(pt);
+    }
+  }
+
+  if (source.empty() || target.empty()) {
+    LOG(WARNING) << "[ActiveWindowChangeDetector] Insufficient mesh points for ICP.";
+    return;
+  }
+  MLOG(1) << "[ActiveWindowChangeDetector] ICP: " << source.size() << " src, " << target.size()
+          << " tgt pts.";
+
+  const auto res = ICPRegistrationUtils::registerPointClouds(source,
+                                                             target,
+                                                             config.icp_num_threads,
+                                                             config.icp_downsampling_resolution,
+                                                             config.icp_max_correspondence_distance);
+
+  if (!res.converged || res.num_inliers < config.icp_min_inliers) {
+    LOG(WARNING) << "[ActiveWindowChangeDetector] ICP failed: converged=" << res.converged
+                 << " inliers=" << res.num_inliers;
+    return;
+  }
+
+  setCurrentToPriorTransform(initial * res.T_target_source.inverse());
+  MLOG(1) << "[ActiveWindowChangeDetector] ICP refined transform. Inliers: " << res.num_inliers
+          << ", translation delta: "
+          << (current_T_prior_.translation() - initial.translation()).norm() << " m.";
+
+  // print initial guess and refined transform for debugging in x,y,z and eular angles x,y,z
+  const Eigen::Vector3d initial_trans = initial.translation();
+  const Eigen::Vector3d initial_euler = initial.rotation().eulerAngles(0, 1, 2);
+  const Eigen::Vector3d refined_trans = current_T_prior_.translation();
+  const Eigen::Vector3d refined_euler = current_T_prior_.rotation().eulerAngles(0, 1, 2);
+
+  MLOG(1) << "[ActiveWindowChangeDetector] Initial guess - Translation (x,y,z): "
+          << initial_trans.transpose() << ", Euler angles (x,y,z): "
+          << initial_euler.transpose();
+  MLOG(1) << "[ActiveWindowChangeDetector] Refined transform - Translation (x,y,z): "
+          << refined_trans.transpose() << ", Euler angles (x,y,z): "
+          << refined_euler.transpose();
 }
 
 }  // namespace khronos
