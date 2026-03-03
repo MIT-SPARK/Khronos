@@ -38,19 +38,24 @@
 #pragma once
 
 #include <filesystem>
+#include <mutex>
+#include <optional>
 #include <vector>
 
 #include <hydra/common/output_sink.h>
 #include <hydra/utils/logging.h>
 
 #include "khronos/active_window/active_window.h"
+#include "khronos/utils/icp_registration_utils.h"
 
 namespace khronos {
 
 class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
  public:
   using ActiveWindowCDSink =
-      hydra::OutputSink<const DynamicSceneGraph::Ptr&, const std::vector<spark_dsg::NodeId>&>;
+      hydra::OutputSink<const DynamicSceneGraph::Ptr&,
+                        const std::vector<spark_dsg::NodeId>&,
+                        const Eigen::Isometry3d&>;
 
   // Config.
   struct Config : hydra::VerbosityConfig {
@@ -69,6 +74,22 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
 
     //! Sinks for the change detector output.
     std::vector<ActiveWindowCDSink::Factory> awcd_sinks;
+
+    //! Enable ICP refinement on roman loop closure events.
+    bool enable_icp_refinement = false;
+    //! If true, invert the roman LC transform before using as ICP initial guess.
+    //! Verify at runtime: if ICP delta is > ~2m, flip this flag.
+    bool invert_roman_lc_transform = false;
+    //! Crop radius around robot (m) for mesh point selection.
+    float icp_crop_radius = 10.0f;
+    //! small_gicp threads.
+    size_t icp_num_threads = 2;
+    //! Voxel downsampling resolution (m).
+    float icp_downsampling_resolution = 0.2f;
+    //! Max ICP correspondence distance (m).
+    float icp_max_correspondence_distance = 1.0f;
+    //! Min inliers to accept refined transform.
+    size_t icp_min_inliers = 50;
   } const config;
 
   // Construction.
@@ -114,7 +135,13 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
    * @brief Set the transform from prior map frame to current map frame.
    * @param current_T_prior Transform that converts points from prior map frame to current frame.
    */
-  void setCurrentToPriorTransform(const Eigen::Isometry3d& current_T_prior);
+  void setCurrentToPriorTransform(const Eigen::Isometry3d& current_T_prior) const;
+
+  /**
+   * @brief Called from ROS subscriber thread on each ROMAN loop closure.
+   * Stores initial guess; consumed on next call().
+   */
+  void notifyLoopClosure(const Eigen::Isometry3d& current_T_prior_initial) const;
 
   /**
    * @brief Transform a point from prior map frame to current map frame.
@@ -124,12 +151,23 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   Point transformPriorToCurrentFrame(const Eigen::Vector3d& point_in_prior) const;
 
  private:
+  /// Runs small_gicp ICP using current map mesh vs prior DSG background mesh.
+  /// Updates current_T_prior_ if ICP converges with sufficient inliers.
+  void runIcpRefinement(const FrameData& data, const VolumetricMap& map,
+                        const Eigen::Isometry3d& initial) const;
+
   //! Prior map as a 3D scene graph.
   DynamicSceneGraph::Ptr prior_graph_;
 
   //! Transform from prior map frame to current map frame.
   //! current_point = current_T_prior_ * prior_point
-  Eigen::Isometry3d current_T_prior_ = Eigen::Isometry3d::Identity();
+  mutable Eigen::Isometry3d current_T_prior_ = Eigen::Isometry3d::Identity();
+
+  //! Mutex protecting pending_lc_guess_ across threads.
+  mutable std::mutex lc_mutex_;
+
+  //! Pending loop closure initial guess, set by notifyLoopClosure(), consumed in call().
+  mutable std::optional<Eigen::Isometry3d> pending_lc_guess_;
 
   //! Sinks for the change detector output.
   ActiveWindowCDSink::List sinks_;

@@ -22,6 +22,7 @@
   <depend>khronos_msgs</depend>
   <depend>libgflags-dev</depend>
   <depend>rclcpp</depend>
+  <depend>roman_msgs</depend>
   <depend>std_srvs</depend>
   <depend>tf2_ros</depend>
 

@@ -19,12 +19,26 @@ find_package(OpenCV REQUIRED COMPONENTS core imgproc)
 find_package(spark_dsg REQUIRED)
 find_package(kimera_pgmo REQUIRED)
 find_package(hydra REQUIRED)
+find_package(small_gicp REQUIRED)
 
 include(GNUInstallDirs)
 
 #############
 # Libraries #
 #############
+
+add_library(${PROJECT_NAME}_registration
+    src/utils/icp_registration_utils.cpp
+)
+target_include_directories(${PROJECT_NAME}_registration
+    PUBLIC $<INSTALL_INTERFACE:include>
+           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+)
+target_link_libraries(${PROJECT_NAME}_registration
+    PRIVATE small_gicp::small_gicp
+)
+set_property(TARGET ${PROJECT_NAME}_registration PROPERTY POSITION_INDEPENDENT_CODE ON)
+add_library(khronos::${PROJECT_NAME}_registration ALIAS ${PROJECT_NAME}_registration)
 
 add_library(${PROJECT_NAME}
         src/active_window/active_window.cpp
@@ -76,6 +90,7 @@ ${PROJECT_NAME}
         spatial_hash::spatial_hash
         ${kimera_pgmo_LIBRARIES}
         ${hydra_LIBRARIES}
+        ${PROJECT_NAME}_registration
         PRIVATE ${tf2_eigen_LIBRARIES}
 )
 set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)

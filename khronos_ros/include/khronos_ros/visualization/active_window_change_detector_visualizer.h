@@ -47,6 +47,7 @@
 #include <hydra_visualizer/utils/marker_tracker.h>
 #include <ianvs/node_handle.h>
 #include <rclcpp/time.hpp>
+#include <tf2_ros/static_transform_broadcaster.h>
 #include <spark_dsg/dynamic_scene_graph.h>
 #include <std_msgs/msg/color_rgba.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -67,6 +68,9 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
 
     //! Frame in which to publish visualizations.
     std::string global_frame_name = hydra::GlobalInfo::instance().getFrames().map;
+    // TODO(multy): this should be default to some awcd dedicated frame? Not the global map frame, 
+    // The transformation between the global map frame and the awcd frame can be identity to 
+    // indicates no difference
 
     //! Scene graph renderer config.
     hydra::SceneGraphRenderer::Config renderer;
@@ -87,7 +91,8 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
 
   // KhronosSink callback - called each frame.
   void call(const DynamicSceneGraph::Ptr& dsg,
-            const std::vector<spark_dsg::NodeId>& removed_object_ids) const override;
+            const std::vector<spark_dsg::NodeId>& removed_object_ids,
+            const Eigen::Isometry3d& current_T_prior) const override;
 
  private:
   void drawPriorGraph(const DynamicSceneGraph::Ptr& dsg) const;
@@ -98,6 +103,7 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
   // ROS
   ianvs::NodeHandle nh_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr object_bbox_pub_;
+  std::unique_ptr<tf2_ros::StaticTransformBroadcaster> tf_broadcaster_;
 
   // Renderer and plugins
   std::shared_ptr<hydra::SceneGraphRenderer> renderer_;
