@@ -131,7 +131,7 @@ ConnectedSemantics::SemanticVoxelPixelMaps ConnectedSemantics::computeCandidateV
         }
       }
       const int semantic_id = data.input.label_image.at<InputData::LabelType>(v, u);
-      if (!hydra::GlobalInfo::instance().getLabelSpaceConfig().isObject(semantic_id)) {
+      if (!hydra::GlobalInfo::instance().getLabelSpaceConfig().object_labels.count(semantic_id)) {
         continue;
       }
       const auto& point = data.input.vertex_map.at<InputData::VertexType>(v, u);
@@ -154,7 +154,7 @@ void ConnectedSemantics::semanticClustering2D(FrameData& data) {
         continue;
       }
       const int semantic_id = data.input.label_image.at<InputData::LabelType>(v, u);
-      if (!hydra::GlobalInfo::instance().getLabelSpaceConfig().isObject(semantic_id)) {
+      if (!hydra::GlobalInfo::instance().getLabelSpaceConfig().object_labels.count(semantic_id)) {
         continue;
       }
       growCluster2D(u, v, data);

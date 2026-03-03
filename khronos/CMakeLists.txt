@@ -19,6 +19,7 @@ find_package(OpenCV REQUIRED COMPONENTS core imgproc)
 find_package(spark_dsg REQUIRED)
 find_package(kimera_pgmo REQUIRED)
 find_package(hydra REQUIRED)
+find_package(glog REQUIRED)
 
 include(GNUInstallDirs)
 

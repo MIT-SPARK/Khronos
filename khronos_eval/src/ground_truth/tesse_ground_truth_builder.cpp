@@ -387,12 +387,12 @@ bool TesseGroundTruthBuilder::loadPoints(Points& vertices, Labels& labels, Label
   is_object.resize(labels.size());
   if (config.unknown_label_is_background) {
     for (size_t i = 0; i < labels.size(); ++i) {
-      is_object[i] = label_space_.isObject(labels[i]);
+      is_object[i] = label_space_.object_labels.count(labels[i]);
     }
   } else {
     // Will be filtered by object extractor.
     for (size_t i = 0; i < labels.size(); ++i) {
-      is_object[i] = label_space_.isObject(labels[i]);
+      is_object[i] = label_space_.object_labels.count(labels[i]);
     }
   }
   std::cout << "Computed object and background labels." << std::endl;
