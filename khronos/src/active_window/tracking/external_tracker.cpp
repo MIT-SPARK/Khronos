@@ -79,7 +79,7 @@ void ExternalTracker::processInput(FrameData& data, Tracks& tracks) {
 
   // Update which tracks are still active. Tracks labeled inactive will be removed by
   // the active window.
-  updateTrackingDuration(tracks);
+  updateTrackingStatus(tracks);
 }
 
 void ExternalTracker::associateTracks(const FrameData& data, Tracks& tracks) {
@@ -132,7 +132,7 @@ void ExternalTracker::updateTrack(const MeasurementCluster& observation, Track& 
       static_cast<float>(track.observations.size()) / (config.min_num_observations * 2), 1.f);
 }
 
-void ExternalTracker::updateTrackingDuration(Tracks& tracks) {
+void ExternalTracker::updateTrackingStatus(Tracks& tracks) {
   // Label tracks that exit the temporal window as inactive.
   const TimeStamp min_time = processing_stamp_ - fromSeconds(config.temporal_window);
   for (Track& track : tracks) {
