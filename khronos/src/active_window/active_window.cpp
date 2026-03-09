@@ -150,6 +150,9 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& 
   // Volumetric reconstruction in active window map.
   updateMap(*processor, *data);
 
+    
+  
+
   // Save the frame for later use and free-up memory of frames no longer used.
   frame_data_buffer_.trimBuffer(tracks_);
   frame_data_buffer_.storeData(data);
@@ -270,6 +273,8 @@ void ActiveWindow::extractInactiveObjects() {
       it++;
       continue;
     }
+
+
 
     // NOTE(lschmid) Move the track and copy the frame data buffer to the thread. The buffer will
     // keep relevant frames alive while the AW updates.
