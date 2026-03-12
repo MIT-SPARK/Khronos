@@ -42,6 +42,7 @@
 #include <thread>
 #include <vector>
 
+#include <glog/logging.h>
 #include <hydra/reconstruction/index_getter.h>
 #include <spatial_hash/neighbor_utils.h>
 
@@ -67,6 +68,14 @@ void declare_config(TrackingIntegrator::Config& config) {
 
 TrackingIntegrator::TrackingIntegrator(const TrackingIntegrator::Config& config)
     : config(config::checkValid(config)) {}
+
+void TrackingIntegrator::setWindow(hydra::VolumetricWindow* window) {
+  if (window == nullptr) {
+    LOG(FATAL) << "[Tracking Integrator] map_window is required and cannot be null. "
+                  "Set active_window.map_window in config (e.g. type: spatial or type: temporal).";
+  }
+  window_ = window;
+}
 
 void TrackingIntegrator::updateBlocks(const FrameData& data, VolumetricMap& map) const {
   Timer timer("integration/tracking", data.input.timestamp_ns);
@@ -133,6 +142,10 @@ void TrackingIntegrator::resetInactive(VolumetricMap& map,
 void TrackingIntegrator::updateBlockTracking(const FrameData* data,
                                              BlockIndexGetter* index_getter,
                                              VolumetricMap* map) const {
+  if (window_ == nullptr) {
+    LOG(FATAL) << "[Tracking Integrator] map_window is required. Call setWindow() with a valid "
+                  "VolumetricWindow before updateBlocks.";
+  }
   const float tsdf_threshold = config.tsdf_occupancy_threshold < 0
                                    ? config.tsdf_occupancy_threshold * -map->config.voxel_size
                                    : config.tsdf_occupancy_threshold;
@@ -151,10 +164,21 @@ void TrackingIntegrator::updateBlockTracking(const FrameData* data,
 
     // Update all voxels.
     bool contains_active_data = false;
+    const uint64_t timestamp_ns = data->input.timestamp_ns;
+    const Eigen::Isometry3d world_T_body = data->input.world_T_body;
     for (size_t linear_index = 0; linear_index < tracking_block->numVoxels(); ++linear_index) {
       TsdfVoxel& tsdf_voxel = tsdf_block->getVoxel(linear_index);
       TrackingVoxel& tracking_voxel = tracking_block->getVoxel(linear_index);
-      updateTrackingDuration(tsdf_voxel, tracking_voxel, data->input.timestamp_ns, tsdf_threshold);
+      updateLastOccupied(tsdf_voxel, tracking_voxel, timestamp_ns, tsdf_threshold);
+      const Eigen::Vector3d voxel_pos =
+          tsdf_block->getVoxelPosition(linear_index).cast<double>();
+      const bool was_active = tracking_voxel.active;
+      tracking_voxel.active =
+          window_->inBounds(timestamp_ns, world_T_body,
+                            tracking_voxel.last_observed, voxel_pos);
+      if (was_active && !tracking_voxel.active) {
+        tracking_voxel.to_remove = true;
+      }
       if (tracking_voxel.active) {
         contains_active_data = true;
       }
@@ -221,7 +245,7 @@ void TrackingIntegrator::updateBlockEverFree(const FrameData* data,
   }
 }
 
-bool TrackingIntegrator::updateTrackingDuration(TsdfVoxel& tsdf_voxel,
+void TrackingIntegrator::updateLastOccupied(TsdfVoxel& tsdf_voxel,
                                                 TrackingVoxel& tracking_voxel,
                                                 const TimeStamp& time_stamp,
                                                 float tsdf_threshold) const {
@@ -232,17 +256,6 @@ bool TrackingIntegrator::updateTrackingDuration(TsdfVoxel& tsdf_voxel,
     // The voxel is considered occupied
     tracking_voxel.last_occupied = time_stamp;
   }
-
-  const bool was_active = tracking_voxel.active;
-  tracking_voxel.active =
-      toSeconds(tracking_voxel.last_observed) >= toSeconds(time_stamp) - config.temporal_window;
-
-  // Deactiavted voxels are reset. But this messes with the meshing...
-  if (was_active && !tracking_voxel.active) {
-    tracking_voxel.to_remove = true;
-    return true;
-  }
-  return false;
 }
 
 bool TrackingIntegrator::voxelIsFree(const TrackingVoxel& voxel, const TimeStamp& stamp) const {

@@ -70,9 +70,6 @@ class MaxIoUTracker : public Tracker {
       kAssignTrack
     } semantic_association = SemanticAssociation::kAssignCluster;
 
-    // Active Window Status method
-    enum class ActiveWindowMode { kTemporal, kSpatial } active_window_mode = ActiveWindowMode::kTemporal; 
-
     // Minimum IoU to consider two semantic detections a match.
     float min_semantic_iou = 0.5f;
 
@@ -84,13 +81,6 @@ class MaxIoUTracker : public Tracker {
 
     // Allows the dynamic object to move at mostthis distance [m] between frames.
     float max_dynamic_distance = 1.f;
-
-    // Duration [s] until tracks become deactivated, leaving the active window.
-    float temporal_window = 3.f;
-
-    // Radius [m] until tracks become deactivated, leaving the active window.
-    float spatial_window = 10.f;
-
 
     // Number of times a track has to be observed to be considered existent.
     int min_num_observations = 20;
@@ -121,7 +111,6 @@ class MaxIoUTracker : public Tracker {
   void assignClustersToStaticTrack(const FrameData& data,
                                    Tracks& tracks,
                                    std::unordered_set<int>& associated_objects);
-  void updateTrackingStatus(const FrameData& data, Tracks& tracks);
   Track& addNewTrack(const FrameData& data,
                      const MeasurementCluster& observation,
                      Tracks& tracks,

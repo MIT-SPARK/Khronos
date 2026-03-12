@@ -66,7 +66,6 @@ void declare_config(ActiveWindow::Config& config) {
   field(config.verbosity, "verbosity");
   field(config.detach_object_extraction, "detach_object_extraction");
   field(config.min_output_separation, "min_output_separation", "s");
-
   // intentionally avoid descend into namespace to keep backwards compatability
   field(config.processors, "processors", false);
   field(config.tracking_integrator, "tracking_integrator");
@@ -100,6 +99,11 @@ ActiveWindow::ActiveWindow(const Config& config, const OutputQueue::Ptr& output_
       extraction_worker_(config.extraction_worker, config.object_extractor.create()),
       sinks_(KhronosSink::instantiate(config.khronos_sinks)),
       frame_data_buffer_(config.frame_data_buffer) {
+  if (!map_window_) {
+    LOG(FATAL) << "[Khronos Active Window] map_window is required. Set active_window.map_window "
+                  "in config (e.g. type: spatial or type: temporal).";
+  }
+  tracking_integrator_.setWindow(map_window_.get());
   if (!map_.config.with_tracking) {
     LOG(WARNING) << "[Khronos Active Window] Tracking layer disabled for volumetric map! Tracking "
                     "layer is strongly recommended as block archival and motion detection may not "
@@ -114,6 +118,17 @@ std::string ActiveWindow::printInfo() const {
 void ActiveWindow::addKhronosSink(const KhronosSink::Ptr& sink) {
   if (sink) {
     sinks_.push_back(sink);
+  }
+}
+
+void ActiveWindow::updateTrackingStatus(const FrameData& data, Tracks& tracks) {
+  const uint64_t timestamp_ns = data.input.timestamp_ns;
+  const Eigen::Isometry3d world_T_body = data.input.world_T_body;
+  for (Track& track : tracks) {
+    const Eigen::Vector3d track_pos =
+        track.last_bounding_box.world_P_center.cast<double>();
+    track.is_active =
+        map_window_->inBounds(timestamp_ns, world_T_body, track.last_seen, track_pos);
   }
 }
 
@@ -147,11 +162,11 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& 
     processor->tracker->processInput(*data, tracks_);
   }
 
+  // Update track active status using the active window's VolumetricWindow policy.
+  updateTrackingStatus(*data, tracks_);
+
   // Volumetric reconstruction in active window map.
   updateMap(*processor, *data);
-
-    
-  
 
   // Save the frame for later use and free-up memory of frames no longer used.
   frame_data_buffer_.trimBuffer(tracks_);

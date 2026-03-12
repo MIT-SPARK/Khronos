@@ -76,10 +76,6 @@ void ExternalTracker::processInput(FrameData& data, Tracks& tracks) {
   // Associate current objects to existing tracks and create new tracks for
   // unassociated objects.
   associateTracks(data, tracks);
-
-  // Update which tracks are still active. Tracks labeled inactive will be removed by
-  // the active window.
-  updateTrackingStatus(tracks);
 }
 
 void ExternalTracker::associateTracks(const FrameData& data, Tracks& tracks) {
@@ -130,14 +126,6 @@ void ExternalTracker::updateTrack(const MeasurementCluster& observation, Track& 
   track.observations.emplace_back(processing_stamp_, observation.id, -1);
   track.confidence = std::min(
       static_cast<float>(track.observations.size()) / (config.min_num_observations * 2), 1.f);
-}
-
-void ExternalTracker::updateTrackingStatus(Tracks& tracks) {
-  // Label tracks that exit the temporal window as inactive.
-  const TimeStamp min_time = processing_stamp_ - fromSeconds(config.temporal_window);
-  for (Track& track : tracks) {
-    track.is_active = track.last_seen >= min_time;
-  }
 }
 
 }  // namespace khronos

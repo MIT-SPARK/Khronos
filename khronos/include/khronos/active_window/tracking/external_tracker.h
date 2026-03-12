@@ -72,7 +72,6 @@ class ExternalTracker : public Tracker {
  protected:
   // Processing.
   void associateTracks(const FrameData& data, Tracks& tracks);
-  void updateTrackingStatus(Tracks& tracks);
   void addNewTrack(const MeasurementCluster& observation, Tracks& tracks);
   void updateTrack(const MeasurementCluster& observation, Track& track) const;
 
