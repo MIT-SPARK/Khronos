@@ -56,9 +56,7 @@ void declare_config(ExternalTracker::Config& config) {
   using namespace config;
   name("ExternalTracker");
   field(config.verbosity, "verbosity");
-  field(config.temporal_window, "temporal_window", "s");
   field(config.min_num_observations, "min_num_observations", "frames");
-  check(config.temporal_window, GT, 0.f, "temporal_window");
 }
 
 ExternalTracker::ExternalTracker(const Config& config) : config(config::checkValid(config)) {}

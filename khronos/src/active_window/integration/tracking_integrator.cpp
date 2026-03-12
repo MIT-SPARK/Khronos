@@ -56,14 +56,12 @@ void declare_config(TrackingIntegrator::Config& config) {
   field(config.burn_in_period, "burn_in_period", "s");
   field(config.tsdf_occupancy_threshold, "tsdf_occupancy_threshold", "m");
   field(config.neighbor_connectivity, "neighbor_connectivity");
-  field(config.temporal_window, "temporal_window", "s");
   field<ThreadNumConversion>(config.num_threads, "num_threads");
 
   checkIsOneOf(config.neighbor_connectivity, {6, 18, 26}, "neighbor_connectivity");
   check(config.num_threads, GE, 1, "num_threads");
   check(config.temporal_buffer, GT, 0, "temporal_buffer");
   check(config.tsdf_occupancy_threshold, NE, 0, "tsdf_occupancy_threshold");
-  check(config.temporal_window, GT, 0, "temporal_window");
 }
 
 TrackingIntegrator::TrackingIntegrator(const TrackingIntegrator::Config& config)
