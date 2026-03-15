@@ -68,7 +68,7 @@ class InstanceForwarding : public ObjectDetector {
     // Maximum depth values to consider for object extraction in meters. Use 0 for infinity.
     float max_range = 0.f;
 
-    // set a min range to filter out close noisy points
+    // Minimum depth values to consider for object extraction in meters. Use 0 to disable.
     float min_range = 0.f;
 
     // Discard clusters with fewer pixels than this.

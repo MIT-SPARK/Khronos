@@ -105,16 +105,9 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
         }
       }
 
-      if (config.max_range > 0.f) {
+      if (config.max_range > 0.f || config.min_range > 0.f) {
         const float range = data.input.range_image.at<InputData::RangeType>(v, u);
-        if (range > config.max_range) {
-          continue;
-        }
-      }
-
-      if (config.min_range > 0.f) {
-        const float range = data.input.range_image.at<InputData::RangeType>(v, u);
-        if (range < config.min_range) {
+        if (range < config.min_range || (config.max_range > 0.f && range > config.max_range)) {
           continue;
         }
       }
