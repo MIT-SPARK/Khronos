@@ -68,6 +68,9 @@ class InstanceForwarding : public ObjectDetector {
     // Maximum depth values to consider for object extraction in meters. Use 0 for infinity.
     float max_range = 0.f;
 
+    // Minimum depth values to consider for object extraction in meters. Use 0 to disable.
+    float min_range = 0.f;
+
     // Discard clusters with fewer pixels than this.
     int min_cluster_size = 0;
 
@@ -82,6 +85,9 @@ class InstanceForwarding : public ObjectDetector {
 
     // Discard clusters that is overly similary to background
     double max_background_score = 0.2;
+
+    // Treat segmentation with instance id
+    bool instance_id = true;
 
     // Background is specified by the following embedding group (prompts)
     config::VirtualConfig<hydra::EmbeddingGroup> background;

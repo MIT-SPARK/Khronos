@@ -391,6 +391,7 @@ void MaxIoUTracker::assignStaticTracksToCluster(const FrameData& data,
                                                 std::unordered_set<int>& associated_objects) {
   for (const auto& cluster : data.semantic_clusters) {
     if (associated_objects.find(cluster.id) != associated_objects.end()) {
+      // skip if cluster is previously assigned to a dynamic tracks
       continue;
     }
 
@@ -569,7 +570,7 @@ float MaxIoUTracker::computeIoUPixels(const FrameData& data,
                                       const MeasurementCluster& cluster,
                                       const Track& track) const {
   // Project every pixel of cluster 1 into the frame of cluster 2.
-  const Transform sensor_T_world = data.input.getSensorPose();
+  const Transform sensor_T_world = data.input.getSensorPose().inverse();
   const Sensor& sensor = data.input.getSensor();
   std::set<Pixel> reprojected_pixels;
   for (const Point& point : track.last_points) {

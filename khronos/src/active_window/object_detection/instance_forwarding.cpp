@@ -49,11 +49,13 @@ void declare_config(InstanceForwarding::Config& config) {
   name("InstanceForwarding");
   field(config.verbosity, "verbosity");
   field(config.max_range, "max_range", "m");
+  field(config.min_range, "min_range", "m");
   field(config.min_cluster_size, "min_cluster_size");
   field(config.max_cluster_size, "max_cluster_size");
   field(config.min_object_volume, "min_object_volume", "m");
   field(config.max_object_volume, "max_object_volume", "m");
   field(config.max_background_score, "max_background_score");
+  field(config.instance_id, "instance_id");
   config.background.setOptional();
   field(config.background, "background");
   config.metric.setOptional();
@@ -103,12 +105,13 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
         }
       }
 
-      if (config.max_range > 0.f) {
+      if (config.max_range > 0.f || config.min_range > 0.f) {
         const float range = data.input.range_image.at<InputData::RangeType>(v, u);
-        if (range > config.max_range) {
+        if (range < config.min_range || (config.max_range > 0.f && range > config.max_range)) {
           continue;
         }
       }
+
       data.object_image.at<FrameData::ObjectImageType>(v, u) = id;
       clusters[id].emplace_back(u, v);
     }
@@ -136,7 +139,13 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
 
     // Closed set version
     if (data.input.label_features.empty()) {
-      cluster.semantics = SemanticClusterInfo(id);
+      // modify to parse category id and instance id
+      if (config.instance_id) {
+        int16_t category_id = static_cast<int16_t>((id >> 16) & 0xFFFF);
+        cluster.semantics = SemanticClusterInfo(category_id);
+      } else {
+        cluster.semantics = SemanticClusterInfo(id);
+      }
     }
     // TODO(Yun) For now all semantic id is the same (so all label checks are invalid)
     const auto feature = data.input.label_features.find(id);
