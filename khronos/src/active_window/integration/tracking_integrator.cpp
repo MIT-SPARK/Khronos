@@ -64,16 +64,10 @@ void declare_config(TrackingIntegrator::Config& config) {
   check(config.tsdf_occupancy_threshold, NE, 0, "tsdf_occupancy_threshold");
 }
 
-TrackingIntegrator::TrackingIntegrator(const TrackingIntegrator::Config& config)
-    : config(config::checkValid(config)) {}
-
-void TrackingIntegrator::setWindow(hydra::VolumetricWindow* window) {
-  if (window == nullptr) {
-    LOG(FATAL) << "[Tracking Integrator] map_window is required and cannot be null. "
-                  "Set active_window.map_window in config (e.g. type: spatial or type: temporal).";
-  }
-  window_ = window;
-}
+TrackingIntegrator::TrackingIntegrator(const TrackingIntegrator::Config& config, hydra::VolumetricWindow* window)
+    : config(config::checkValid(config)) {
+      window_ = window;
+    }
 
 void TrackingIntegrator::updateBlocks(const FrameData& data, VolumetricMap& map) const {
   Timer timer("integration/tracking", data.input.timestamp_ns);

@@ -75,23 +75,13 @@ class TrackingIntegrator {
     // Number of neighbors to consider for the spatial robustness check {6, 18, 26}.
     int neighbor_connectivity = 18;
 
-    // Duration in seconds a voxel can be out of view before loosing the 'active' status
-    // and exiting the active window.
-    float temporal_window = 3.f;
-
     // Number of threads to use.
     int num_threads = hydra::GlobalInfo::instance().getConfig().default_num_threads;
   } const config;
 
   // Construction.
-  explicit TrackingIntegrator(const Config& config);
+  explicit TrackingIntegrator(const Config& config, hydra::VolumetricWindow* window);
   virtual ~TrackingIntegrator() = default;
-
-  /**
-   * @brief Set the volumetric window used to determine voxel active status. Required
-   * before calling updateBlocks. LOG(FATAL) if window is null.
-   */
-  void setWindow(hydra::VolumetricWindow* window);
 
   /**
    * @brief Update the tracking information and ever-free state of all blocks whose TSDF

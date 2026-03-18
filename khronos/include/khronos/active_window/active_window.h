@@ -91,8 +91,6 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   struct Config : hydra::ActiveWindowModule::Config {
     int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
 
-    enum class ActiveWindowMode { kTemporal, kSpatial } active_window_mode = ActiveWindowMode::kTemporal; 
-
     // Minimum duration for full updates and sending an output message [s]. A value of 0 will
     // perform full updates on every frame.
     float min_output_separation = 0.0f;
