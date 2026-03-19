@@ -174,6 +174,11 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   hydra::ActiveWindowOutput::Ptr extractOutputData(const FrameData& data, bool threaded);
 
   /**
+   * @brief Update the tracking status of all blocks and tracks based on the given data. This will update the active/inactive status of blocks and tracks, but will not reset any voxels or tracks. This should be called after meshing and before extracting output data to ensure that the correct objects are extracted and the correct blocks are archived. 
+   */
+  void updateTrackingStatus(const FrameData& data, Tracks& tracks);
+
+  /**
    * @brief Extract all objects that have turned inactive, i.e. are exiting the
    * active and meet the minimum confidence requirement.
    * @param output The output data to store the extracted objects in.

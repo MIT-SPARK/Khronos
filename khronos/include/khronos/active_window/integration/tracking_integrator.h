@@ -41,6 +41,7 @@
 #include <thread>
 
 #include <config_utilities/config_utilities.h>
+#include <hydra/active_window/volumetric_window.h>
 #include <hydra/common/global_info.h>
 #include <hydra/reconstruction/index_getter.h>
 #include <spatial_hash/neighbor_utils.h>
@@ -74,16 +75,12 @@ class TrackingIntegrator {
     // Number of neighbors to consider for the spatial robustness check {6, 18, 26}.
     int neighbor_connectivity = 18;
 
-    // Duration in seconds a voxel can be out of view before loosing the 'active' status
-    // and exiting the active window.
-    float temporal_window = 3.f;
-
     // Number of threads to use.
     int num_threads = hydra::GlobalInfo::instance().getConfig().default_num_threads;
   } const config;
 
   // Construction.
-  explicit TrackingIntegrator(const Config& config);
+  explicit TrackingIntegrator(const Config& config, hydra::VolumetricWindow* window);
   virtual ~TrackingIntegrator() = default;
 
   /**
@@ -122,15 +119,14 @@ class TrackingIntegrator {
                            VolumetricMap* map) const;
 
   /**
-   * @brief Track whether the TSDF voxel was observed and is considered occupied.
+   * @brief Update the last occupied timestamp of the tracking voxel.
    * @param tsdf_voxel The corresponding TSDF voxel to perform occupancy and observation
    * checks.
    * @param tracking_voxel The tracking voxel to update.
    * @param time_stamp Time stamp of the current measurement.
    * @param tsdf_threshold Threshold to consider a TSDF voxel occupied in meters.
-   * @return True if the voxel has changed, false otherwise.
    */
-  bool updateTrackingDuration(TsdfVoxel& tsdf_voxel,
+  void updateLastOccupied(TsdfVoxel& tsdf_voxel,
                               TrackingVoxel& tracking_voxel,
                               const TimeStamp& time_stamp,
                               float tsdf_threshold) const;
@@ -142,6 +138,9 @@ class TrackingIntegrator {
    * @return True if the voxel is free, false otherwise.
    */
   bool voxelIsFree(const TrackingVoxel& voxel, const TimeStamp& stamp) const;
+
+ private:
+  hydra::VolumetricWindow* window_ = nullptr;
 };
 
 void declare_config(TrackingIntegrator::Config& config);

@@ -143,14 +143,12 @@ void declare_config(MaxIoUTracker::Config& config) {
   field(config.min_cosine_sim, "min_cosine_sim");
   field(config.min_cross_iou, "min_cross_iou");
   field(config.max_dynamic_distance, "max_dynamic_distance", "m");
-  field(config.temporal_window, "temporal_window", "s");
   field(config.min_num_observations, "min_num_observations", "frames");
   field(config.voxel_size, "voxel_size", "m");
 
   checkInRange(config.min_cross_iou, 0.0f, 1.0f, "min_cross_iou");
   checkInRange(config.min_semantic_iou, 0.0f, 1.0f, "min_semantic_iou");
   checkInRange(config.min_cosine_sim, -1.0f, 1.0f, "min_cosine_sim");
-  check(config.temporal_window, GT, 0.f, "temporal_window");
   check(config.voxel_size, GT, 0.f, "voxel_size");
 }
 
@@ -207,10 +205,6 @@ void MaxIoUTracker::processInput(FrameData& data, Tracks& tracks) {
   // unassociated objects.
   // TODO(lschmid): Handle objects splitting or merging explicitly at some point.
   associateTracks(data, tracks);
-
-  // Update which tracks are still active. Tracks labeled inactive will be removed by
-  // the active window.
-  updateTrackingDuration(tracks);
 }
 
 void MaxIoUTracker::associateTracks(const FrameData& data, Tracks& tracks) {
@@ -518,14 +512,6 @@ void MaxIoUTracker::updateTrack(const FrameData& data,
   // two so that the minimum observations yield 50% confidence.
   track.confidence += 1.0f / (config.min_num_observations * 2.0f);
   track.confidence = std::min(track.confidence, 1.0f);
-}
-
-void MaxIoUTracker::updateTrackingDuration(Tracks& tracks) {
-  // Label tracks that exit the temporal window as inactive.
-  const TimeStamp min_time = processing_stamp_ - fromSeconds(config.temporal_window);
-  for (Track& track : tracks) {
-    track.is_active = track.last_seen >= min_time;
-  }
 }
 
 Point MaxIoUTracker::computeCentroid(const FrameData& data,
