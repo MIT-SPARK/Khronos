@@ -39,6 +39,10 @@
 
 #include <config_utilities/config.h>
 
+#include <memory>
+
+#include <spark_dsg/node_attributes.h>
+
 namespace khronos {
 
 using namespace std::chrono_literals;
@@ -141,7 +145,10 @@ void ObjectWorkerPool::runOnce(Request::Ptr req) const {
   curr_workers_--;
   if (attrs) {
     std::lock_guard<std::mutex> lock(output_mutex_);
-    output_.emplace_back(std::move(attrs));
+    output_.emplace_back(std::make_shared<hydra::NodeUpdateAttributes>(
+        std::shared_ptr<spark_dsg::NodeAttributes>(std::move(attrs)),
+        hydra::NodeUpdateAttributes::UpdateType::Add,
+        static_cast<size_t>(req->track.id)));
   }
 }
 
