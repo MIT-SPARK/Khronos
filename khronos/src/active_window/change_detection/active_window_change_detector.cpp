@@ -125,27 +125,37 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
     const auto& bbox = khronos_attrs->bounding_box;
 
     if (mesh.numVertices() == 0) {
+      MLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+              << " has empty mesh, skipping";
       continue;
     }
 
     int num_vertices_in_free_space = 0;
+    int num_vertices_in_bound_and_known = 0;
 
-    // 3. For each vertex, check if it's in free space
+    // 3. For each vertex in bound and not unknown, check if it's in free space
     for (size_t i = 0; i < mesh.numVertices(); ++i) {
       // Transform: local → prior_world → current_world
       const Eigen::Vector3f vertex_local = mesh.pos(i);
       const Eigen::Vector3f vertex_prior_world = bbox.pointToWorldFrame(vertex_local);
       const Point vertex_current = transformPriorToCurrentFrame(vertex_prior_world.cast<double>());
 
+      if (!isPointKnown(vertex_current, map)) {
+        continue;  // Skip unknown points
+      }
+
+      ++num_vertices_in_bound_and_known;
+
       if (isPriorPointFree(vertex_current, map)) {
         ++num_vertices_in_free_space;
       }
     }
 
-    // 4. If more than threshold % of vertices are in free space, mark as removed
-    const float free_ratio =
-        static_cast<float>(num_vertices_in_free_space) / static_cast<float>(mesh.numVertices());
+    // 4. Compute ratio of vertices in bound and known (?) in free space
+    const float free_ratio = static_cast<float>(num_vertices_in_free_space) /
+                             static_cast<float>(num_vertices_in_bound_and_known);
 
+    // 5. If more than threshold % of vertices are in free space, mark as removed
     if (free_ratio >= config.removal_vertex_free_ratio_threshold) {
       removed_object_ids.push_back(object_id);
       MLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
@@ -169,6 +179,9 @@ void ActiveWindowChangeDetector::loadPriorMap() {
   // TODO(multy): in documentation might require to set a prior map path that's different from the
   // DCIST env variable.
   prior_graph_ = DynamicSceneGraph::load(config.prior_map_path);
+  MLOG(1) << "[ActiveWindowChangeDetector] Loaded prior graph from " << config.prior_map_path
+          << " with "
+          << (prior_graph_ ? std::to_string(prior_graph_->numNodes()) + " nodes." : "0 nodes.");
 }
 
 bool ActiveWindowChangeDetector::isPriorPointFree(const Point& point_in_map,
@@ -182,6 +195,12 @@ bool ActiveWindowChangeDetector::isPointInMapBounds(const Point& point,
   // A point is "in bounds" if the map has an allocated block at that location
   const auto& tsdf_layer = map.getTsdfLayer();
   return tsdf_layer.hasBlock(point.cast<float>());
+}
+
+bool ActiveWindowChangeDetector::isPointKnown(const Point& point_in_map,
+                                              const VolumetricMap& map) const {
+  const auto* voxel = map.getTrackingLayer()->getVoxelPtr(point_in_map);
+  return voxel && voxel->last_observed != 0u;
 }
 
 std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMapBounds(
