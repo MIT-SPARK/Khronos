@@ -115,6 +115,8 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
 
   bool isPriorPointFree(const Point& point_in_map, const VolumetricMap& map) const;
 
+  bool isPointKnown(const Point& point_in_map, const VolumetricMap& map) const;
+
   /**
    * @brief Check if a point is within allocated map bounds (has an allocated block).
    * @param point The point to check in world frame.
