@@ -147,6 +147,11 @@ void ObjectWorkerPool::runOnce(Request::Ptr req) const {
     output_.emplace_back(
         hydra::NodeUpdate{std::shared_ptr<spark_dsg::NodeAttributes>(std::move(attrs)),
                           static_cast<size_t>(req->track.id)});
+  } else {
+    output_.emplace_back(
+        hydra::NodeUpdate{nullptr,
+                          static_cast<size_t>(req->track.id),
+                          hydra::NodeUpdate::UpdateType::Delete});            
   }
 }
 

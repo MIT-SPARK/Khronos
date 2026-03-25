@@ -107,6 +107,9 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     FrameDataBuffer::Config frame_data_buffer;
     std::vector<KhronosSink::Factory> khronos_sinks;
 
+    //! Minimum confidence before object is forwarded to graph builder
+    float min_object_confidence = 0.5f;  
+
     // override layer defaults of Hydra
     Config() : hydra::ActiveWindowModule::Config(false, true) {}
   } const config;
