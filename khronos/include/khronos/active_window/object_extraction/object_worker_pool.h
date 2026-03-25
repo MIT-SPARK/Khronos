@@ -98,7 +98,7 @@ class ObjectWorkerPool {
 
   mutable std::mutex output_mutex_;
   std::unique_ptr<std::thread> thread_;
-  mutable std::list<spark_dsg::NodeAttributes::Ptr> output_;
+  mutable std::list<hydra::NodeUpdate> output_;
 };
 
 void declare_config(ObjectWorkerPool::Config& config);
