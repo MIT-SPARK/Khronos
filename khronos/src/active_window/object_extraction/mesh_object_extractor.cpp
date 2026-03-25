@@ -101,8 +101,6 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractObject(const Track& tra
   object->last_observed_ns = {track.last_seen};
   object->position = object->bounding_box.world_P_center.cast<double>();
 
-  object->details["track_id"] = {static_cast<size_t>(track.id)};
-
   return object;
 }
 
@@ -171,7 +169,6 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractDynamicObject(
   }
   object->bounding_box = BoundingBox(bbox_extent / object->trajectory_positions.size(),
                                      object->trajectory_positions.front());
-  
 
   return object;
 }

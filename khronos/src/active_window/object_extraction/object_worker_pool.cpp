@@ -37,10 +37,9 @@
 
 #include "khronos/active_window/object_extraction/object_worker_pool.h"
 
-#include <config_utilities/config.h>
-
 #include <memory>
 
+#include <config_utilities/config.h>
 #include <spark_dsg/node_attributes.h>
 
 namespace khronos {
@@ -112,7 +111,7 @@ KhronosObjectAttributes::Ptr ObjectWorkerPool::runBlocking(const Track& track,
 
 void ObjectWorkerPool::fill(hydra::LayerUpdate& update) {
   std::lock_guard<std::mutex> lock(output_mutex_);
-  std::move(output_.begin(), output_.end(), std::back_inserter(update.attributes));
+  std::move(output_.begin(), output_.end(), std::back_inserter(update.updates));
   output_.clear();
 }
 
@@ -145,10 +144,9 @@ void ObjectWorkerPool::runOnce(Request::Ptr req) const {
   curr_workers_--;
   if (attrs) {
     std::lock_guard<std::mutex> lock(output_mutex_);
-    output_.emplace_back(std::make_shared<hydra::NodeUpdateAttributes>(
-        std::shared_ptr<spark_dsg::NodeAttributes>(std::move(attrs)),
-        hydra::NodeUpdateAttributes::UpdateType::Add,
-        static_cast<size_t>(req->track.id)));
+    output_.emplace_back(
+        hydra::NodeUpdate{std::shared_ptr<spark_dsg::NodeAttributes>(std::move(attrs)),
+                          static_cast<size_t>(req->track.id)});
   }
 }
 
