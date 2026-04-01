@@ -137,7 +137,7 @@ void ActiveWindow::addKhronosSink(const KhronosSink::Ptr& sink) {
   }
 }
 
-void ActiveWindow::updateTrackingStatus(const FrameData& data, Tracks& tracks) {
+void ActiveWindow::updateTrackingStatus(const FrameData& data) {
   for (auto& track : tracks_) {
     const Eigen::Vector3d track_pos =
         track.last_bounding_box.world_P_center.cast<double>();
@@ -176,7 +176,7 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& 
   }
 
   // Update track active status using the active window's VolumetricWindow policy.
-  updateTrackingStatus(*data, tracks_);
+  updateTrackingStatus(*data);
 
   // Volumetric reconstruction in active window map.
   updateMap(*processor, *data);
