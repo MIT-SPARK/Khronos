@@ -47,6 +47,23 @@
 
 namespace khronos {
 
+namespace {
+    std::shared_ptr<KhronosObjectAttributes> createObjectAttributes(const Track& track){
+    auto object = std::make_shared<KhronosObjectAttributes>();
+    if (track.semantics) {
+      object->semantic_label = track.semantics->category_id;
+      object->semantic_feature = track.semantics->feature;
+    }
+    object->first_observed_ns = {track.first_seen};
+    object->last_observed_ns = {track.last_seen};
+
+    object->bounding_box = track.last_bounding_box;
+    object->position = object->bounding_box.world_P_center.cast<double>();
+    
+    return object;
+  }
+}
+
 void declare_config(SensorProcessor::Config& config) {
   using namespace config;
   name("SensorProcessor::Config");
@@ -120,8 +137,8 @@ void ActiveWindow::addKhronosSink(const KhronosSink::Ptr& sink) {
   }
 }
 
-void ActiveWindow::updateTrackingStatus(const FrameData& data, Tracks& tracks) {
-  for (auto& track : tracks) {
+void ActiveWindow::updateTrackingStatus(const FrameData& data) {
+  for (auto& track : tracks_) {
     const Eigen::Vector3d track_pos =
         track.last_bounding_box.world_P_center.cast<double>();
     track.is_active = map_window_->inBounds(data.input.timestamp_ns, data.input.world_T_body, track.last_seen, track_pos);
@@ -159,7 +176,7 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& 
   }
 
   // Update track active status using the active window's VolumetricWindow policy.
-  updateTrackingStatus(*data, tracks_);
+  updateTrackingStatus(*data);
 
   // Volumetric reconstruction in active window map.
   updateMap(*processor, *data);
@@ -269,9 +286,19 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::extractOutputData(const FrameData& 
   }
 
   // TODO(nathan) fix the layer update to not use LayerId
-  auto update = std::make_shared<hydra::LayerUpdate>(2);
+  auto update = std::make_shared<hydra::LayerUpdate>(2);  
   output->graph_update[update->layer] = update;
   extraction_worker_.fill(*update);
+
+  for (const auto& track: tracks_){
+    if(track.confidence < config.min_object_confidence){
+      continue;
+    }
+    
+    auto output_object = createObjectAttributes(track);
+    update->updates.push_back(hydra::NodeUpdate {output_object, static_cast<size_t>(track.id)});
+  }
+
   return output;
 }
 
