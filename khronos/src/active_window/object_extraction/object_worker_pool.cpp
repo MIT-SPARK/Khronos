@@ -139,7 +139,7 @@ void ObjectWorkerPool::runOnce(Request::Ptr req) const {
   auto attrs = extractor_->extractObject(req->track, req->frame_data);
   const auto stop = std::chrono::high_resolution_clock::now();
 
-  ElapsedTimeRecorder::instance().record("active_window/extract_object", req->stamp, start - stop);
+  ElapsedTimeRecorder::instance().record("active_window/extract_object", req->stamp, stop - start);
 
   curr_workers_--;
   if (attrs) {
@@ -148,10 +148,8 @@ void ObjectWorkerPool::runOnce(Request::Ptr req) const {
         hydra::NodeUpdate{std::shared_ptr<spark_dsg::NodeAttributes>(std::move(attrs)),
                           static_cast<size_t>(req->track.id)});
   } else {
-    output_.emplace_back(
-        hydra::NodeUpdate{nullptr,
-                          static_cast<size_t>(req->track.id),
-                          hydra::NodeUpdate::UpdateType::Delete});            
+    output_.emplace_back(hydra::NodeUpdate{
+        nullptr, static_cast<size_t>(req->track.id), hydra::NodeUpdate::UpdateType::Delete});
   }
 }
 
