@@ -91,22 +91,7 @@ void ActiveWindowChangeDetector::addKhronosSink(const ActiveWindowCDSink::Ptr& s
   }
 }
 
-void ActiveWindowChangeDetector::call(const FrameData& data,
-                                      const VolumetricMap& map,
-                                      const Tracks& tracks) const {
-  // Poll the transformation getter and update current_T_prior_ if a new transform is available.
-  const auto tf = transformation_getter_->getTransformation();
-  if (tf.has_value()) {
-    if (config.enable_icp_refinement) {
-      runIcpRefinement(data, map, tf.value());
-    } else {
-      setCurrentToPriorTransform(tf.value());
-    }
-  }
-
-  // 1. Find all object nodes in the prior graph within current volumetric map bounds
-  const auto objects_id_in_bounds = findPriorObjectsInMapBounds(map);
-
+std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::getRemovedObjects(const std::vector<spark_dsg::NodeId>& objects_id_in_bounds, const VolumetricMap& map) const {
   std::vector<spark_dsg::NodeId> removed_object_ids;
 
   // 2. For each object node, get mesh vertices and transform to current frame
@@ -169,6 +154,55 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   // 5. TODO (multy): need ways to report the problem or even visualize it.
   MLOG(2) << "[ActiveWindowChangeDetector] Detected " << removed_object_ids.size()
           << " removed objects out of " << objects_id_in_bounds.size() << " checked";
+
+  return removed_object_ids;  
+}
+
+std::vector<int> ActiveWindowChangeDetector::getNewlyAddedObjects(const Tracks& tracks, const VolumetricMap& map) const {
+  std::vector<int> newly_added_object_ids;
+
+  // 1. For each track, we need to get the bounding box or the voxel indices (probably should be 3D) in the current active window (some kind of volume)
+
+  
+  // 2. Get all the prior traversability places from the piror map within the current active window bounds. 
+  // 3. Find voxels 2d indcies that is contained in the prior traversability places, meaning those voxels are known to be free in the prior map. 
+  //     (maybe need some polygon containment check.)
+  // 4. Then, we can compute the IoU between each track's voxels and the prior traversability places voxels. 
+  // 5. If the IoU is smaller than certain threshold, we can consider this track to be newly added. (new occupancy in the previous free space in the prior map).
+  // 6. We store the newly added objects' track id in a list
+
+  return newly_added_object_ids;  
+}
+
+void ActiveWindowChangeDetector::call(const FrameData& data,
+                                      const VolumetricMap& map,
+                                      const Tracks& tracks) const {
+  // Poll the transformation getter and update current_T_prior_ if a new transform is available.
+  const auto tf = transformation_getter_->getTransformation();
+  if (tf.has_value()) {
+    if (config.enable_icp_refinement) {
+      runIcpRefinement(data, map, tf.value());
+    } else {
+      setCurrentToPriorTransform(tf.value());
+    }
+  }
+
+  // 1. Find all object nodes in the prior graph within current volumetric map bounds
+  const auto objects_id_in_bounds = findPriorObjectsInMapBounds(map);
+
+  const auto removed_object_ids = getRemovedObjects(objects_id_in_bounds, map);
+
+
+  // Get newly added objects 
+  const auto newly_added_object_ids = getNewlyAddedObjects(tracks, map);
+
+  // Note on known limitation: we can't get added objects on the table
+
+  // If tracking, we then just need to compare track with the object node in the prior map. Similar to place layer, we compute IoU of the voxels. 
+
+  // need to pass the newly added track to the visualizatio sink. 
+
+  // compte the confidence based on the IoU is nice, and we also probably want to have way to visualize the confidence. 
 
   // 6. Call all sinks with the removed objects
   ActiveWindowCDSink::callAll(sinks_, prior_graph_, removed_object_ids, current_T_prior_);

@@ -139,12 +139,14 @@ void declare_config(MaxIoUTracker::Config& config) {
   enum_field(config.semantic_association,
              "semantic_association",
              std::vector<std::string>{"assign_cluster", "assign_track"});
+  enum_field(config.bbox_type, "bbox_type", std::vector<std::string>{"aabb", "raabb"});
   field(config.min_semantic_iou, "min_semantic_iou");
   field(config.min_cosine_sim, "min_cosine_sim");
   field(config.min_cross_iou, "min_cross_iou");
   field(config.max_dynamic_distance, "max_dynamic_distance", "m");
   field(config.min_num_observations, "min_num_observations", "frames");
   field(config.voxel_size, "voxel_size", "m");
+  
 
   checkInRange(config.min_cross_iou, 0.0f, 1.0f, "min_cross_iou");
   checkInRange(config.min_semantic_iou, 0.0f, 1.0f, "min_semantic_iou");
@@ -434,6 +436,10 @@ void MaxIoUTracker::setupTrackMeasurements(FrameData& data) const {
     setupTrackMeasurement(data, cluster);
     // NOTE(lschmid): Compute the bounding boxes for all clusters for visualization and extent
     // computation in the future.
+    
+    // add config to choose different type of bbox
+    // cluster.bounding_box =
+    //     BoundingBox(utils::VertexMapAdaptor(cluster.pixels, data.input.vertex_map), BoundingBox::Type::RAABB);
     cluster.bounding_box =
         BoundingBox(utils::VertexMapAdaptor(cluster.pixels, data.input.vertex_map));
   }

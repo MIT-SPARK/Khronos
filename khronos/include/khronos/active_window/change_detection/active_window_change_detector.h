@@ -111,6 +111,8 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
    */
   void call(const FrameData& data, const VolumetricMap& map, const Tracks& tracks) const override;
 
+  
+
   void loadPriorMap();
 
   bool isPriorPointFree(const Point& point_in_map, const VolumetricMap& map) const;
@@ -151,6 +153,10 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   void runIcpRefinement(const FrameData& data,
                         const VolumetricMap& map,
                         const Eigen::Isometry3d& initial) const;
+
+  std::vector<spark_dsg::NodeId> getRemovedObjects(const std::vector<spark_dsg::NodeId>& objects_id_in_bounds, const VolumetricMap& map) const;
+  
+  std::vector<int> getNewlyAddedObjects(const Tracks& tracks, const VolumetricMap& map) const;
 
  private:
   //! Prior map as a 3D scene graph.
