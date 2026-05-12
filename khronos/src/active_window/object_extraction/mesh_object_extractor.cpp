@@ -287,7 +287,7 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
   if (object->mesh.points.empty()) {
     object->bounding_box = extent;
   } else {
-    object->bounding_box = BoundingBox(object->mesh.points);
+    object->bounding_box = BoundingBox(object->mesh.points); // TODO change bounding box type to AABB or RAABB
   }
   if (object->bounding_box.volume() > config.max_object_volume) {
     CLOG(5) << "[MeshObjectExtractor] Dropping " << getTrackName(track) << ": large volume ("
