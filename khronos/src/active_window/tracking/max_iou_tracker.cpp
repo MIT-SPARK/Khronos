@@ -432,21 +432,20 @@ void MaxIoUTracker::assignStaticTracksToCluster(const FrameData& data,
 }
 
 void MaxIoUTracker::setupTrackMeasurements(FrameData& data) const {
+  const BoundingBox::Type bbox_type = config.bbox_type == Config::BBoxType::kRAABB
+                                          ? BoundingBox::Type::RAABB
+                                          : BoundingBox::Type::AABB;
   for (auto& cluster : data.semantic_clusters) {
     setupTrackMeasurement(data, cluster);
     // NOTE(lschmid): Compute the bounding boxes for all clusters for visualization and extent
     // computation in the future.
-    
-    // add config to choose different type of bbox
-    // cluster.bounding_box =
-    //     BoundingBox(utils::VertexMapAdaptor(cluster.pixels, data.input.vertex_map), BoundingBox::Type::RAABB);
     cluster.bounding_box =
-        BoundingBox(utils::VertexMapAdaptor(cluster.pixels, data.input.vertex_map));
+        BoundingBox(utils::VertexMapAdaptor(cluster.pixels, data.input.vertex_map), bbox_type);
   }
   for (auto& cluster : data.dynamic_clusters) {
     setupTrackMeasurement(data, cluster);
     cluster.bounding_box =
-        BoundingBox(utils::VertexMapAdaptor(cluster.pixels, data.input.vertex_map));
+        BoundingBox(utils::VertexMapAdaptor(cluster.pixels, data.input.vertex_map), bbox_type);
   }
 }
 

@@ -53,6 +53,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include "khronos/active_window/change_detection/active_window_change_detector.h"
+#include "khronos/active_window/data/track.h"
 
 
 namespace khronos {
@@ -92,6 +93,7 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
   // KhronosSink callback - called each frame.
   void call(const DynamicSceneGraph::Ptr& dsg,
             const std::vector<spark_dsg::NodeId>& removed_object_ids,
+            const std::vector<Track>& newly_added_tracks,
             const Eigen::Isometry3d& current_T_prior) const override;
 
  private:
@@ -99,6 +101,9 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
 
   void visualizeChangedObjects(const DynamicSceneGraph::Ptr& dsg,
                                const std::vector<spark_dsg::NodeId>& removed_object_ids) const;
+
+  void visualizeAddedObjects(const std::vector<Track>& newly_added_tracks,
+                             const Eigen::Isometry3d& current_T_prior) const;
 
   // ROS
   ianvs::NodeHandle nh_;
@@ -114,6 +119,7 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
   mutable rclcpp::Time stamp_;
   mutable bool stamp_is_set_ = false;
   mutable hydra::MarkerTracker object_bbox_tracker_;
+  mutable hydra::MarkerTracker added_object_bbox_tracker_;
 
   // Time stamp caching for synchronization of multiple visualizations.
   rclcpp::Time getStamp() const { return stamp_is_set_ ? stamp_ : nh_.now(); }

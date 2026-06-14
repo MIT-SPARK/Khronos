@@ -40,6 +40,7 @@
 #include <config_utilities/types/path.h>
 #include <spark_dsg/node_attributes.h>
 #include <spark_dsg/scene_graph_types.h>
+#include <spatial_hash/grid.h>
 
 #include "khronos/utils/icp_registration_utils.h"
 
@@ -57,6 +58,7 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   name("ActiveWindowChangeDetector");
   field(config.verbosity, "verbosity");
   field(config.removal_vertex_free_ratio_threshold, "removal_vertex_free_ratio_threshold");
+  field(config.added_object_containment_threshold, "added_object_containment_threshold");
   field<Path::Absolute>(config.prior_map_path, "prior_map_path");
   field(config.awcd_sinks, "awcd_sinks");
   field(config.transformation_getter, "transformation_getter");
@@ -101,7 +103,7 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::getRemovedObjects(con
     // Cast to KhronosObjectAttributes to access mesh
     const auto* khronos_attrs = object_node.tryAttributes<KhronosObjectAttributes>();
     if (!khronos_attrs) {
-      MLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+      MLOG(5) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
               << " does not have KhronosObjectAttributes, skipping";
       continue;
     }
@@ -110,7 +112,7 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::getRemovedObjects(con
     const auto& bbox = khronos_attrs->bounding_box;
 
     if (mesh.numVertices() == 0) {
-      MLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+      MLOG(5) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
               << " has empty mesh, skipping";
       continue;
     }
@@ -143,35 +145,142 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::getRemovedObjects(con
     // 5. If more than threshold % of vertices are in free space, mark as removed
     if (free_ratio >= config.removal_vertex_free_ratio_threshold) {
       removed_object_ids.push_back(object_id);
-      MLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+      MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
               << " detected as REMOVED (free ratio: " << free_ratio << ")";
     } else {
-      MLOG(2) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+      MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
               << " still present (free ratio: " << free_ratio << ")";
     }
   }
 
-  // 5. TODO (multy): need ways to report the problem or even visualize it.
-  MLOG(2) << "[ActiveWindowChangeDetector] Detected " << removed_object_ids.size()
+  MLOG(4) << "[ActiveWindowChangeDetector] Detected " << removed_object_ids.size()
           << " removed objects out of " << objects_id_in_bounds.size() << " checked";
 
-  return removed_object_ids;  
+  return removed_object_ids;
 }
 
-std::vector<int> ActiveWindowChangeDetector::getNewlyAddedObjects(const Tracks& tracks, const VolumetricMap& map) const {
-  std::vector<int> newly_added_object_ids;
+GlobalIndex ActiveWindowChangeDetector::to2DIndex(const Point& point, float voxel_size_inv) {
+  GlobalIndex idx = spatial_hash::indexFromPoint<GlobalIndex>(point, voxel_size_inv);
+  idx.z() = 0;
+  return idx;
+}
 
-  // 1. For each track, we need to get the bounding box or the voxel indices (probably should be 3D) in the current active window (some kind of volume)
+GlobalIndexSet ActiveWindowChangeDetector::getPriorFreeFootprint2D(
+    const VolumetricMap& map) const {
+  GlobalIndexSet free_footprint;
 
-  
-  // 2. Get all the prior traversability places from the piror map within the current active window bounds. 
-  // 3. Find voxels 2d indcies that is contained in the prior traversability places, meaning those voxels are known to be free in the prior map. 
-  //     (maybe need some polygon containment check.)
-  // 4. Then, we can compute the IoU between each track's voxels and the prior traversability places voxels. 
-  // 5. If the IoU is smaller than certain threshold, we can consider this track to be newly added. (new occupancy in the previous free space in the prior map).
-  // 6. We store the newly added objects' track id in a list
+  if (!prior_graph_ || !prior_graph_->hasLayer(DsgLayers::MESH_PLACES)) {
+    LOG(WARNING) << "[ActiveWindowChangeDetector] Prior graph has no MESH_PLACES layer; "
+                    "newly-added object detection requires traversability places.";
+    return free_footprint;
+  }
 
-  return newly_added_object_ids;  
+  const auto& places_layer = prior_graph_->getLayer(DsgLayers::MESH_PLACES);
+  const float voxel_size = map.config.voxel_size;
+  const float voxel_size_inv = 1.0f / voxel_size;
+  // Step at half voxel size in prior frame to avoid coverage gaps after transform.
+  const float step = voxel_size * 0.5f;
+
+  int num_trav_nodes = 0;
+  for (const auto& [node_id, node] : places_layer.nodes()) {
+    const auto* attrs = node->tryAttributes<spark_dsg::TravNodeAttributes>();
+    if (!attrs) {
+      continue;
+    }
+    ++num_trav_nodes;
+
+    // Filter to places whose center falls inside the current active-window map.
+    const Point center_current =
+        transformPriorToCurrentFrame(attrs->position);
+    if (!isPointInMapBounds(center_current, map)) {
+      continue;
+    }
+
+    // Rasterize the place's footprint in prior-map frame, then index in current frame.
+    const double max_r = attrs->max_radius;
+    const double cx = attrs->position.x();
+    const double cy = attrs->position.y();
+    const double cz = attrs->position.z();
+
+    for (double x = cx - max_r; x <= cx + max_r; x += step) {
+      for (double y = cy - max_r; y <= cy + max_r; y += step) {
+        const Eigen::Vector3d candidate_prior(x, y, cz);
+        if (!attrs->contains(candidate_prior)) {
+          continue;
+        }
+        const Point pt_current = transformPriorToCurrentFrame(candidate_prior);
+        free_footprint.insert(to2DIndex(pt_current, voxel_size_inv));
+      }
+    }
+  }
+
+  if (num_trav_nodes == 0) {
+    LOG(WARNING) << "[ActiveWindowChangeDetector] MESH_PLACES layer exists but contains no "
+                    "TravNodeAttributes nodes. Prior map may have been built without traversability "
+                    "places; newly-added object detection will be a no-op.";
+  }
+
+  MLOG(3) << "[ActiveWindowChangeDetector] Prior free 2D footprint: " << free_footprint.size()
+          << " voxels from " << num_trav_nodes << " traversability place nodes.";
+  return free_footprint;
+}
+
+GlobalIndexSet ActiveWindowChangeDetector::getTrackFootprint2D(const Track& track,
+                                                               float voxel_size) const {
+  GlobalIndexSet footprint;
+  const float voxel_size_inv = 1.0f / voxel_size;
+  for (const Point& pt : track.last_points) {
+    footprint.insert(to2DIndex(pt, voxel_size_inv));
+  }
+  return footprint;
+}
+
+std::vector<int> ActiveWindowChangeDetector::getNewlyAddedObjects(const Tracks& tracks,
+                                                                   const VolumetricMap& map) const {
+  std::vector<int> newly_added_track_ids;
+
+  // Build the 2D free-space footprint from prior traversability places.
+  const GlobalIndexSet prior_free = getPriorFreeFootprint2D(map);
+  if (prior_free.empty()) {
+    return newly_added_track_ids;
+  }
+
+  const float voxel_size = map.config.voxel_size;
+
+  for (const Track& track : tracks) {
+    // Skip dynamic objects and tracks with no point observations.
+    if (track.is_dynamic || track.last_points.empty()) {
+      continue;
+    }
+
+    const GlobalIndexSet track2D = getTrackFootprint2D(track, voxel_size);
+    if (track2D.empty()) {
+      continue;
+    }
+
+    // Containment ratio: fraction of the track's 2D footprint that falls in prior free space.
+    int intersection = 0;
+    for (const GlobalIndex& idx : track2D) {
+      if (prior_free.count(idx)) {
+        ++intersection;
+      }
+    }
+    const float containment = static_cast<float>(intersection) / static_cast<float>(track2D.size());
+
+    if (containment >= config.added_object_containment_threshold) {
+      newly_added_track_ids.push_back(track.id);
+      MLOG(3) << "[ActiveWindowChangeDetector] Track " << track.id
+              << " detected as ADDED (containment: " << containment << ")";
+    } else {
+      MLOG(3) << "[ActiveWindowChangeDetector] Track " << track.id
+              << " not newly added (containment: " << containment << ")";
+    }
+  }
+
+  MLOG(2) << "[ActiveWindowChangeDetector] Detected " << newly_added_track_ids.size()
+          << " newly added objects out of " << tracks.size() << " tracks checked";
+
+  return newly_added_track_ids;
 }
 
 void ActiveWindowChangeDetector::call(const FrameData& data,
@@ -192,20 +301,28 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
 
   const auto removed_object_ids = getRemovedObjects(objects_id_in_bounds, map);
 
+  // Detect newly added objects (tracks whose footprint sits on prior-traversable ground).
+  // Known limitation: objects on tables cannot be detected this way.
+  const auto newly_added_ids = getNewlyAddedObjects(tracks, map);
 
-  // Get newly added objects 
-  const auto newly_added_object_ids = getNewlyAddedObjects(tracks, map);
+  // Build the Track objects for newly-added detections so sinks can access bbox / confidence.
+  std::vector<Track> newly_added_tracks;
+  newly_added_tracks.reserve(newly_added_ids.size());
+  for (int id : newly_added_ids) {
+    for (const Track& t : tracks) {
+      if (t.id == id) {
+        newly_added_tracks.push_back(t);
+        break;
+      }
+    }
+  }
 
-  // Note on known limitation: we can't get added objects on the table
+  MLOG(2) << "[ActiveWindowChangeDetector] Detected " << removed_object_ids.size() << " removed objects and "
+          << newly_added_tracks.size() << " newly added tracks.";
 
-  // If tracking, we then just need to compare track with the object node in the prior map. Similar to place layer, we compute IoU of the voxels. 
-
-  // need to pass the newly added track to the visualizatio sink. 
-
-  // compte the confidence based on the IoU is nice, and we also probably want to have way to visualize the confidence. 
-
-  // 6. Call all sinks with the removed objects
-  ActiveWindowCDSink::callAll(sinks_, prior_graph_, removed_object_ids, current_T_prior_);
+  // Call all sinks with removed objects, newly-added tracks, and the prior-to-current transform.
+  ActiveWindowCDSink::callAll(
+      sinks_, prior_graph_, removed_object_ids, newly_added_tracks, current_T_prior_);
 }
 
 void ActiveWindowChangeDetector::loadPriorMap() {
@@ -255,13 +372,13 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
 
     if (isPointInMapBounds(position_in_current, map)) {
       objects_in_bounds.push_back(node_id);
-      MLOG(3) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node_id).str()
+      MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node_id).str()
               << " is within map bounds at position (current frame): "
               << position_in_current.transpose();
     }
   }
 
-  MLOG(2) << "[ActiveWindowChangeDetector] Found " << objects_in_bounds.size()
+  MLOG(4) << "[ActiveWindowChangeDetector] Found " << objects_in_bounds.size()
           << " prior objects within current map bounds";
 
   return objects_in_bounds;
