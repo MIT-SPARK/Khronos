@@ -58,6 +58,9 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   name("ActiveWindowChangeDetector");
   field(config.verbosity, "verbosity");
   field(config.removal_vertex_free_ratio_threshold, "removal_vertex_free_ratio_threshold");
+  field(config.removal_ema_alpha, "removal_ema_alpha");
+  field(config.removal_probability_threshold, "removal_probability_threshold");
+  field(config.removal_min_frames_observed, "removal_min_frames_observed");
   field(config.added_object_containment_threshold, "added_object_containment_threshold");
   field<Path::Absolute>(config.prior_map_path, "prior_map_path");
   field(config.awcd_sinks, "awcd_sinks");
@@ -93,14 +96,14 @@ void ActiveWindowChangeDetector::addKhronosSink(const ActiveWindowCDSink::Ptr& s
   }
 }
 
-std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::getRemovedObjects(const std::vector<spark_dsg::NodeId>& objects_id_in_bounds, const VolumetricMap& map) const {
-  std::vector<spark_dsg::NodeId> removed_object_ids;
+std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::computeFreeRatios(
+    const std::vector<spark_dsg::NodeId>& objects_id_in_bounds,
+    const VolumetricMap& map) const {
+  std::unordered_map<spark_dsg::NodeId, float> measurements;
 
-  // 2. For each object node, get mesh vertices and transform to current frame
   for (const auto object_id : objects_id_in_bounds) {
     const auto& object_node = prior_graph_->getNode(object_id);
 
-    // Cast to KhronosObjectAttributes to access mesh
     const auto* khronos_attrs = object_node.tryAttributes<KhronosObjectAttributes>();
     if (!khronos_attrs) {
       MLOG(5) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
@@ -120,7 +123,6 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::getRemovedObjects(con
     int num_vertices_in_free_space = 0;
     int num_vertices_in_bound_and_known = 0;
 
-    // 3. For each vertex in bound and not unknown, check if it's in free space
     for (size_t i = 0; i < mesh.numVertices(); ++i) {
       // Transform: local → prior_world → current_world
       const Eigen::Vector3f vertex_local = mesh.pos(i);
@@ -128,7 +130,7 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::getRemovedObjects(con
       const Point vertex_current = transformPriorToCurrentFrame(vertex_prior_world.cast<double>());
 
       if (!isPointKnown(vertex_current, map)) {
-        continue;  // Skip unknown points
+        continue;  // Skip unknown points — no valid measurement at this vertex.
       }
 
       ++num_vertices_in_bound_and_known;
@@ -138,23 +140,70 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::getRemovedObjects(con
       }
     }
 
-    // 4. Compute ratio of vertices in bound and known (?) in free space
+    // Guard division: if no known vertices observed this frame, there is no valid measurement.
+    // Skip to avoid feeding NaN/garbage into the EMA filter.
+    if (num_vertices_in_bound_and_known == 0) {
+      MLOG(5) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+              << " has no known vertices this frame, skipping measurement";
+      continue;
+    }
+
     const float free_ratio = static_cast<float>(num_vertices_in_free_space) /
                              static_cast<float>(num_vertices_in_bound_and_known);
 
-    // 5. If more than threshold % of vertices are in free space, mark as removed
-    if (free_ratio >= config.removal_vertex_free_ratio_threshold) {
+    measurements[object_id] = free_ratio;
+    MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+            << " raw free ratio: " << free_ratio;
+  }
+
+  return measurements;
+}
+
+std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::updateRemovedFilter(
+    const std::unordered_map<spark_dsg::NodeId, float>& measurements) const {
+  // Update EMA state for each object that has a measurement this frame.
+  // Objects absent from measurements are left untouched (freeze-last policy).
+  for (const auto& [object_id, free_ratio] : measurements) {
+    auto& state = removed_object_states_[object_id];
+
+    if (state.num_frames_observed == 0) {
+      // First observation: initialize the filter to the raw measurement.
+      state.free_probability = free_ratio;
+    } else {
+      // EMA update: p = alpha * free_ratio + (1 - alpha) * p
+      state.free_probability =
+          config.removal_ema_alpha * free_ratio + (1.0 - config.removal_ema_alpha) * state.free_probability;
+    }
+    ++state.num_frames_observed;
+    state.last_free_ratio = free_ratio;
+
+    MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+            << " EMA update: raw=" << free_ratio
+            << " smoothed=" << state.free_probability
+            << " frames=" << state.num_frames_observed;
+  }
+
+  // Threshold the full state map (not just this frame's measurements) to build the removed set.
+  // This means objects that leave the map temporarily retain their last smoothed probability.
+  std::vector<spark_dsg::NodeId> removed_object_ids;
+  for (const auto& [object_id, state] : removed_object_states_) {
+    const bool above_prob = state.free_probability >= config.removal_probability_threshold;
+    const bool enough_frames = state.num_frames_observed >= config.removal_min_frames_observed;
+    if (above_prob && enough_frames) {
       removed_object_ids.push_back(object_id);
-      MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
-              << " detected as REMOVED (free ratio: " << free_ratio << ")";
+      MLOG(3) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+              << " REMOVED (p=" << state.free_probability
+              << ", frames=" << state.num_frames_observed << ")";
     } else {
       MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
-              << " still present (free ratio: " << free_ratio << ")";
+              << " not removed (p=" << state.free_probability
+              << ", frames=" << state.num_frames_observed << ")";
     }
   }
 
-  MLOG(4) << "[ActiveWindowChangeDetector] Detected " << removed_object_ids.size()
-          << " removed objects out of " << objects_id_in_bounds.size() << " checked";
+  MLOG(2) << "[ActiveWindowChangeDetector] Removed-object filter: "
+          << removed_object_ids.size() << " removed out of "
+          << removed_object_states_.size() << " tracked candidates";
 
   return removed_object_ids;
 }
@@ -296,10 +345,14 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
     }
   }
 
-  // 1. Find all object nodes in the prior graph within current volumetric map bounds
+  // 1. Find all object nodes in the prior graph within current volumetric map bounds.
   const auto objects_id_in_bounds = findPriorObjectsInMapBounds(map);
 
-  const auto removed_object_ids = getRemovedObjects(objects_id_in_bounds, map);
+  // 2. Compute per-frame free ratios for objects with valid measurements.
+  const auto free_ratio_measurements = computeFreeRatios(objects_id_in_bounds, map);
+
+  // 3. Update EMA filter and threshold to obtain the temporally-filtered removed set.
+  const auto removed_object_ids = updateRemovedFilter(free_ratio_measurements);
 
   // Detect newly added objects (tracks whose footprint sits on prior-traversable ground).
   // Known limitation: objects on tables cannot be detected this way.

@@ -39,6 +39,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 #include <hydra/common/output_sink.h>
@@ -52,6 +53,19 @@ namespace khronos {
 
 class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
  public:
+  /**
+   * @brief Per-object temporal state for the removed-object EMA filter.
+   * Maintained across frames in removed_object_states_.
+   */
+  struct RemovedObjectState {
+    //! EMA-filtered probability that the object's space is free (i.e. object is removed).
+    double free_probability = 0.0;
+    //! Number of frames for which a valid measurement (num_known > 0) was available.
+    int num_frames_observed = 0;
+    //! Raw free ratio from the most recent valid measurement (for logging/debugging).
+    float last_free_ratio = 0.0f;
+  };
+
   using ActiveWindowCDSink = hydra::OutputSink<const DynamicSceneGraph::Ptr&,
                                                const std::vector<spark_dsg::NodeId>&,
                                                const std::vector<Track>&,
@@ -65,8 +79,21 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! Path to prior map to use for change detection.
     std::filesystem::path prior_map_path;
 
-    //! Ratio of free prior map points of an object's vertices to consider it removed.
+    //! Ratio of free prior map points of an object's vertices in a single frame.
+    //! Used as raw input to the EMA filter; not the final removal decision threshold.
     float removal_vertex_free_ratio_threshold = 0.8f;
+
+    //! EMA smoothing factor for the per-object free_probability filter (0 < alpha <= 1).
+    //! Lower values give more smoothing (slower to react); higher values track raw ratios closely.
+    //! Cumulative running average (alpha=1/n) is an easy drop-in if EMA proves too noisy.
+    float removal_ema_alpha = 0.5f;
+
+    //! Smoothed free_probability threshold above which an object is considered removed.
+    float removal_probability_threshold = 0.5f;
+
+    //! Minimum number of frames with valid measurements before an object can be declared removed.
+    //! Guards against single-frame spikes on newly-entered objects.
+    int removal_min_frames_observed = 3;
 
     //! Min fraction of a track's 2D footprint that must lie in prior traversable
     //! (free) space to classify the track as a newly-added object.
@@ -159,7 +186,23 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
                         const VolumetricMap& map,
                         const Eigen::Isometry3d& initial) const;
 
-  std::vector<spark_dsg::NodeId> getRemovedObjects(const std::vector<spark_dsg::NodeId>& objects_id_in_bounds, const VolumetricMap& map) const;
+  /**
+   * @brief Compute the per-frame free ratio for each candidate object with a valid measurement
+   * (num_known_vertices > 0). Objects with an empty mesh or no KhronosObjectAttributes are skipped.
+   * @return Map from NodeId to raw free ratio [0, 1] for objects that had a valid measurement.
+   */
+  std::unordered_map<spark_dsg::NodeId, float> computeFreeRatios(
+      const std::vector<spark_dsg::NodeId>& objects_id_in_bounds,
+      const VolumetricMap& map) const;
+
+  /**
+   * @brief Update the EMA filter state for each object that has a measurement this frame,
+   * then return the set of objects whose smoothed free_probability passes the removal gate
+   * (probability >= removal_probability_threshold && frames >= removal_min_frames_observed).
+   * Objects not in measurements are left untouched (freeze-last policy).
+   */
+  std::vector<spark_dsg::NodeId> updateRemovedFilter(
+      const std::unordered_map<spark_dsg::NodeId, float>& measurements) const;
 
   std::vector<int> getNewlyAddedObjects(const Tracks& tracks, const VolumetricMap& map) const;
 
@@ -180,6 +223,10 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   //! Transform from prior map frame to current map frame.
   //! current_point = current_T_prior_ * prior_point
   mutable Eigen::Isometry3d current_T_prior_ = Eigen::Isometry3d::Identity();
+
+  //! Per-object EMA filter state for removed-object detection. Keyed by prior DSG NodeId.
+  //! Populated lazily on first observation; never erased (freeze-last for unobserved objects).
+  mutable std::unordered_map<spark_dsg::NodeId, RemovedObjectState> removed_object_states_;
 
   //! Plugin that provides the odom_T_prior transform.
   TransformationGetter::Ptr transformation_getter_;
