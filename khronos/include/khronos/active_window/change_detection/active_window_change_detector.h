@@ -54,6 +54,7 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
  public:
   using ActiveWindowCDSink = hydra::OutputSink<const DynamicSceneGraph::Ptr&,
                                                const std::vector<spark_dsg::NodeId>&,
+                                               const std::vector<Track>&,
                                                const Eigen::Isometry3d&>;
 
   // Config.
@@ -66,6 +67,10 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
 
     //! Ratio of free prior map points of an object's vertices to consider it removed.
     float removal_vertex_free_ratio_threshold = 0.8f;
+
+    //! Min fraction of a track's 2D footprint that must lie in prior traversable
+    //! (free) space to classify the track as a newly-added object.
+    float added_object_containment_threshold = 0.5f;
 
     //! Sinks for the change detector output.
     std::vector<ActiveWindowCDSink::Factory> awcd_sinks;
@@ -155,8 +160,18 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
                         const Eigen::Isometry3d& initial) const;
 
   std::vector<spark_dsg::NodeId> getRemovedObjects(const std::vector<spark_dsg::NodeId>& objects_id_in_bounds, const VolumetricMap& map) const;
-  
+
   std::vector<int> getNewlyAddedObjects(const Tracks& tracks, const VolumetricMap& map) const;
+
+  // Returns 2D voxel indices (z forced to 0, in current frame) covering the prior
+  // traversable (MESH_PLACES / TravNodeAttributes) footprint within map bounds.
+  GlobalIndexSet getPriorFreeFootprint2D(const VolumetricMap& map) const;
+
+  // Returns 2D voxel indices (z forced to 0) of a track's last_points footprint.
+  GlobalIndexSet getTrackFootprint2D(const Track& track, float voxel_size) const;
+
+  // Convert a 3-D point to a 2D voxel GlobalIndex (z component set to 0).
+  static GlobalIndex to2DIndex(const Point& point, float voxel_size_inv);
 
  private:
   //! Prior map as a 3D scene graph.

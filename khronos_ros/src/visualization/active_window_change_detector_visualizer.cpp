@@ -92,6 +92,7 @@ ActiveWindowChangeDetectorVisualizer::ActiveWindowChangeDetectorVisualizer(
 void ActiveWindowChangeDetectorVisualizer::call(
     const DynamicSceneGraph::Ptr& dsg,
     const std::vector<spark_dsg::NodeId>& removed_object_ids,
+    const std::vector<Track>& newly_added_tracks,
     const Eigen::Isometry3d& current_T_prior) const {
   // Broadcast: {robot}/odom → prior_map_frame (config.global_frame_name)
   // current_T_prior = odom_T_prior_map, so parent=odom, child=prior_map_frame.
@@ -124,6 +125,7 @@ void ActiveWindowChangeDetectorVisualizer::call(
 
   // Visualize removed objects
   visualizeChangedObjects(dsg, removed_object_ids);
+  visualizeAddedObjects(newly_added_tracks, current_T_prior);
   stamp_is_set_ = false;
 }
 
@@ -192,6 +194,43 @@ void ActiveWindowChangeDetectorVisualizer::visualizeChangedObjects(
   MarkerArray msg;
   object_bbox_tracker_.add(new_markers, msg);
   object_bbox_tracker_.clearPrevious(header, msg);
+  if (!msg.markers.empty()) {
+    object_bbox_pub_->publish(msg);
+  }
+}
+
+void ActiveWindowChangeDetectorVisualizer::visualizeAddedObjects(
+    const std::vector<Track>& newly_added_tracks,
+    const Eigen::Isometry3d& current_T_prior) const {
+  if (object_bbox_pub_->get_subscription_count() == 0u) {
+    return;
+  }
+
+  // Transform track bounding boxes (in current/odom frame) into prior_map_frame for RViz.
+  const Eigen::Isometry3d prior_T_current = current_T_prior.inverse();
+
+  MarkerArray new_markers;
+  new_markers.markers.reserve(newly_added_tracks.size());
+
+  size_t id = 0u;
+  std_msgs::msg::Header header;
+  header.frame_id = config.global_frame_name;
+  header.stamp = getStamp();
+  for (const Track& track : newly_added_tracks) {
+    MLOG(2) << "[ActiveWindowChangeDetectorVisualizer] Visualizing newly added track with id " << track.id;
+    BoundingBox bbox = track.last_bounding_box;
+    if (!bbox.isValid()) {
+      continue;
+    }
+    bbox.transform(prior_T_current);
+    auto& marker = new_markers.markers.emplace_back(
+        setBoundingBox(bbox, Color(0, 255, 0, 255), header, config.bounding_box_line_width));
+    marker.id = id++;
+  }
+
+  MarkerArray msg;
+  added_object_bbox_tracker_.add(new_markers, msg);
+  added_object_bbox_tracker_.clearPrevious(header, msg);
   if (!msg.markers.empty()) {
     object_bbox_pub_->publish(msg);
   }
