@@ -62,6 +62,10 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.removal_probability_threshold, "removal_probability_threshold");
   field(config.removal_min_frames_observed, "removal_min_frames_observed");
   field(config.added_object_containment_threshold, "added_object_containment_threshold");
+  field(config.added_ema_alpha, "added_ema_alpha");
+  field(config.added_probability_threshold, "added_probability_threshold");
+  field(config.added_min_frames_observed, "added_min_frames_observed");
+  field(config.added_prune_after_frames, "added_prune_after_frames");
   field<Path::Absolute>(config.prior_map_path, "prior_map_path");
   field(config.awcd_sinks, "awcd_sinks");
   field(config.transformation_getter, "transformation_getter");
@@ -284,14 +288,15 @@ GlobalIndexSet ActiveWindowChangeDetector::getTrackFootprint2D(const Track& trac
   return footprint;
 }
 
-std::vector<int> ActiveWindowChangeDetector::getNewlyAddedObjects(const Tracks& tracks,
-                                                                   const VolumetricMap& map) const {
-  std::vector<int> newly_added_track_ids;
+std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRatios(
+    const Tracks& tracks,
+    const VolumetricMap& map) const {
+  std::unordered_map<int, float> measurements;
 
   // Build the 2D free-space footprint from prior traversability places.
   const GlobalIndexSet prior_free = getPriorFreeFootprint2D(map);
   if (prior_free.empty()) {
-    return newly_added_track_ids;
+    return measurements;
   }
 
   const float voxel_size = map.config.voxel_size;
@@ -316,20 +321,90 @@ std::vector<int> ActiveWindowChangeDetector::getNewlyAddedObjects(const Tracks& 
     }
     const float containment = static_cast<float>(intersection) / static_cast<float>(track2D.size());
 
-    if (containment >= config.added_object_containment_threshold) {
-      newly_added_track_ids.push_back(track.id);
-      MLOG(3) << "[ActiveWindowChangeDetector] Track " << track.id
-              << " detected as ADDED (containment: " << containment << ")";
+    measurements[track.id] = containment;
+    MLOG(4) << "[ActiveWindowChangeDetector] Track " << track.id
+            << " raw containment: " << containment;
+  }
+
+  return measurements;
+}
+
+std::vector<Track> ActiveWindowChangeDetector::updateAddedFilter(
+    const std::unordered_map<int, float>& measurements,
+    const Tracks& tracks) const {
+  ++frame_index_;
+
+  // Build a quick lookup from track ID to Track pointer for snapshot refresh.
+  std::unordered_map<int, const Track*> track_lookup;
+  track_lookup.reserve(tracks.size());
+  for (const Track& t : tracks) {
+    track_lookup[t.id] = &t;
+  }
+
+  // Update EMA state for each track that has a measurement this frame.
+  // Tracks absent from measurements are left untouched (freeze-last policy).
+  for (const auto& [track_id, containment] : measurements) {
+    auto& state = added_object_states_[track_id];
+
+    if (state.num_frames_observed == 0) {
+      // First observation: initialize the filter to the raw measurement.
+      state.added_probability = containment;
     } else {
-      MLOG(3) << "[ActiveWindowChangeDetector] Track " << track.id
-              << " not newly added (containment: " << containment << ")";
+      // EMA update: p = alpha * containment + (1 - alpha) * p
+      state.added_probability =
+          config.added_ema_alpha * containment +
+          (1.0 - config.added_ema_alpha) * state.added_probability;
+    }
+    ++state.num_frames_observed;
+    state.last_containment = containment;
+    state.last_updated_frame = frame_index_;
+
+    // Refresh the cached Track snapshot.
+    auto it = track_lookup.find(track_id);
+    if (it != track_lookup.end()) {
+      state.last_track = *(it->second);
+    }
+
+    MLOG(4) << "[ActiveWindowChangeDetector] Track " << track_id
+            << " EMA update: raw=" << containment
+            << " smoothed=" << state.added_probability
+            << " frames=" << state.num_frames_observed;
+  }
+
+  // Threshold the full state map and collect confirmed-added Track snapshots.
+  // Prune stale non-added records along the way.
+  std::vector<Track> newly_added_tracks;
+  for (auto it = added_object_states_.begin(); it != added_object_states_.end();) {
+    auto& [track_id, state] = *it;
+
+    const bool above_prob = state.added_probability >= config.added_probability_threshold;
+    const bool enough_frames = state.num_frames_observed >= config.added_min_frames_observed;
+
+    if (above_prob && enough_frames) {
+      state.ever_added = true;
+      newly_added_tracks.push_back(state.last_track);
+      MLOG(3) << "[ActiveWindowChangeDetector] Track " << track_id
+              << " ADDED (p=" << state.added_probability
+              << ", frames=" << state.num_frames_observed << ")";
+      ++it;
+    } else if (!state.ever_added &&
+               (frame_index_ - state.last_updated_frame) > config.added_prune_after_frames) {
+      // Stale non-added record — prune it.
+      MLOG(4) << "[ActiveWindowChangeDetector] Pruning stale non-added track " << track_id;
+      it = added_object_states_.erase(it);
+    } else {
+      MLOG(4) << "[ActiveWindowChangeDetector] Track " << track_id
+              << " not added (p=" << state.added_probability
+              << ", frames=" << state.num_frames_observed << ")";
+      ++it;
     }
   }
 
-  MLOG(2) << "[ActiveWindowChangeDetector] Detected " << newly_added_track_ids.size()
-          << " newly added objects out of " << tracks.size() << " tracks checked";
+  MLOG(2) << "[ActiveWindowChangeDetector] Added-object filter: "
+          << newly_added_tracks.size() << " added out of "
+          << added_object_states_.size() << " tracked candidates";
 
-  return newly_added_track_ids;
+  return newly_added_tracks;
 }
 
 void ActiveWindowChangeDetector::call(const FrameData& data,
@@ -354,24 +429,15 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   // 3. Update EMA filter and threshold to obtain the temporally-filtered removed set.
   const auto removed_object_ids = updateRemovedFilter(free_ratio_measurements);
 
-  // Detect newly added objects (tracks whose footprint sits on prior-traversable ground).
-  // Known limitation: objects on tables cannot be detected this way.
-  const auto newly_added_ids = getNewlyAddedObjects(tracks, map);
+  // 4. Compute per-frame containment ratios for newly-added-object detection.
+  // Known limitation: objects on tables cannot be detected this way (footprint-on-ground heuristic).
+  const auto containment_measurements = computeContainmentRatios(tracks, map);
 
-  // Build the Track objects for newly-added detections so sinks can access bbox / confidence.
-  std::vector<Track> newly_added_tracks;
-  newly_added_tracks.reserve(newly_added_ids.size());
-  for (int id : newly_added_ids) {
-    for (const Track& t : tracks) {
-      if (t.id == id) {
-        newly_added_tracks.push_back(t);
-        break;
-      }
-    }
-  }
+  // 5. Update EMA filter, prune stale records, and return filtered Track snapshots.
+  const auto newly_added_tracks = updateAddedFilter(containment_measurements, tracks);
 
-  MLOG(2) << "[ActiveWindowChangeDetector] Detected " << removed_object_ids.size() << " removed objects and "
-          << newly_added_tracks.size() << " newly added tracks.";
+  MLOG(2) << "[ActiveWindowChangeDetector] Detected " << removed_object_ids.size()
+          << " removed objects and " << newly_added_tracks.size() << " newly added tracks.";
 
   // Call all sinks with removed objects, newly-added tracks, and the prior-to-current transform.
   ActiveWindowCDSink::callAll(

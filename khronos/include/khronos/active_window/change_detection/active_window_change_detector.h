@@ -66,6 +66,27 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     float last_free_ratio = 0.0f;
   };
 
+  /**
+   * @brief Per-track temporal state for the newly-added-object EMA filter.
+   * Keyed by track ID (monotonically increasing, never reused by MaxIoUTracker).
+   * Caches a full Track snapshot so downstream sinks can access bbox/semantics/confidence
+   * even after the track has left the active window.
+   */
+  struct AddedObjectState {
+    //! EMA-filtered probability the track is a newly-added object.
+    double added_probability = 0.0;
+    //! Number of frames for which a valid containment measurement was available.
+    int num_frames_observed = 0;
+    //! Raw containment ratio from the most recent valid measurement (for logging/debugging).
+    float last_containment = 0.0f;
+    //! Latched true once the track passes the added gate; prevents pruning of confirmed objects.
+    bool ever_added = false;
+    //! frame_index_ value at the last frame this track was measured (for staleness-based pruning).
+    int last_updated_frame = 0;
+    //! Full Track snapshot, refreshed each frame the track is in the active window.
+    Track last_track;
+  };
+
   using ActiveWindowCDSink = hydra::OutputSink<const DynamicSceneGraph::Ptr&,
                                                const std::vector<spark_dsg::NodeId>&,
                                                const std::vector<Track>&,
@@ -95,9 +116,23 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! Guards against single-frame spikes on newly-entered objects.
     int removal_min_frames_observed = 3;
 
-    //! Min fraction of a track's 2D footprint that must lie in prior traversable
-    //! (free) space to classify the track as a newly-added object.
+    //! Raw per-frame containment ratio fed into the EMA filter for newly-added-object detection.
+    //! Not the final decision threshold; that role is played by added_probability_threshold.
     float added_object_containment_threshold = 0.5f;
+
+    //! EMA smoothing factor for the per-track added_probability filter (0 < alpha <= 1).
+    //! Lower = smoother / slower to react; higher = tracks raw ratios closely.
+    float added_ema_alpha = 0.5f;
+
+    //! Smoothed added_probability threshold above which a track is considered a newly-added object.
+    float added_probability_threshold = 0.5f;
+
+    //! Minimum valid measurements before a track can be declared newly-added.
+    int added_min_frames_observed = 3;
+
+    //! Frames of no measurement after which a non-added track's state record is pruned.
+    //! Tracks that ever crossed the threshold are never pruned.
+    int added_prune_after_frames = 50;
 
     //! Sinks for the change detector output.
     std::vector<ActiveWindowCDSink::Factory> awcd_sinks;
@@ -108,19 +143,26 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
 
     //! Enable ICP refinement on the transform returned by transformation_getter.
     bool enable_icp_refinement = false;
+
     //! If true, invert the roman LC transform before using as ICP initial guess.
     //! Verify at runtime: if ICP delta is > ~2m, flip this flag.
     bool invert_roman_lc_transform = false;
+
     //! Crop radius around robot (m) for mesh point selection.
     float icp_crop_radius = 10.0f;
+
     //! small_gicp threads.
     size_t icp_num_threads = 2;
+
     //! Voxel downsampling resolution (m).
     float icp_downsampling_resolution = 0.2f;
+
     //! Max ICP correspondence distance (m).
     float icp_max_correspondence_distance = 1.0f;
+
     //! Min inliers to accept refined transform.
     size_t icp_min_inliers = 50;
+    
   } const config;
 
   // Construction.
@@ -204,7 +246,22 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   std::vector<spark_dsg::NodeId> updateRemovedFilter(
       const std::unordered_map<spark_dsg::NodeId, float>& measurements) const;
 
-  std::vector<int> getNewlyAddedObjects(const Tracks& tracks, const VolumetricMap& map) const;
+  /**
+   * @brief Compute the per-frame containment ratio for each eligible track (non-dynamic,
+   * non-empty footprint). Returns a map from track ID to raw containment ratio [0, 1].
+   * Reuses getPriorFreeFootprint2D and getTrackFootprint2D.
+   */
+  std::unordered_map<int, float> computeContainmentRatios(const Tracks& tracks,
+                                                          const VolumetricMap& map) const;
+
+  /**
+   * @brief Update the EMA filter state for each measured track, refresh cached Track snapshots,
+   * prune stale non-added records, then return the filtered set of Track snapshots for tracks
+   * that pass the added gate (added_probability >= threshold && frames >= min_frames_observed).
+   * Tracks absent from measurements are frozen (cached state and snapshot kept as-is).
+   */
+  std::vector<Track> updateAddedFilter(const std::unordered_map<int, float>& measurements,
+                                       const Tracks& tracks) const;
 
   // Returns 2D voxel indices (z forced to 0, in current frame) covering the prior
   // traversable (MESH_PLACES / TravNodeAttributes) footprint within map bounds.
@@ -227,6 +284,13 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   //! Per-object EMA filter state for removed-object detection. Keyed by prior DSG NodeId.
   //! Populated lazily on first observation; never erased (freeze-last for unobserved objects).
   mutable std::unordered_map<spark_dsg::NodeId, RemovedObjectState> removed_object_states_;
+
+  //! Per-track EMA filter state for newly-added-object detection. Keyed by Track::id (monotonic).
+  //! Pruned for non-added tracks that go stale; confirmed-added records are kept forever.
+  mutable std::unordered_map<int, AddedObjectState> added_object_states_;
+
+  //! Frame counter incremented once per call(), used for staleness-based pruning of added records.
+  mutable int frame_index_ = 0;
 
   //! Plugin that provides the odom_T_prior transform.
   TransformationGetter::Ptr transformation_getter_;
