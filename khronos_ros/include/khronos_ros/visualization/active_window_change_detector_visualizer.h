@@ -48,7 +48,6 @@
 #include <hydra_visualizer/utils/marker_tracker.h>
 #include <ianvs/node_handle.h>
 #include <rclcpp/time.hpp>
-#include <tf2_ros/static_transform_broadcaster.h>
 #include <spark_dsg/dynamic_scene_graph.h>
 #include <std_msgs/msg/color_rgba.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -112,8 +111,6 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
   // ROS
   ianvs::NodeHandle nh_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr object_bbox_pub_;
-  std::unique_ptr<tf2_ros::StaticTransformBroadcaster> tf_broadcaster_;
-
   // Renderer and plugins
   std::shared_ptr<hydra::SceneGraphRenderer> renderer_;
   std::shared_ptr<hydra::MeshPlugin> mesh_plugin_;

@@ -33,6 +33,7 @@ add_library(
   src/experiments/experiment_directory.cpp
   src/khronos_pipeline.cpp
   src/active_window/tf_transformation_getter.cpp
+  src/active_window/tf_icp_publisher.cpp
   src/visualization/active_window_visualizer.cpp
   src/visualization/implicit_shape_plugin.cpp
   src/visualization/active_window_change_detector_visualizer.cpp
