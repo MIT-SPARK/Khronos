@@ -68,6 +68,7 @@ void declare_config(ActiveWindowChangeDetectorVisualizer::Config& config) {
   field(config.mesh, "mesh");
   field(config.queue_size, "queue_size");
   field(config.bounding_box_line_width, "bounding_box_line_width");
+  field(config.min_draw_period_s, "min_draw_period_s");
   // TODO(multy): add checks for the fields.
 }
 
@@ -81,6 +82,7 @@ ActiveWindowChangeDetectorVisualizer::ActiveWindowChangeDetectorVisualizer(
   renderer_ = std::make_shared<hydra::SceneGraphRenderer>(config.renderer, nh_);
   mesh_plugin_ = std::make_shared<hydra::MeshPlugin>(config.mesh, nh_, "prior_mesh");
   has_drawn_ = false;
+  last_draw_time_ = std::nullopt;
 
   // Initialize publishers
   object_bbox_pub_ =
@@ -110,6 +112,15 @@ void ActiveWindowChangeDetectorVisualizer::call(
   tf_msg.transform.rotation.z = q.z();
   tf_msg.transform.rotation.w = q.w();
   tf_broadcaster_->sendTransform(tf_msg);
+
+  // Throttle visualization redraws to reduce flicker from high-frequency calls.
+  if (config.min_draw_period_s > 0.0) {
+    const rclcpp::Time now = nh_.now();
+    if (last_draw_time_.has_value() && (now - *last_draw_time_).seconds() < config.min_draw_period_s) {
+      return;
+    }
+    last_draw_time_ = now;
+  }
 
   drawPriorGraph(dsg);
 
@@ -161,34 +172,27 @@ void ActiveWindowChangeDetectorVisualizer::visualizeChangedObjects(
     return;
   }
 
-  // Get all removed object bounding boxes form the scene graph attributes
-  std::vector<BoundingBox> removed_object_bboxes;
-  for (const auto& id : removed_object_ids) {
-    const auto& object_node = dsg->getNode(id);
-    const auto* khronos_attrs = object_node.tryAttributes<KhronosObjectAttributes>();
-    if (khronos_attrs) {
-      removed_object_bboxes.push_back(khronos_attrs->bounding_box);
-    } else {
-      MLOG(2) << "[ActiveWindowChangeDetectorVisualizer] Could not find KhronosObjectAttributes "
-                 "for removed object "
-              << spark_dsg::NodeSymbol(id).str();
-    }
-  }
-
   // draw red bounding boxes for removed objects
   MarkerArray new_markers;
-  new_markers.markers.reserve(removed_object_bboxes.size());
+  new_markers.markers.reserve(removed_object_ids.size());
 
-  size_t id = 0u;
   std_msgs::msg::Header header;
   header.frame_id = config.global_frame_name;
   header.stamp = getStamp();
-  for (const auto& bbox : removed_object_bboxes) {
-    if (bbox.isValid()) {
-      auto& marker = new_markers.markers.emplace_back(
-          setBoundingBox(bbox, Color(255, 0, 0, 255), header, config.bounding_box_line_width));
-      marker.id = id++;
+  for (size_t i = 0u; i < removed_object_ids.size(); ++i) {
+    const auto& id = removed_object_ids[i];
+    const auto& object_node = dsg->getNode(id);
+    const auto* khronos_attrs = object_node.tryAttributes<KhronosObjectAttributes>();
+    if (!khronos_attrs || !khronos_attrs->bounding_box.isValid()) {
+      continue;
     }
+    auto& marker = new_markers.markers.emplace_back(setBoundingBox(
+        khronos_attrs->bounding_box, Color(255, 0, 0, 255), header, config.bounding_box_line_width));
+    // Use stable identity-based id (lower 32 bits of NodeId) so the same object
+    // always gets the same marker id across frames. Namespace "removed_objects"
+    // avoids collision with green added-object markers on the same publisher.
+    marker.ns = "removed_objects";
+    marker.id = static_cast<int>(id & 0xffffffff);
   }
 
   MarkerArray msg;
@@ -212,7 +216,6 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedObjects(
   MarkerArray new_markers;
   new_markers.markers.reserve(newly_added_tracks.size());
 
-  size_t id = 0u;
   std_msgs::msg::Header header;
   header.frame_id = config.global_frame_name;
   header.stamp = getStamp();
@@ -225,7 +228,10 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedObjects(
     bbox.transform(prior_T_current);
     auto& marker = new_markers.markers.emplace_back(
         setBoundingBox(bbox, Color(0, 255, 0, 255), header, config.bounding_box_line_width));
-    marker.id = id++;
+    // Use stable track.id as marker id (monotonically increasing, never reused by MaxIoUTracker).
+    // Namespace "added_objects" avoids collision with red removed-object markers on the same publisher.
+    marker.ns = "added_objects";
+    marker.id = static_cast<int>(track.id);
   }
 
   MarkerArray msg;

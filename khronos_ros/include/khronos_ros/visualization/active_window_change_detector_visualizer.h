@@ -38,6 +38,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/global_info.h>
@@ -84,6 +85,9 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
 
     //! Width in meters of lines indicating bounding boxes.
     float bounding_box_line_width = 0.1f;
+
+    //! Minimum time between visualization redraws (seconds). 0 = draw every frame.
+    double min_draw_period_s = 0.0;
   } const config;
 
   explicit ActiveWindowChangeDetectorVisualizer(const Config& config,
@@ -118,6 +122,7 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
   mutable bool has_drawn_ = false;
   mutable rclcpp::Time stamp_;
   mutable bool stamp_is_set_ = false;
+  mutable std::optional<rclcpp::Time> last_draw_time_;
   mutable hydra::MarkerTracker object_bbox_tracker_;
   mutable hydra::MarkerTracker added_object_bbox_tracker_;
 
