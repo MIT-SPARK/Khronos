@@ -40,7 +40,6 @@
 #include <config_utilities/config.h>
 #include <config_utilities/types/path.h>
 #include <config_utilities/validation.h>
-#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <glog/logging.h>
 
 #include "khronos_ros/visualization/visualization_utils.h"
@@ -87,7 +86,6 @@ ActiveWindowChangeDetectorVisualizer::ActiveWindowChangeDetectorVisualizer(
   // Initialize publishers
   object_bbox_pub_ =
       nh_.create_publisher<MarkerArray>("changed_object_bounding_boxes", config.queue_size);
-  tf_broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(nh_.node());
   MLOG(1) << "[ActiveWindowChangeDetectorVisualizer] Initialized.";
 }
 
@@ -96,23 +94,6 @@ void ActiveWindowChangeDetectorVisualizer::call(
     const std::vector<spark_dsg::NodeId>& removed_object_ids,
     const std::vector<Track>& newly_added_tracks,
     const Eigen::Isometry3d& current_T_prior) const {
-  // Broadcast: {robot}/odom → prior_map_frame (config.global_frame_name)
-  // current_T_prior = odom_T_prior_map, so parent=odom, child=prior_map_frame.
-  geometry_msgs::msg::TransformStamped tf_msg;
-  tf_msg.header.stamp = nh_.now();
-  tf_msg.header.frame_id = hydra::GlobalInfo::instance().getFrames().odom;
-  tf_msg.child_frame_id = config.global_frame_name;
-  const auto& t = current_T_prior.translation();
-  tf_msg.transform.translation.x = t.x();
-  tf_msg.transform.translation.y = t.y();
-  tf_msg.transform.translation.z = t.z();
-  const Eigen::Quaterniond q(current_T_prior.rotation());
-  tf_msg.transform.rotation.x = q.x();
-  tf_msg.transform.rotation.y = q.y();
-  tf_msg.transform.rotation.z = q.z();
-  tf_msg.transform.rotation.w = q.w();
-  tf_broadcaster_->sendTransform(tf_msg);
-
   // Throttle visualization redraws to reduce flicker from high-frequency calls.
   if (config.min_draw_period_s > 0.0) {
     const rclcpp::Time now = nh_.now();
@@ -210,7 +191,7 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedObjects(
     return;
   }
 
-  // Transform track bounding boxes (in current/odom frame) into prior_map_frame for RViz.
+  // Transform track bounding boxes (in current/odom frame) into map frame for RViz.
   const Eigen::Isometry3d prior_T_current = current_T_prior.inverse();
 
   MarkerArray new_markers;
