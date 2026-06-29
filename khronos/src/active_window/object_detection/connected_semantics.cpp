@@ -58,7 +58,7 @@ void declare_config(ConnectedSemantics::Config& config) {
 ConnectedSemantics::ConnectedSemantics(const Config& config)
     : config(config::checkValid(config)), neighbor_search_(config.use_full_connectivity ? 26 : 6) {
   is_object_ = [](uint32_t label) {
-    return hydra::GlobalInfo::instance().getLabelSpaceConfig().object_labels.count(label) != 0;
+    return hydra::GlobalInfo::instance().labelspace().object_labels.count(label) != 0;
   };
 }
 

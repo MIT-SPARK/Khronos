@@ -375,14 +375,17 @@ bool MeshObjectExtractor::trackIsValid(const Track& track) const {
 }
 
 std::string MeshObjectExtractor::getTrackName(const Track& track) {
-  std::stringstream ss;
-  ss << "track " << track.id << " (";
+  std::string label = "unknown";
   if (track.semantics) {
-    ss << hydra::GlobalInfo::instance().getLabelToNameMap().at(track.semantics->category_id);
-  } else {
-    ss << "unknown";
+    const auto& label_names = hydra::GlobalInfo::instance().labelspace().label_names;
+    auto iter = label_names.find(track.semantics->category_id);
+    if (iter != label_names.end()) {
+      label = iter->second;
+    }
   }
-  ss << ")";
+
+  std::stringstream ss;
+  ss << "track " << track.id << " (" << label << ")";
   return ss.str();
 }
 

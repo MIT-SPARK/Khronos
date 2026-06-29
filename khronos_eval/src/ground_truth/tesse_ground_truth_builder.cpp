@@ -57,7 +57,7 @@ void declare_config(TesseGroundTruthBuilder::Config& config) {
 TesseGroundTruthBuilder::TesseGroundTruthBuilder(const Config& config)
     : config(config::checkValid(config)),
       color_map_(*hydra::SemanticColorMap::fromCsv(config.semantic_colors_file)),
-      label_space_(config::fromYamlFile<hydra::LabelSpaceConfig>(config.label_space_file)),
+      label_space_(config::fromYamlFile<hydra::Labelspace>(config.label_space_file)),
       label_remapper_(config.label_remap_file) {}
 
 void TesseGroundTruthBuilder::run() {
