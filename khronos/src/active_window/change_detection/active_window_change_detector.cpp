@@ -163,8 +163,8 @@ std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::compute
   return measurements;
 }
 
-std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::updateRemovedFilter(
-    const std::unordered_map<spark_dsg::NodeId, float>& measurements) const {
+std::vector<ActiveWindowChangeDetector::RemovedObject> ActiveWindowChangeDetector::updateRemovedFilter(
+    const std::unordered_map<spark_dsg::NodeId, float>& measurements, TimeStamp stamp) const {
   // Update EMA state for each object that has a measurement this frame.
   // Objects absent from measurements are left untouched (freeze-last policy).
   for (const auto& [object_id, free_ratio] : measurements) {
@@ -189,12 +189,17 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::updateRemovedFilter(
 
   // Threshold the full state map (not just this frame's measurements) to build the removed set.
   // This means objects that leave the map temporarily retain their last smoothed probability.
-  std::vector<spark_dsg::NodeId> removed_object_ids;
-  for (const auto& [object_id, state] : removed_object_states_) {
+  std::vector<RemovedObject> removed_objects;
+  for (auto& [object_id, state] : removed_object_states_) {
     const bool above_prob = state.free_probability >= config.removal_probability_threshold;
     const bool enough_frames = state.num_frames_observed >= config.removal_min_frames_observed;
     if (above_prob && enough_frames) {
-      removed_object_ids.push_back(object_id);
+      // Latch the first sensor time this object was declared removed. Never reset, even if
+      // the object later drops out of the removed set and returns.
+      if (state.first_removed_ns == 0) {
+        state.first_removed_ns = stamp;
+      }
+      removed_objects.push_back(RemovedObject{object_id, state.first_removed_ns});
       MLOG(3) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
               << " REMOVED (p=" << state.free_probability
               << ", frames=" << state.num_frames_observed << ")";
@@ -206,10 +211,10 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::updateRemovedFilter(
   }
 
   MLOG(2) << "[ActiveWindowChangeDetector] Removed-object filter: "
-          << removed_object_ids.size() << " removed out of "
+          << removed_objects.size() << " removed out of "
           << removed_object_states_.size() << " tracked candidates";
 
-  return removed_object_ids;
+  return removed_objects;
 }
 
 GlobalIndex ActiveWindowChangeDetector::to2DIndex(const Point& point, float voxel_size_inv) {
@@ -427,7 +432,7 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   const auto free_ratio_measurements = computeFreeRatios(objects_id_in_bounds, map);
 
   // 3. Update EMA filter and threshold to obtain the temporally-filtered removed set.
-  const auto removed_object_ids = updateRemovedFilter(free_ratio_measurements);
+  const auto removed_objects = updateRemovedFilter(free_ratio_measurements, data.input.timestamp_ns);
 
   // 4. Compute per-frame containment ratios for newly-added-object detection.
   // Known limitation: objects on tables cannot be detected this way (footprint-on-ground heuristic).
@@ -436,12 +441,12 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   // 5. Update EMA filter, prune stale records, and return filtered Track snapshots.
   const auto newly_added_tracks = updateAddedFilter(containment_measurements, tracks);
 
-  MLOG(2) << "[ActiveWindowChangeDetector] Detected " << removed_object_ids.size()
+  MLOG(2) << "[ActiveWindowChangeDetector] Detected " << removed_objects.size()
           << " removed objects and " << newly_added_tracks.size() << " newly added tracks.";
 
   // Call all sinks with removed objects, newly-added tracks, and the prior-to-current transform.
   ActiveWindowCDSink::callAll(
-      sinks_, prior_graph_, removed_object_ids, newly_added_tracks, current_T_prior_);
+      sinks_, prior_graph_, removed_objects, newly_added_tracks, current_T_prior_);
 }
 
 void ActiveWindowChangeDetector::loadPriorMap() {

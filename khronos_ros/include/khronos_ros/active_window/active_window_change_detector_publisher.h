@@ -37,97 +37,76 @@
 
 #pragma once
 
-#include <filesystem>
 #include <optional>
+#include <set>
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/global_info.h>
 #include <hydra/utils/logging.h>
-#include <hydra_visualizer/plugins/mesh_plugin.h>
-#include <hydra_visualizer/scene_graph_renderer.h>
-#include <hydra_visualizer/utils/marker_tracker.h>
 #include <ianvs/node_handle.h>
-#include <rclcpp/time.hpp>
 #include <spark_dsg/dynamic_scene_graph.h>
-#include <std_msgs/msg/color_rgba.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
+
+#include <khronos_msgs/msg/awcd_changes.hpp>
 
 #include "khronos/active_window/change_detection/active_window_change_detector.h"
 #include "khronos/active_window/data/track.h"
 
-
 namespace khronos {
 
-class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::ActiveWindowCDSink {
+/**
+ * @brief ActiveWindowCDSink that packs the detector's per-frame removed/added object
+ * results into a khronos_msgs/AwcdChanges message and publishes it, so that other
+ * processes (e.g. a base station) can consume the change-detection output.
+ */
+class ActiveWindowChangeDetectorPublisher : public ActiveWindowChangeDetector::ActiveWindowCDSink {
  public:
   struct Config : hydra::VerbosityConfig {
-    // TODO(multy): after hydra is updated, should change it to also include a prefix like: "[Active
-    // Window Change Detector Visualizer] "
-    // int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
     Config()
         : hydra::VerbosityConfig{hydra::GlobalInfo::instance().getConfig().default_verbosity} {}
 
-    //! Frame in which to publish visualizations.
+    //! Frame in which reported object attributes (centroid, bbox) are expressed.
     std::string global_frame_name = hydra::GlobalInfo::instance().getFrames().map;
-    // TODO(multy): this should be default to some awcd dedicated frame? Not the global map frame, 
-    // The transformation between the global map frame and the awcd frame can be identity to 
-    // indicates no difference
 
-    //! Scene graph renderer config.
-    hydra::SceneGraphRenderer::Config renderer;
+    //! Name of the robot reporting the changes, forwarded into AwcdChanges::robot_name.
+    std::string robot_name;
 
-    //! Mesh plugin config (optional - if coloring is not set, uses mesh colors).
-    hydra::MeshPlugin::Config mesh;
+    //! Topic to publish AwcdChanges messages on.
+    std::string topic = "awcd_changes";
 
-    //! Publisher queue sizes.
+    //! Publisher queue size.
     int queue_size = 10;
-
-    //! Width in meters of lines indicating bounding boxes.
-    float bounding_box_line_width = 0.1f;
-
-    //! Minimum time between visualization redraws (seconds). 0 = draw every frame.
-    double min_draw_period_s = 0.0;
   } const config;
 
-  explicit ActiveWindowChangeDetectorVisualizer(const Config& config,
-                                                const ianvs::NodeHandle* nh = nullptr);
-  virtual ~ActiveWindowChangeDetectorVisualizer() = default;
+  explicit ActiveWindowChangeDetectorPublisher(const Config& config,
+                                               const ianvs::NodeHandle* nh = nullptr);
+  virtual ~ActiveWindowChangeDetectorPublisher() = default;
 
-  // KhronosSink callback - called each frame.
+  // KhronosSink callback - called each frame. Only publishes when the set of removed and/or
+  // added object ids differs from the last published sets (see last_removed_ids_/last_added_ids_).
   void call(const DynamicSceneGraph::Ptr& dsg,
             const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects,
             const std::vector<Track>& newly_added_tracks,
             const Eigen::Isometry3d& current_T_prior) const override;
 
  private:
-  void drawPriorGraph(const DynamicSceneGraph::Ptr& dsg) const;
+  //! Fills in a ChangedObjectInfo entry for a removed object (id + latched first-removed time).
+  khronos_msgs::msg::ChangedObjectInfo makeRemovedInfo(
+      const ActiveWindowChangeDetector::RemovedObject& obj) const;
 
-  void visualizeChangedObjects(
-      const DynamicSceneGraph::Ptr& dsg,
-      const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects) const;
-
-  void visualizeAddedObjects(const std::vector<Track>& newly_added_tracks,
-                             const Eigen::Isometry3d& current_T_prior) const;
+  //! Fills in a ChangedObjectInfo entry (full attributes) for a newly-added track.
+  khronos_msgs::msg::ChangedObjectInfo makeAddedInfo(const Track& track,
+                                                     const Eigen::Isometry3d& prior_T_current) const;
 
   // ROS
   ianvs::NodeHandle nh_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr object_bbox_pub_;
-  // Renderer and plugins
-  std::shared_ptr<hydra::SceneGraphRenderer> renderer_;
-  std::shared_ptr<hydra::MeshPlugin> mesh_plugin_;
+  rclcpp::Publisher<khronos_msgs::msg::AwcdChanges>::SharedPtr changes_pub_;
 
-  // Variables
-  mutable bool has_drawn_ = false;
-  mutable rclcpp::Time stamp_;
-  mutable bool stamp_is_set_ = false;
-  mutable std::optional<rclcpp::Time> last_draw_time_;
-  mutable hydra::MarkerTracker object_bbox_tracker_;
-  mutable hydra::MarkerTracker added_object_bbox_tracker_;
-
-  // Time stamp caching for synchronization of multiple visualizations.
-  rclcpp::Time getStamp() const { return stamp_is_set_ ? stamp_ : nh_.now(); }
+  // Set-membership of the last *published* removed/added ids, used to gate publishing to only
+  // when the reported set of changes actually changed (rather than every frame).
+  mutable std::optional<std::set<int64_t>> last_removed_ids_;
+  mutable std::optional<std::set<int64_t>> last_added_ids_;
 };
 
-void declare_config(ActiveWindowChangeDetectorVisualizer::Config& config);
+void declare_config(ActiveWindowChangeDetectorPublisher::Config& config);
 
 }  // namespace khronos

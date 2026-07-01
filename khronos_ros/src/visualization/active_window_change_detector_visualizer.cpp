@@ -91,7 +91,7 @@ ActiveWindowChangeDetectorVisualizer::ActiveWindowChangeDetectorVisualizer(
 
 void ActiveWindowChangeDetectorVisualizer::call(
     const DynamicSceneGraph::Ptr& dsg,
-    const std::vector<spark_dsg::NodeId>& removed_object_ids,
+    const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects,
     const std::vector<Track>& newly_added_tracks,
     const Eigen::Isometry3d& current_T_prior) const {
   // Throttle visualization redraws to reduce flicker from high-frequency calls.
@@ -107,8 +107,8 @@ void ActiveWindowChangeDetectorVisualizer::call(
 
   // print out removed object ids
   MLOG(3) << "[ActiveWindowChangeDetectorVisualizer] Object ";
-  for (const auto& id : removed_object_ids) {
-    MLOG(3) << spark_dsg::NodeSymbol(id).str() << ", ";
+  for (const auto& obj : removed_objects) {
+    MLOG(3) << spark_dsg::NodeSymbol(obj.id).str() << ", ";
   }
   MLOG(3) << " are removed";
   // set stamps for all visualizations
@@ -116,7 +116,7 @@ void ActiveWindowChangeDetectorVisualizer::call(
   stamp_is_set_ = true;
 
   // Visualize removed objects
-  visualizeChangedObjects(dsg, removed_object_ids);
+  visualizeChangedObjects(dsg, removed_objects);
   visualizeAddedObjects(newly_added_tracks, current_T_prior);
   stamp_is_set_ = false;
 }
@@ -148,21 +148,20 @@ void ActiveWindowChangeDetectorVisualizer::drawPriorGraph(const DynamicSceneGrap
 
 void ActiveWindowChangeDetectorVisualizer::visualizeChangedObjects(
     const DynamicSceneGraph::Ptr& dsg,
-    const std::vector<spark_dsg::NodeId>& removed_object_ids) const {
+    const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects) const {
   if (object_bbox_pub_->get_subscription_count() == 0u) {
     return;
   }
 
   // draw red bounding boxes for removed objects
   MarkerArray new_markers;
-  new_markers.markers.reserve(removed_object_ids.size());
+  new_markers.markers.reserve(removed_objects.size());
 
   std_msgs::msg::Header header;
   header.frame_id = config.global_frame_name;
   header.stamp = getStamp();
-  for (size_t i = 0u; i < removed_object_ids.size(); ++i) {
-    const auto& id = removed_object_ids[i];
-    const auto& object_node = dsg->getNode(id);
+  for (const auto& obj : removed_objects) {
+    const auto& object_node = dsg->getNode(obj.id);
     const auto* khronos_attrs = object_node.tryAttributes<KhronosObjectAttributes>();
     if (!khronos_attrs || !khronos_attrs->bounding_box.isValid()) {
       continue;
@@ -173,7 +172,7 @@ void ActiveWindowChangeDetectorVisualizer::visualizeChangedObjects(
     // always gets the same marker id across frames. Namespace "removed_objects"
     // avoids collision with green added-object markers on the same publisher.
     marker.ns = "removed_objects";
-    marker.id = static_cast<int>(id & 0xffffffff);
+    marker.id = static_cast<int>(obj.id & 0xffffffff);
   }
 
   MarkerArray msg;
