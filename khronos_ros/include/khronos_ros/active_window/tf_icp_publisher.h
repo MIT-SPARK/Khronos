@@ -80,7 +80,7 @@ class TfIcpPublisher : public ActiveWindowChangeDetector::ActiveWindowCDSink {
   virtual ~TfIcpPublisher() = default;
 
   void call(const DynamicSceneGraph::Ptr& dsg,
-            const std::vector<spark_dsg::NodeId>& removed_object_ids,
+            const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects,
             const std::vector<Track>& newly_added_tracks,
             const Eigen::Isometry3d& current_T_prior) const override;
 

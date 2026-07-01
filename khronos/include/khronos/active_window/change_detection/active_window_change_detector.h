@@ -64,6 +64,20 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     int num_frames_observed = 0;
     //! Raw free ratio from the most recent valid measurement (for logging/debugging).
     float last_free_ratio = 0.0f;
+    //! Sensor frame time (ns) the object first crossed the removal gate. Latched once set;
+    //! never reset even if the object later drops out of the removed set and returns.
+    //! 0 = not yet declared removed.
+    TimeStamp first_removed_ns = 0;
+  };
+
+  /**
+   * @brief A removed object paired with the sensor frame time it was first declared removed.
+   * The timestamp is latched at the detector (see RemovedObjectState::first_removed_ns) so it
+   * stays constant across every message/frame that reports this object as removed.
+   */
+  struct RemovedObject {
+    spark_dsg::NodeId id;
+    TimeStamp first_removed_ns;
   };
 
   /**
@@ -88,7 +102,7 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   };
 
   using ActiveWindowCDSink = hydra::OutputSink<const DynamicSceneGraph::Ptr&,
-                                               const std::vector<spark_dsg::NodeId>&,
+                                               const std::vector<RemovedObject>&,
                                                const std::vector<Track>&,
                                                const Eigen::Isometry3d&>;
 
@@ -241,10 +255,14 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
    * @brief Update the EMA filter state for each object that has a measurement this frame,
    * then return the set of objects whose smoothed free_probability passes the removal gate
    * (probability >= removal_probability_threshold && frames >= removal_min_frames_observed).
-   * Objects not in measurements are left untouched (freeze-last policy).
+   * Objects not in measurements are left untouched (freeze-last policy). The first time an
+   * object passes the gate, its RemovedObjectState::first_removed_ns is latched to `stamp`
+   * (the current frame's sensor time) and never updated again.
+   * @param measurements Per-object raw free ratio measurements for this frame.
+   * @param stamp Sensor frame time (ns) of this call, used to latch first_removed_ns.
    */
-  std::vector<spark_dsg::NodeId> updateRemovedFilter(
-      const std::unordered_map<spark_dsg::NodeId, float>& measurements) const;
+  std::vector<RemovedObject> updateRemovedFilter(
+      const std::unordered_map<spark_dsg::NodeId, float>& measurements, TimeStamp stamp) const;
 
   /**
    * @brief Compute the per-frame containment ratio for each eligible track (non-dynamic,
