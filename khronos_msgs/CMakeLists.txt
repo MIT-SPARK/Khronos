@@ -18,6 +18,9 @@ rosidl_generate_interfaces(
   msg/Changes.msg
   msg/ObjectChange.msg
   msg/SpatioTemporalVisualizerState.msg
+  srv/ExtractExplicitObject.srv
+  srv/ExtractImplicitObject.srv
+  srv/ReconstructImplicitObject.srv
   srv/SpatioTemporalVisualizerSetState.srv
   srv/SpatioTemporalVisualizerSetTimeMode.srv
   srv/SpatioTemporalVisualizerSetup.srv
@@ -25,12 +28,5 @@ rosidl_generate_interfaces(
   builtin_interfaces
   std_msgs
 )
-
-#generate_dynamic_reconfigure_options(
-#cfg/KhronosChangeDetectionVis.cfg
-#cfg/KhronosEvalVis.cfg
-#cfg/KhronosMeshPlugin.cfg
-#cfg/KhronosSpatioTemporalVis.cfg
-#)
 
 ament_package()

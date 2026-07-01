@@ -1,0 +1,5 @@
+float32 scale
+float32[] shape_code
+---
+float32[] vertices
+int32[] triangles

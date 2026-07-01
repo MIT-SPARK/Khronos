@@ -1,0 +1,10 @@
+sensor_msgs/Image rgb
+sensor_msgs/Image depth
+sensor_msgs/Image mask
+sensor_msgs/CameraInfo intrinsics
+float32 volume
+float32 semantic_id
+---
+bool valid false
+float32[] vertices
+int32[] triangles
