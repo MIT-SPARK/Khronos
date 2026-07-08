@@ -39,6 +39,7 @@
 
 #include <chrono>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -47,6 +48,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include "khronos/active_window/data/frame_data.h"
 #include "khronos/utils/output_file_utils.h"
 
 namespace khronos {
@@ -64,14 +66,13 @@ void declare_config(ActiveWindowTrackSaver::Config& config) {
   name("ActiveWindowTrackSaver");
   field(config.verbosity, "verbosity");
   field(config.output_directory, "output_directory");
+  field(config.save_observations, "save_observations");
   field(config.save_masks, "save_masks");
-  field(config.save_color, "save_color");
-  field(config.save_depth, "save_depth");
-  field(config.save_pose, "save_pose");
   field(config.save_camera_intrinsics, "save_camera_intrinsics");
   field(config.save_pointcloud, "save_pointcloud");
   field(config.pointcloud_frame, "pointcloud_frame");
   field(config.save_track_json, "save_track_json");
+  field(config.save_track_symlinks, "save_track_symlinks");
   checkCondition(!config.output_directory.empty(), "output_directory must not be empty");
   checkCondition(config.pointcloud_frame == "world" || config.pointcloud_frame == "robot" ||
                      config.pointcloud_frame == "body" || config.pointcloud_frame == "sensor",
@@ -97,7 +98,7 @@ std::string ActiveWindowTrackSaver::getBaseDir() const {
 }
 
 std::string ActiveWindowTrackSaver::getTrackDir(int track_id) const {
-  const std::string track_dir = getBaseDir() + "/track_" + std::to_string(track_id);
+  const std::string track_dir = getBaseDir() + "/tracks/track_" + std::to_string(track_id);
   ensureDirectoryExists(track_dir);
   return track_dir;
 }
@@ -117,98 +118,21 @@ void ActiveWindowTrackSaver::saveMask(const std::string& track_dir,
   }
 }
 
-void ActiveWindowTrackSaver::saveColor(const std::string& track_dir,
-                                       const std::string& ts_str,
-                                       const FrameData& data,
-                                       const cv::Mat* binary_mask) const {
-  if (data.input.color_image.empty()) {
+void ActiveWindowTrackSaver::saveOverlay(const std::string& track_dir,
+                                         const std::string& ts_str,
+                                         const FrameData& data,
+                                         const cv::Mat* binary_mask) const {
+  if (data.input.color_image.empty() || !binary_mask || binary_mask->empty()) {
     return;
   }
   cv::Mat bgr_image;
   cv::cvtColor(data.input.color_image, bgr_image, cv::COLOR_RGB2BGR);
-  cv::imwrite(track_dir + "/color_" + ts_str + ".png", bgr_image);
 
-  if (binary_mask && !binary_mask->empty()) {
-    cv::Mat overlay = bgr_image.clone();
-    overlay.setTo(cv::Scalar(0, 0, 255), *binary_mask);  // Red in BGR.
-    cv::Mat blended;
-    cv::addWeighted(bgr_image, 0.6, overlay, 0.4, 0, blended);
-    cv::imwrite(track_dir + "/overlay_" + ts_str + ".png", blended);
-  }
-}
-
-void ActiveWindowTrackSaver::saveDepth(const std::string& track_dir,
-                                       const std::string& ts_str,
-                                       const FrameData& data) const {
-  if (data.input.depth_image.empty()) {
-    return;
-  }
-  // 16-bit PNG scaled to mm for easy viewing.
-  cv::Mat depth_mm;
-  data.input.depth_image.convertTo(depth_mm, CV_16UC1, 1000.0);
-  cv::imwrite(track_dir + "/depth_" + ts_str + ".png", depth_mm);
-
-  // Raw float32 binary for exact values.
-  std::ofstream depth_stream(track_dir + "/depth_" + ts_str + ".bin", std::ios::binary);
-  if (depth_stream.is_open()) {
-    depth_stream.write(reinterpret_cast<const char*>(data.input.depth_image.data),
-                       data.input.depth_image.total() * data.input.depth_image.elemSize());
-  }
-}
-
-void ActiveWindowTrackSaver::savePose(const std::string& track_dir,
-                                     const std::string& ts_str,
-                                     const FrameData& data) const {
-  std::ofstream pose_stream(track_dir + "/pose_" + ts_str + ".txt");
-  if (!pose_stream.is_open()) {
-    return;
-  }
-  const Eigen::Isometry3d world_T_sensor = data.input.getSensorPose();
-  pose_stream << std::fixed << std::setprecision(9);
-
-  pose_stream << "# Sensor pose in world frame\n";
-  pose_stream << "# Translation (x, y, z):\n";
-  pose_stream << world_T_sensor.translation().x() << " " << world_T_sensor.translation().y() << " "
-              << world_T_sensor.translation().z() << "\n";
-
-  pose_stream << "# Rotation matrix (3x3):\n";
-  const Eigen::Matrix3d rotation = world_T_sensor.rotation();
-  for (int i = 0; i < 3; ++i) {
-    pose_stream << rotation(i, 0) << " " << rotation(i, 1) << " " << rotation(i, 2) << "\n";
-  }
-
-  pose_stream << "# Full transformation matrix (4x4):\n";
-  const Eigen::Matrix4d transform = world_T_sensor.matrix();
-  for (int i = 0; i < 4; ++i) {
-    pose_stream << transform(i, 0) << " " << transform(i, 1) << " " << transform(i, 2) << " "
-                << transform(i, 3) << "\n";
-  }
-}
-
-void ActiveWindowTrackSaver::saveCameraIntrinsics(const std::string& track_dir,
-                                                  const FrameData& data,
-                                                  int track_id) const {
-  if (intrinsics_saved_.count(track_id)) {
-    return;
-  }
-  const auto* camera = dynamic_cast<const hydra::Camera*>(&data.input.getSensor());
-  if (!camera) {
-    return;
-  }
-  const auto& cam_config = camera->getConfig();
-  std::ofstream camera_stream(track_dir + "/camera_intrinsics.json");
-  if (!camera_stream.is_open()) {
-    return;
-  }
-  camera_stream << "{\n"
-               << "  \"fx\": " << cam_config.fx << ",\n"
-               << "  \"fy\": " << cam_config.fy << ",\n"
-               << "  \"cx\": " << cam_config.cx << ",\n"
-               << "  \"cy\": " << cam_config.cy << ",\n"
-               << "  \"width\": " << cam_config.width << ",\n"
-               << "  \"height\": " << cam_config.height << "\n"
-               << "}\n";
-  intrinsics_saved_.insert(track_id);
+  cv::Mat overlay = bgr_image.clone();
+  overlay.setTo(cv::Scalar(0, 0, 255), *binary_mask);  // Red in BGR.
+  cv::Mat blended;
+  cv::addWeighted(bgr_image, 0.6, overlay, 0.4, 0, blended);
+  cv::imwrite(track_dir + "/overlay_" + ts_str + ".png", blended);
 }
 
 void ActiveWindowTrackSaver::savePointcloud(const std::string& track_dir,
@@ -283,9 +207,46 @@ void ActiveWindowTrackSaver::saveTrackJson(const std::string& track_dir, const T
   track.save(track_dir + "/track.json");
 }
 
+void ActiveWindowTrackSaver::createTrackSymlinks(const std::string& track_dir,
+                                                 const std::string& ts_str) const {
+  namespace fs = std::filesystem;
+  const std::string observation_rel = "../../observations/" + ts_str;
+  const std::pair<std::string, std::string> links[] = {
+      {"color_" + ts_str + ".png", observation_rel + "/color.png"},
+      {"depth_" + ts_str + ".png", observation_rel + "/depth.png"},
+      {"depth_" + ts_str + ".bin", observation_rel + "/depth.bin"},
+      {"pose_" + ts_str + ".txt", observation_rel + "/pose.txt"},
+  };
+  for (const auto& [link_name, target] : links) {
+    const fs::path link_path = fs::path(track_dir) / link_name;
+    std::error_code ec;
+    if (fs::exists(fs::symlink_status(link_path))) {
+      continue;  // Already created for this observation (e.g. sink restarted mid-run).
+    }
+    fs::create_symlink(target, link_path, ec);
+    if (ec) {
+      LOG(WARNING) << "[ActiveWindowTrackSaver] Failed to symlink " << link_path << " -> " << target
+                  << ": " << ec.message();
+    }
+  }
+}
+
 void ActiveWindowTrackSaver::call(const FrameData& data,
                                   const VolumetricMap& /*map*/,
                                   const Tracks& tracks) const {
+  const std::string ts_str = std::to_string(data.input.timestamp_ns);
+
+  if (config.save_observations) {
+    data.save(getBaseDir() + "/observations/" + ts_str);
+  }
+  if (config.save_camera_intrinsics && !intrinsics_saved_) {
+    const auto* camera = dynamic_cast<const hydra::Camera*>(&data.input.getSensor());
+    if (camera) {
+      saveCameraIntrinsics(*camera, getBaseDir());
+      intrinsics_saved_ = true;
+    }
+  }
+
   for (const auto& track : tracks) {
     // Only save data for tracks observed in this exact frame; the sink only has access to the
     // current frame, so past observations cannot be backfilled here.
@@ -294,29 +255,20 @@ void ActiveWindowTrackSaver::call(const FrameData& data,
     }
     const Observation& obs = track.observations.back();
     const std::string track_dir = getTrackDir(track.id);
-    const std::string ts_str = std::to_string(obs.stamp);
 
     cv::Mat binary_mask;
     if (config.save_masks) {
       saveMask(track_dir, ts_str, data, obs.semantic_cluster_id, &binary_mask);
-    }
-    if (config.save_color) {
-      saveColor(track_dir, ts_str, data, binary_mask.empty() ? nullptr : &binary_mask);
-    }
-    if (config.save_depth) {
-      saveDepth(track_dir, ts_str, data);
-    }
-    if (config.save_pose) {
-      savePose(track_dir, ts_str, data);
-    }
-    if (config.save_camera_intrinsics) {
-      saveCameraIntrinsics(track_dir, data, track.id);
+      saveOverlay(track_dir, ts_str, data, binary_mask.empty() ? nullptr : &binary_mask);
     }
     if (config.save_pointcloud) {
       savePointcloud(track_dir, ts_str, data, binary_mask.empty() ? nullptr : &binary_mask);
     }
     if (config.save_track_json) {
       saveTrackJson(track_dir, track);
+    }
+    if (config.save_track_symlinks) {
+      createTrackSymlinks(track_dir, ts_str);
     }
   }
 }
