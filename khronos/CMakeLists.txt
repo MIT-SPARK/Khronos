@@ -15,7 +15,7 @@ find_package(spatial_hash REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(pose_graph_tools REQUIRED)
 find_package(GTSAM REQUIRED)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs)
 find_package(spark_dsg REQUIRED)
 find_package(kimera_pgmo REQUIRED)
 find_package(hydra REQUIRED)
@@ -53,6 +53,7 @@ add_library(${PROJECT_NAME}
         src/active_window/object_detection/instance_forwarding.cpp
         src/active_window/object_extraction/mesh_object_extractor.cpp
         src/active_window/object_extraction/object_worker_pool.cpp
+        src/active_window/track_saver_sink.cpp
         src/active_window/tracking/external_tracker.cpp
         src/active_window/tracking/max_iou_tracker.cpp
         src/backend/backend.cpp
