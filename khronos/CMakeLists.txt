@@ -103,6 +103,14 @@ if(BUILD_TESTING)
   enable_testing()
   add_subdirectory(tests)
 endif()
+###############
+# Executables #
+###############
+
+# Standalone round-trip check for Track::save/Track::load (see tracker_debug.md Step 1).
+add_executable(test_track_serialization app/test_track_serialization.cpp)
+target_link_libraries(test_track_serialization PRIVATE ${PROJECT_NAME})
+install(TARGETS test_track_serialization RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 ##########
 # Export #
