@@ -37,6 +37,7 @@
 
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "khronos/active_window/data/measurement_clusters.h"
@@ -112,6 +113,21 @@ struct Track {
   bool is_active = true;
 
   void updateSemantics(const std::optional<SemanticClusterInfo>& other_semantics);
+
+  /**
+   * @brief Serialize this track (all fields consumed by trackers, e.g. MaxIoUTracker) to a JSON
+   * file at the given path. `is_active` is intentionally not persisted: reconstructed tracks are
+   * meant to be fed into a tracker for offline replay, where activity is re-derived, not restored.
+   * @param filepath Destination path, e.g. ".../track_<id>/track.json".
+   */
+  void save(const std::string& filepath) const;
+
+  /**
+   * @brief Reconstruct a Track from a JSON file written by save().
+   * @param filepath Path to a track.json file.
+   * @return The reconstructed Track.
+   */
+  static Track load(const std::string& filepath);
 };
 
 using Tracks = std::vector<Track>;
