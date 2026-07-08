@@ -20,6 +20,7 @@ find_package(spark_dsg REQUIRED)
 find_package(kimera_pgmo REQUIRED)
 find_package(hydra REQUIRED)
 find_package(small_gicp REQUIRED)
+find_package(CLI11 REQUIRED)
 
 include(GNUInstallDirs)
 
@@ -44,6 +45,7 @@ add_library(${PROJECT_NAME}
         src/active_window/active_window.cpp
         src/active_window/change_detection/active_window_change_detector.cpp
         src/active_window/change_detection/transformation_getter.cpp
+        src/active_window/data/frame_data.cpp
         src/active_window/data/frame_data_buffer.cpp
         src/active_window/data/track.cpp
         src/active_window/integration/object_integrator.cpp
@@ -71,6 +73,7 @@ add_library(${PROJECT_NAME}
         src/spatio_temporal_map/spatio_temporal_map.cpp
         src/spatio_temporal_map/incremental_mesh.cpp
         src/utils/geometry_utils.cpp
+        src/utils/json_utils.cpp
         src/utils/khronos_attribute_utils.cpp
         src/utils/output_file_utils.cpp
         )
@@ -111,6 +114,18 @@ endif()
 add_executable(test_track_serialization app/test_track_serialization.cpp)
 target_link_libraries(test_track_serialization PRIVATE ${PROJECT_NAME})
 install(TARGETS test_track_serialization RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+# Replays a saved track's observations through MaxIoUTracker against another loaded track (see
+# tracker_debug.md Step 2).
+add_executable(test_track_association app/test_track_association.cpp)
+target_link_libraries(test_track_association PRIVATE ${PROJECT_NAME} CLI11::CLI11)
+install(TARGETS test_track_association RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+# Standalone round-trip check for FrameData::save/FrameData::load and
+# saveCameraIntrinsics/loadCameraIntrinsics (see tracker_debug.md Step 3).
+add_executable(test_frame_data_serialization app/test_frame_data_serialization.cpp)
+target_link_libraries(test_frame_data_serialization PRIVATE ${PROJECT_NAME})
+install(TARGETS test_frame_data_serialization RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 ##########
 # Export #
