@@ -71,7 +71,7 @@ void declare_config(ActiveWindowTrackSaver::Config& config) {
   field(config.save_camera_intrinsics, "save_camera_intrinsics");
   field(config.save_pointcloud, "save_pointcloud");
   field(config.pointcloud_frame, "pointcloud_frame");
-  field(config.save_metadata, "save_metadata");
+  field(config.save_track_json, "save_track_json");
   checkCondition(!config.output_directory.empty(), "output_directory must not be empty");
   checkCondition(config.pointcloud_frame == "world" || config.pointcloud_frame == "robot" ||
                      config.pointcloud_frame == "body" || config.pointcloud_frame == "sensor",
@@ -276,32 +276,11 @@ void ActiveWindowTrackSaver::savePointcloud(const std::string& track_dir,
   }
 }
 
-void ActiveWindowTrackSaver::saveMetadata(const std::string& track_dir, const Track& track) const {
-  std::ofstream meta_stream(track_dir + "/track_meta.json");
-  if (!meta_stream.is_open()) {
-    return;
-  }
-  meta_stream << std::fixed << std::setprecision(6);
-  meta_stream << "{\n"
-             << "  \"id\": " << track.id << ",\n"
-             << "  \"semantic_category_id\": "
-             << (track.semantics ? std::to_string(track.semantics->category_id) : "null") << ",\n"
-             << "  \"confidence\": " << track.confidence << ",\n"
-             << "  \"is_dynamic\": " << (track.is_dynamic ? "true" : "false") << ",\n"
-             << "  \"is_active\": " << (track.is_active ? "true" : "false") << ",\n"
-             << "  \"first_seen_ns\": " << track.first_seen << ",\n"
-             << "  \"last_seen_ns\": " << track.last_seen << ",\n"
-             << "  \"num_observations\": " << track.observations.size() << ",\n"
-             << "  \"pointcloud_frame\": \"" << config.pointcloud_frame << "\",\n"
-             << "  \"bounding_box\": {\n"
-             << "    \"center\": [" << track.last_bounding_box.world_P_center.x() << ", "
-             << track.last_bounding_box.world_P_center.y() << ", "
-             << track.last_bounding_box.world_P_center.z() << "],\n"
-             << "    \"dimensions\": [" << track.last_bounding_box.dimensions.x() << ", "
-             << track.last_bounding_box.dimensions.y() << ", "
-             << track.last_bounding_box.dimensions.z() << "]\n"
-             << "  }\n"
-             << "}\n";
+void ActiveWindowTrackSaver::saveTrackJson(const std::string& track_dir, const Track& track) const {
+  // Delegates to Track::save so track.json is a full, reconstructable serialization (see
+  // khronos/active_window/data/track.h) rather than a lossy summary -- this is the exact input
+  // the offline tracker-replay harness needs.
+  track.save(track_dir + "/track.json");
 }
 
 void ActiveWindowTrackSaver::call(const FrameData& data,
@@ -336,8 +315,8 @@ void ActiveWindowTrackSaver::call(const FrameData& data,
     if (config.save_pointcloud) {
       savePointcloud(track_dir, ts_str, data, binary_mask.empty() ? nullptr : &binary_mask);
     }
-    if (config.save_metadata) {
-      saveMetadata(track_dir, track);
+    if (config.save_track_json) {
+      saveTrackJson(track_dir, track);
     }
   }
 }
