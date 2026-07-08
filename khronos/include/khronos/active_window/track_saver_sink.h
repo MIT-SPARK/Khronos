@@ -52,7 +52,7 @@ namespace khronos {
  * one folder per track (`track_<id>/`), for offline debugging of tracker fragmentation. Runs
  * incrementally: each frame, any track observed at the current stamp gets its latest observation
  * appended to its folder. Each data product (masks, color/depth images, poses, camera intrinsics,
- * colored point clouds, track metadata) can be toggled independently in the config.
+ * colored point clouds, serialized Track state) can be toggled independently in the config.
  */
 class ActiveWindowTrackSaver : public ActiveWindow::KhronosSink {
  public:
@@ -88,8 +88,9 @@ class ActiveWindowTrackSaver : public ActiveWindow::KhronosSink {
     //! coincident tracks show up near the origin), or "sensor" (relative to the sensor optical pose).
     std::string pointcloud_frame = "world";
 
-    //! Save/overwrite a track_meta.json summary (semantics, confidence, bbox, observation count).
-    bool save_metadata = true;
+    //! Save/overwrite a track.json with the full serialized Track (see Track::save), enough to
+    //! reconstruct the Track object for offline tracker replay.
+    bool save_track_json = true;
   } const config;
 
   // Construction.
@@ -128,7 +129,7 @@ class ActiveWindowTrackSaver : public ActiveWindow::KhronosSink {
                       const std::string& ts_str,
                       const FrameData& data,
                       const cv::Mat* binary_mask) const;
-  void saveMetadata(const std::string& track_dir, const Track& track) const;
+  void saveTrackJson(const std::string& track_dir, const Track& track) const;
 
   //! Cached base output directory for this run, computed lazily on first call().
   mutable std::string base_dir_;
