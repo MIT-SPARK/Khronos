@@ -473,7 +473,10 @@ int main(int argc, char** argv) {
     }
 
     const size_t tracks_before = tracks.size();
-    const size_t seed_obs_before = has_seed_track ? tracks[0].observations.size() : 0;
+    std::vector<size_t> obs_before(tracks.size());
+    for (size_t i = 0; i < tracks.size(); ++i) {
+      obs_before[i] = tracks[i].observations.size();
+    }
 
     tracker.processInput(*frame_data, tracks);
 
@@ -485,21 +488,34 @@ int main(int argc, char** argv) {
       std::cout << "RESULT: " << (is_initial_creation ? "INITIAL TRACK CREATED" : "NEW TRACK "
                                   "CREATED (fragmentation reproduced)")
                << ". tracks.size() " << tracks_before << " -> " << tracks.size() << "\n";
-    } else if (has_seed_track) {
-      const size_t seed_obs_after = tracks[0].observations.size();
-      if (seed_obs_after > seed_obs_before) {
-        std::cout << "RESULT: ASSOCIATED into seed track (observations " << seed_obs_before
-                 << " -> " << seed_obs_after << ")\n";
+    } else {
+      // tracks.size() unchanged -- find which existing track (by stable vector index, matching
+      // this file's other id-vs-index conventions, see has_seed_track above) actually grew, so a
+      // detection that associated into a PREVIOUSLY-created fragment track (not the seed) isn't
+      // misreported as a silent drop.
+      std::optional<size_t> grown_index;
+      for (size_t i = 0; i < obs_before.size() && i < tracks.size(); ++i) {
+        if (tracks[i].observations.size() > obs_before[i]) {
+          grown_index = i;
+          break;
+        }
+      }
+      if (grown_index && *grown_index == 0 && has_seed_track) {
+        std::cout << "RESULT: ASSOCIATED into seed track (observations " << obs_before[0]
+                 << " -> " << tracks[0].observations.size() << ")\n";
+      } else if (grown_index && has_seed_track) {
+        std::cout << "RESULT: associated into track index " << *grown_index << " (id="
+                 << tracks[*grown_index].id << ", NOT the seed track) -- observations "
+                 << obs_before[*grown_index] << " -> " << tracks[*grown_index].observations.size()
+                 << "\n";
+      } else if (grown_index) {
+        std::cout << "RESULT: associated into track index " << *grown_index << " (id="
+                 << tracks[*grown_index].id << ") -- observations " << obs_before[*grown_index]
+                 << " -> " << tracks[*grown_index].observations.size() << "\n";
       } else {
         std::cout << "RESULT: no track count change and no observation added -- detection was "
                     "dropped silently.\n";
       }
-    } else {
-      const size_t total_obs_after =
-          std::accumulate(tracks.begin(), tracks.end(), size_t{0},
-                          [](size_t sum, const Track& t) { return sum + t.observations.size(); });
-      std::cout << "RESULT: associated into one of the " << tracks.size()
-               << " existing track(s) (total observations now " << total_obs_after << ")\n";
     }
   }
 
