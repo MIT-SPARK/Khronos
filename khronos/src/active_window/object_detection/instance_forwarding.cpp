@@ -37,6 +37,7 @@
 
 #include "khronos/active_window/object_detection/instance_forwarding.h"
 
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -177,6 +178,19 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
         continue;
       }
 
+      const auto& vertex = data.input.vertex_map.at<InputData::VertexType>(v, u);
+      if (!std::isfinite(vertex[0]) || !std::isfinite(vertex[1]) || !std::isfinite(vertex[2])) {
+        continue;
+      }
+
+      if (config.max_range > 0.f || config.min_range > 0.f) {
+        const float range = data.input.range_image.at<InputData::RangeType>(v, u);
+        if (range < config.min_range || (config.max_range > 0.f && range > config.max_range)) {
+          continue;
+        }
+      }
+
+      data.object_image.at<FrameData::ObjectImageType>(v, u) = id;
       clusters[id].emplace_back(u, v);
     }
   }

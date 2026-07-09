@@ -558,20 +558,25 @@ float MaxIoUTracker::computeIoUVoxels(const FrameData& /* data */,
   return intersection / (cluster.voxels.size() + track.last_voxels.size() - intersection);
 }
 
-float MaxIoUTracker::computeIoUPixels(const FrameData& data,
-                                      const MeasurementCluster& cluster,
-                                      const Track& track) const {
-  // Project every pixel of cluster 1 into the frame of cluster 2.
+std::set<Pixel> MaxIoUTracker::reprojectPoints(const FrameData& data, const Points& points) const {
   const Transform sensor_T_world = data.input.getSensorPose().inverse();
   const Sensor& sensor = data.input.getSensor();
   std::set<Pixel> reprojected_pixels;
-  for (const Point& point : track.last_points) {
+  for (const Point& point : points) {
     int u, v;
     const auto p_sensor = sensor_T_world * Eigen::Vector3d(point[0], point[1], point[2]);
     if (sensor.projectPointToImagePlane(p_sensor.cast<float>(), u, v)) {
       reprojected_pixels.emplace(u, v);
     }
   }
+  return reprojected_pixels;
+}
+
+float MaxIoUTracker::computeIoUPixels(const FrameData& data,
+                                      const MeasurementCluster& cluster,
+                                      const Track& track) const {
+  // Project every pixel of cluster 1 into the frame of cluster 2.
+  const auto reprojected_pixels = reprojectPoints(data, track.last_points);
 
   // Compute IoU of the reprojected pixels and cluster 2.
   float intersection = 0.f;
