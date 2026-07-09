@@ -37,6 +37,7 @@
 
 #include "khronos/active_window/object_detection/instance_forwarding.h"
 
+#include <cmath>
 #include <string>
 #include <vector>
 
