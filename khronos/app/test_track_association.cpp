@@ -104,15 +104,18 @@
  *     trusting a Mode 1 result.
  *
  * Both modes accept --save-reprojection-dir <dir> to additionally save, per replayed frame,
- * reprojection_<stamp>.png -- the candidate track's (tracks[0]) reprojected last_points in blue
- * overlaid with the frame's real detection cluster in green (only meaningful for the default
- * --track-by pixels; unset by default, so no files are written unless requested).
+ * reprojection_<stamp>.png -- the frame's real detection cluster in semi-transparent red overlaid
+ * with the candidate track's (tracks[0]) reprojected last_points in semi-transparent green;
+ * overlapping pixels are blended twice and read as a yellow-ish tone (only meaningful for the
+ * default --track-by pixels; unset by default, so no files are written unless requested).
  */
 
 #include <cstdlib>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <sstream>
 
 #include <CLI/CLI.hpp>
 #include <hydra/input/camera.h>
@@ -249,14 +252,25 @@ bool overrideWithHistoricalObservation(const std::string& track_dir, TimeStamp s
   return true;
 }
 
-// Saves a dual-color comparison image: cluster's real pixels in green, the track's reprojected
-// points (see MaxIoUTracker::reprojectPoints) in blue -- drawn second so overlap reads as blue.
-// Mirrors ActiveWindowTrackSaver::saveOverlay's blend style (0.6/0.4 addWeighted, applied twice).
+// Blends `color` into `image` at `alpha` opacity, restricted to `mask` (255-valued pixels).
+void alphaBlendMask(cv::Mat* image, const cv::Mat& mask, const cv::Scalar& color, double alpha) {
+  cv::Mat color_layer(image->size(), image->type(), color);
+  cv::Mat blended;
+  cv::addWeighted(*image, 1.0 - alpha, color_layer, alpha, 0, blended);
+  blended.copyTo(*image, mask);
+}
+
+// Saves a dual-color comparison image: cluster's real pixels in semi-transparent red, the track's
+// reprojected points (see MaxIoUTracker::reprojectPoints) in semi-transparent green -- each mask
+// is alpha-blended into the image independently and restricted to its own region, so a pixel hit
+// by both masks is blended twice (red then green) and naturally reads as a blended yellow-ish
+// tone, while background pixels stay untouched (full brightness).
 void saveReprojectionOverlay(const std::string& dir,
                              TimeStamp stamp,
                              const FrameData& frame_data,
                              const MeasurementCluster& cluster,
-                             const std::set<Pixel>& reprojected_pixels) {
+                             const std::set<Pixel>& reprojected_pixels,
+                             float iou) {
   if (frame_data.input.color_image.empty()) {
     return;
   }
@@ -278,12 +292,14 @@ void saveReprojectionOverlay(const std::string& dir,
     }
   }
 
-  cv::Mat overlay = bgr_image.clone();
-  overlay.setTo(cv::Scalar(0, 255, 0), detection_mask);   // Green in BGR: real detection.
-  overlay.setTo(cv::Scalar(255, 0, 0), reprojected_mask);  // Blue in BGR: reprojected track.
-  cv::Mat blended;
-  cv::addWeighted(bgr_image, 0.6, overlay, 0.4, 0, blended);
-  cv::imwrite(dir + "/reprojection_" + std::to_string(stamp) + ".png", blended);
+  cv::Mat blended = bgr_image.clone();
+  alphaBlendMask(&blended, detection_mask, cv::Scalar(0, 0, 255), 0.4);    // Red: real detection.
+  alphaBlendMask(&blended, reprojected_mask, cv::Scalar(0, 255, 0), 0.4);  // Green: reprojected track.
+
+  std::ostringstream iou_str;
+  iou_str << std::fixed << std::setprecision(3) << iou;
+  cv::imwrite(
+      dir + "/reprojection_" + std::to_string(stamp) + "_iou_" + iou_str.str() + ".png", blended);
 }
 
 }  // namespace
@@ -449,8 +465,10 @@ int main(int argc, char** argv) {
       const auto& kept_clusters = is_dynamic ? frame_data->dynamic_clusters : frame_data->semantic_clusters;
       if (!kept_clusters.empty()) {
         const auto reprojected_pixels = tracker.reprojectPoints(*frame_data, tracks[0].last_points);
+        const float iou =
+            tracker.computeIoUPixels(*frame_data, kept_clusters.front(), tracks[0]);
         saveReprojectionOverlay(
-            save_reprojection_dir, stamp, *frame_data, kept_clusters.front(), reprojected_pixels);
+            save_reprojection_dir, stamp, *frame_data, kept_clusters.front(), reprojected_pixels, iou);
       }
     }
 
