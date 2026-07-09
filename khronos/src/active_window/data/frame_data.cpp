@@ -38,6 +38,7 @@
 #include "khronos/active_window/data/frame_data.h"
 
 #include <array>
+#include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <iterator>
@@ -211,7 +212,10 @@ bool loadRawInt32(const std::string& path, int width, int height, cv::Mat* out) 
   return static_cast<bool>(file) || file.eof();
 }
 
-std::unordered_map<int, Pixels> gatherPixelsById(const cv::Mat& image) {
+std::unordered_map<int, Pixels> gatherPixelsById(const cv::Mat& image,
+                                                 const cv::Mat& depth_image,
+                                                 float min_range,
+                                                 float max_range) {
   std::unordered_map<int, Pixels> pixels_by_id;
   if (image.empty()) {
     return pixels_by_id;
@@ -219,15 +223,34 @@ std::unordered_map<int, Pixels> gatherPixelsById(const cv::Mat& image) {
   for (int v = 0; v < image.rows; ++v) {
     for (int u = 0; u < image.cols; ++u) {
       const int32_t id = image.at<int32_t>(v, u);
-      if (id != 0) {
-        pixels_by_id[id].emplace_back(u, v);
+      if (id == 0) {
+        continue;
       }
+      // Mirrors instance_forwarding.cpp's own pixel-validity gate (checks the raw depth/range
+      // value directly, not downstream-computed geometry): skip non-finite depth (no such guard
+      // exists anywhere in the production pipeline that builds cluster.pixels -- see
+      // tracker_debug.md bugfix writeup -- so this reconstruction filters explicitly to keep
+      // bbox/IoU computations well-defined regardless of pixel iteration order) and skip pixels
+      // outside [min_range, max_range], exactly matching instance_forwarding.cpp's own check.
+      const float depth = depth_image.at<float>(v, u);
+      if (!std::isfinite(depth)) {
+        continue;
+      }
+      if (depth < min_range || (max_range > 0.f && depth > max_range)) {
+        continue;
+      }
+      pixels_by_id[id].emplace_back(u, v);
     }
   }
   return pixels_by_id;
 }
 
-void loadClustersJson(const std::string& dir, int width, int height, FrameData* frame_data) {
+void loadClustersJson(const std::string& dir,
+                      int width,
+                      int height,
+                      float min_range,
+                      float max_range,
+                      FrameData* frame_data) {
   std::ifstream clusters_file(dir + "/clusters.json");
   if (!clusters_file.is_open()) {
     LOG(WARNING) << "[FrameData] Missing clusters.json in " << dir << "; treating as no detections.";
@@ -245,8 +268,9 @@ void loadClustersJson(const std::string& dir, int width, int height, FrameData* 
     frame_data->dynamic_image = dynamic_image;
   }
 
-  const auto object_pixels = gatherPixelsById(object_image);
-  const auto dynamic_pixels = gatherPixelsById(dynamic_image);
+  const auto& depth_image = frame_data->input.depth_image;
+  const auto object_pixels = gatherPixelsById(object_image, depth_image, min_range, max_range);
+  const auto dynamic_pixels = gatherPixelsById(dynamic_image, depth_image, min_range, max_range);
 
   for (const auto& entry : clusters_json) {
     const bool is_dynamic = entry.at("is_dynamic").get<bool>();
@@ -282,7 +306,9 @@ void FrameData::save(const std::string& observation_dir) const {
 
 FrameData::Ptr FrameData::load(const std::string& observation_dir,
                                const std::shared_ptr<hydra::Camera>& camera,
-                               TimeStamp stamp) {
+                               TimeStamp stamp,
+                               float min_range,
+                               float max_range) {
   if (!camera) {
     LOG(ERROR) << "[FrameData] load() requires a valid camera.";
     return nullptr;
@@ -310,7 +336,8 @@ FrameData::Ptr FrameData::load(const std::string& observation_dir,
   }
 
   auto frame_data = std::make_shared<FrameData>(input);
-  loadClustersJson(observation_dir, cam_config.width, cam_config.height, frame_data.get());
+  loadClustersJson(
+      observation_dir, cam_config.width, cam_config.height, min_range, max_range, frame_data.get());
   return frame_data;
 }
 
