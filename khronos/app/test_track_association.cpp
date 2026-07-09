@@ -67,20 +67,18 @@
  *   test_track_association \
  *     --existing-track-dir      <run_dir>/tracks/track_0 \
  *     --observation-track-dir   <run_dir>/tracks/track_3 \
- *     --existing-track-stamp    <track_0's last observation stamp before the gap, ns> \
  *     --bbox-type aabb --min-semantic-iou 0.25 --min-cross-iou 0.1 --min-num-observations 10 \
  *     --verbosity 6
  *
  *   - Replays every observation in --observation-track-dir (in chronological order) against the
  *     track loaded from --existing-track-dir. The run directory (containing camera_intrinsics.json
  *     and observations/) is derived automatically from each track dir's grandparent.
- *   - --existing-track-stamp is important: without it, the existing track's last_points/
- *     last_bounding_box come from its FINAL saved snapshot (Track only ever persists one, see
- *     Track::save), which may be far in time/viewpoint from the frames under test and will show
- *     artificially low IoU. Pass the existing track's own observation stamp immediately
- *     preceding the gap you're investigating (found via
- *     `cat <run_dir>/tracks/track_0/track.json | grep stamp`) to test the tracker's real
- *     historical decision point instead.
+ *   - The existing track's last_points/last_bounding_box are auto-derived from its own historical
+ *     observation immediately preceding --observation-track-dir's earliest observation (rather
+ *     than its FINAL saved snapshot, which -- since Track only ever persists one, see Track::save
+ *     -- may be far in time/viewpoint from the frames under test and would show artificially low
+ *     IoU). No manual stamp-hunting needed. Pass --existing-track-stamp explicitly to override
+ *     this auto-derivation with a different historical decision point.
  *   - --verbosity 6 surfaces MaxIoUTracker's own CLOG(6) accept/reject lines (low IoU vs.
  *     semantic mismatch, etc.) so you can see exactly why a cluster was or wasn't associated.
  *   - Per-frame RESULT lines report NEW TRACK CREATED / ASSOCIATED / dropped silently; a
@@ -104,6 +102,11 @@
  *     fragmented into N tracks" with each fragment's id/observation count/time range if it did.
  *   - Useful to validate the harness itself isn't the source of a reported fragmentation before
  *     trusting a Mode 1 result.
+ *
+ * Both modes accept --save-reprojection-dir <dir> to additionally save, per replayed frame,
+ * reprojection_<stamp>.png -- the candidate track's (tracks[0]) reprojected last_points in blue
+ * overlaid with the frame's real detection cluster in green (only meaningful for the default
+ * --track-by pixels; unset by default, so no files are written unless requested).
  */
 
 #include <cstdlib>
@@ -113,6 +116,8 @@
 
 #include <CLI/CLI.hpp>
 #include <hydra/input/camera.h>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 
 #include "khronos/active_window/data/frame_data.h"
 #include "khronos/active_window/data/track.h"
@@ -160,6 +165,20 @@ std::optional<std::pair<int, bool>> clusterIdAtStamp(const Track& track, TimeSta
     return std::nullopt;
   }
   return std::nullopt;
+}
+
+// Finds the latest of `track`'s own observation stamps that is <= `before_stamp`. Used to
+// auto-derive --existing-track-stamp: when comparing whether `observation_track` (e.g. track_3)
+// should have associated into `track` (e.g. track_0), the relevant historical decision point is
+// track_0's own state at its last observation before track_3 first appeared.
+std::optional<TimeStamp> latestStampBefore(const Track& track, TimeStamp before_stamp) {
+  std::optional<TimeStamp> best;
+  for (const auto& obs : track.observations) {
+    if (obs.stamp <= before_stamp && (!best || obs.stamp > *best)) {
+      best = obs.stamp;
+    }
+  }
+  return best;
 }
 
 // Removes every cluster from `frame_data` except the one with the given (id, is_dynamic) --
@@ -230,6 +249,43 @@ bool overrideWithHistoricalObservation(const std::string& track_dir, TimeStamp s
   return true;
 }
 
+// Saves a dual-color comparison image: cluster's real pixels in green, the track's reprojected
+// points (see MaxIoUTracker::reprojectPoints) in blue -- drawn second so overlap reads as blue.
+// Mirrors ActiveWindowTrackSaver::saveOverlay's blend style (0.6/0.4 addWeighted, applied twice).
+void saveReprojectionOverlay(const std::string& dir,
+                             TimeStamp stamp,
+                             const FrameData& frame_data,
+                             const MeasurementCluster& cluster,
+                             const std::set<Pixel>& reprojected_pixels) {
+  if (frame_data.input.color_image.empty()) {
+    return;
+  }
+  std::filesystem::create_directories(dir);
+
+  cv::Mat bgr_image;
+  cv::cvtColor(frame_data.input.color_image, bgr_image, cv::COLOR_RGB2BGR);
+
+  cv::Mat detection_mask = cv::Mat::zeros(bgr_image.size(), CV_8UC1);
+  for (const Pixel& pixel : cluster.pixels) {
+    if (pixel.isInImage(detection_mask)) {
+      detection_mask.at<uint8_t>(pixel.v, pixel.u) = 255;
+    }
+  }
+  cv::Mat reprojected_mask = cv::Mat::zeros(bgr_image.size(), CV_8UC1);
+  for (const Pixel& pixel : reprojected_pixels) {
+    if (pixel.isInImage(reprojected_mask)) {
+      reprojected_mask.at<uint8_t>(pixel.v, pixel.u) = 255;
+    }
+  }
+
+  cv::Mat overlay = bgr_image.clone();
+  overlay.setTo(cv::Scalar(0, 255, 0), detection_mask);   // Green in BGR: real detection.
+  overlay.setTo(cv::Scalar(255, 0, 0), reprojected_mask);  // Blue in BGR: reprojected track.
+  cv::Mat blended;
+  cv::addWeighted(bgr_image, 0.6, overlay, 0.4, 0, blended);
+  cv::imwrite(dir + "/reprojection_" + std::to_string(stamp) + ".png", blended);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -242,12 +298,13 @@ int main(int argc, char** argv) {
   std::string existing_track_dir;
   std::string observation_track_dir;
   int verbosity = 6;
-  float min_semantic_iou = 0.5f;
+  float min_semantic_iou = 0.25f;
   float min_cosine_sim = 0.0f;
-  float min_cross_iou = 0.5f;
-  int min_num_observations = 20;
+  float min_cross_iou = 0.1f;
+  int min_num_observations = 10;
   std::string bbox_type = "aabb";
   long long existing_track_stamp = -1;
+  std::string save_reprojection_dir;
 
   bool from_scratch = false;
 
@@ -283,8 +340,16 @@ int main(int argc, char** argv) {
   app.add_option("--existing-track-stamp", existing_track_stamp,
                 "Optional: override the existing track's last_points/last_bounding_box using its "
                 "OWN on-disk observation at this stamp (ns), instead of its final saved snapshot. "
-                "Use this to test the tracker's real historical decision point rather than an "
-                "artifact of Track only persisting its final state.");
+                "If omitted, this is auto-derived as the existing track's latest observation stamp "
+                "at or before --observation-track-dir's earliest observation stamp -- pass this "
+                "flag explicitly only to override that choice.");
+  app.add_option("--save-reprojection-dir", save_reprojection_dir,
+                "Optional: directory to save per-frame reprojection comparison images "
+                "(reprojection_<stamp>.png) -- the seed/candidate track (tracks[0])'s reprojected "
+                "last_points in blue, overlaid with the real detection cluster in green. Only "
+                "meaningful when --track-by is 'pixels' (the default) and a candidate track with "
+                "non-empty last_points exists; unset by default (no files written). In "
+                "--from-scratch mode with fragmentation, this only visualizes against tracks[0].");
 
   CLI11_PARSE(app, argc, argv);
 
@@ -301,6 +366,23 @@ int main(int argc, char** argv) {
   Tracks tracks;
   if (!from_scratch) {
     Track existing_on_disk = Track::load(existing_track_dir + "/track.json");
+    if (existing_track_stamp < 0) {
+      const auto observation_stamps = sortedObservationStamps(observation_track);
+      if (!observation_stamps.empty()) {
+        const auto derived = latestStampBefore(existing_on_disk, observation_stamps.front());
+        if (derived) {
+          existing_track_stamp = static_cast<long long>(*derived);
+          std::cout << "Auto-derived --existing-track-stamp " << existing_track_stamp
+                   << " (existing track's latest observation at or before observation track's "
+                      "earliest stamp " << observation_stamps.front() << "). Pass "
+                      "--existing-track-stamp explicitly to override.\n";
+        } else {
+          std::cout << "No auto-derivation possible: existing track has no observation at or "
+                      "before observation track's earliest stamp " << observation_stamps.front()
+                   << "; using existing track's final saved snapshot instead.\n";
+        }
+      }
+    }
     if (existing_track_stamp >= 0) {
       if (!overrideWithHistoricalObservation(existing_track_dir,
                                              static_cast<TimeStamp>(existing_track_stamp),
@@ -360,6 +442,17 @@ int main(int argc, char** argv) {
     // Only test whether THIS specific detection associates with the seed track -- clear every
     // other cluster in the frame so the tracker can't associate against unrelated objects.
     keepOnlyCluster(frame_data.get(), cluster_id, is_dynamic);
+
+    if (!save_reprojection_dir.empty() &&
+       config.track_by == MaxIoUTracker::Config::TrackBy::kPixels && !tracks.empty() &&
+       !tracks[0].last_points.empty()) {
+      const auto& kept_clusters = is_dynamic ? frame_data->dynamic_clusters : frame_data->semantic_clusters;
+      if (!kept_clusters.empty()) {
+        const auto reprojected_pixels = tracker.reprojectPoints(*frame_data, tracks[0].last_points);
+        saveReprojectionOverlay(
+            save_reprojection_dir, stamp, *frame_data, kept_clusters.front(), reprojected_pixels);
+      }
+    }
 
     const size_t tracks_before = tracks.size();
     const size_t seed_obs_before = has_seed_track ? tracks[0].observations.size() : 0;

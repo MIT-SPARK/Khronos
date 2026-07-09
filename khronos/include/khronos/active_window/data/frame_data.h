@@ -102,11 +102,20 @@ struct FrameData {
    * @param camera Sensor to associate with the reconstructed input (intrinsics + identity
    * extrinsics; see loadCameraIntrinsics).
    * @param stamp Timestamp (ns) to assign to the reconstructed frame.
+   * @param min_range Minimum depth [m] for a pixel to be included in a cluster's pixels; mirrors
+   * instance_forwarding.cpp's own pixel-validity gate (`min_range: 0.05` in the deployed config).
+   * 0 (default) disables this check. Non-finite depth is always excluded regardless of this value
+   * (no such guard exists in the production pipeline that builds cluster.pixels, so this
+   * reconstruction filters explicitly to keep bbox/IoU computations well-defined).
+   * @param max_range Maximum depth [m] for a pixel to be included; mirrors instance_forwarding.cpp
+   * (`max_range: 10.0` in the deployed config). 0 (default) disables this check.
    * @return The reconstructed FrameData, or nullptr if any required file is missing/malformed.
    */
   static FrameData::Ptr load(const std::string& observation_dir,
                              const std::shared_ptr<hydra::Camera>& camera,
-                             TimeStamp stamp);
+                             TimeStamp stamp,
+                             float min_range = 0.f,
+                             float max_range = 0.f);
 };
 
 /**

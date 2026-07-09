@@ -63,17 +63,26 @@
  * Binary: install/khronos/bin/full_run_tracker_replay (after `colcon build --packages-select
  * khronos`). Run with --help to see all flags.
  *
+ *   full_run_tracker_replay --run-dir <run_dir> --output-dir <output_dir>
+ *
+ * All tracker-config flags (--bbox-type, --min-semantic-iou, --min-cross-iou,
+ * --min-num-observations, --track-by, --map-window-radius, --min-range, --max-range) DEFAULT TO
+ * THE DEPLOYED CONFIG's values (dcist_launch_system/config/default_awcd/hydra.yaml), not
+ * MaxIoUTracker::Config's own in-code defaults -- so a bare invocation with no flags at all
+ * reproduces production out of the box. (This was not always true: earlier defaults silently
+ * mirrored the stricter in-code defaults, e.g. min_semantic_iou=0.5 vs. the deployed 0.25, and a
+ * run without explicit flags produced ~2x the real fragmentation purely from that mismatch -- see
+ * tracker_debug.md's usability-fix writeup. If you're pointing this at a run from a DIFFERENT
+ * experiment override with different tracker/map_window values, pass them explicitly:
+ *
  *   full_run_tracker_replay \
  *     --run-dir <run_dir> --output-dir <output_dir> \
  *     --bbox-type aabb --min-semantic-iou 0.25 --min-cross-iou 0.1 --min-num-observations 10 \
- *     --track-by pixels --map-window-type spatial --map-window-radius 14.0
+ *     --track-by pixels --map-window-type spatial --map-window-radius 14.0 \
+ *     --min-range 0.05 --max-range 10.0
  *
- * IMPORTANT: --track-by / --min-semantic-iou / etc. default to MaxIoUTracker::Config's in-code
- * defaults, NOT necessarily what a given run's config used (e.g. this codebase's default_awcd
- * config uses min_semantic_iou: 0.25, not the Config default of 0.5) -- pass the real deployed
- * values (base_params/hydra.yaml or an experiment override's active_window.tracker/map_window
- * blocks) to reproduce a run faithfully, or deliberately change them to test whether a different
- * config would have avoided a known fragmentation case.
+ * or deliberately override individual values to test whether a different config would have
+ * avoided a known fragmentation case (e.g. --min-semantic-iou 0.2, --track-by bounding_box).
  *
  * --pause-on-event blocks on stdin (press Enter to continue) only at frames where a track was
  * created or evicted -- the moments actually worth inspecting -- instead of every frame.
@@ -217,10 +226,15 @@ int main(int argc, char** argv) {
   std::string run_dir;
   std::string output_dir;
   int verbosity = 0;
-  float min_semantic_iou = 0.5f;
+  // NOTE: these default to the DEPLOYED config's values (dcist_launch_system/config/default_awcd/
+  // hydra.yaml), not MaxIoUTracker::Config's own in-code defaults, so a bare invocation with no
+  // flags reproduces production out of the box. (Previously defaulted to the code defaults --
+  // 0.5/0.5/20/disabled -- which are all stricter than production and silently produced ~2x the
+  // real fragmentation; see tracker_debug.md's usability-fix writeup.) Still fully overridable.
+  float min_semantic_iou = 0.25f;
   float min_cosine_sim = 0.0f;
-  float min_cross_iou = 0.5f;
-  int min_num_observations = 20;
+  float min_cross_iou = 0.1f;
+  int min_num_observations = 10;
   std::string bbox_type = "aabb";
   std::string track_by = "pixels";
   std::string map_window_type = "spatial";
@@ -228,6 +242,8 @@ int main(int argc, char** argv) {
   double map_window_seconds = 3.0;
   bool pause_on_event = false;
   bool save_overlay = false;
+  float min_range = 0.05f;
+  float max_range = 10.0f;
 
   app.add_option("--run-dir", run_dir, "Run directory (has camera_intrinsics.json + observations/)")
       ->required()
@@ -237,15 +253,17 @@ int main(int argc, char** argv) {
   app.add_option("--verbosity", verbosity,
                 "Tracker verbosity; >=6 prints per-cluster accept/reject reasons")
       ->default_val(0);
-  app.add_option("--min-semantic-iou", min_semantic_iou, "MaxIoUTracker::Config::min_semantic_iou")
-      ->default_val(0.5f);
+  app.add_option("--min-semantic-iou", min_semantic_iou,
+                "MaxIoUTracker::Config::min_semantic_iou (default matches the deployed config)")
+      ->default_val(0.25f);
   app.add_option("--min-cosine-sim", min_cosine_sim, "MaxIoUTracker::Config::min_cosine_sim")
       ->default_val(0.0f);
-  app.add_option("--min-cross-iou", min_cross_iou, "MaxIoUTracker::Config::min_cross_iou")
-      ->default_val(0.5f);
-  app.add_option(
-      "--min-num-observations", min_num_observations, "MaxIoUTracker::Config::min_num_observations")
-      ->default_val(20);
+  app.add_option("--min-cross-iou", min_cross_iou,
+                "MaxIoUTracker::Config::min_cross_iou (default matches the deployed config)")
+      ->default_val(0.1f);
+  app.add_option("--min-num-observations", min_num_observations,
+                "MaxIoUTracker::Config::min_num_observations (default matches the deployed config)")
+      ->default_val(10);
   app.add_option("--bbox-type", bbox_type, "MaxIoUTracker::Config::bbox_type (aabb|raabb)")
       ->default_val("aabb");
   app.add_option("--track-by", track_by, "MaxIoUTracker::Config::track_by (pixels|voxels|bounding_box)")
@@ -256,6 +274,15 @@ int main(int argc, char** argv) {
   app.add_option("--map-window-radius", map_window_radius,
                 "SpatialWindowChecker::Config::max_radius_m [m]; used if --map-window-type=spatial")
       ->default_val(14.0);
+  app.add_option("--min-range", min_range,
+                "Minimum depth [m] for a pixel to be included in a cluster's pixels; mirrors "
+                "instance_forwarding.cpp's own pixel-validity gate. Default matches the deployed "
+                "config; pass 0 to disable. Non-finite depth is always excluded regardless.")
+      ->default_val(0.05f);
+  app.add_option("--max-range", max_range,
+                "Maximum depth [m] for a pixel to be included; mirrors instance_forwarding.cpp. "
+                "Default matches the deployed config; pass 0 to disable.")
+      ->default_val(10.0f);
   app.add_option("--map-window-seconds", map_window_seconds,
                 "TemporalWindowChecker::Config::window_sec [s]; used if --map-window-type=temporal")
       ->default_val(3.0);
@@ -310,8 +337,8 @@ int main(int argc, char** argv) {
   size_t total_tracks_archived = 0;
 
   for (const TimeStamp stamp : stamps) {
-    const auto frame_data =
-        FrameData::load(run_dir + "/observations/" + std::to_string(stamp), camera, stamp);
+    const auto frame_data = FrameData::load(
+        run_dir + "/observations/" + std::to_string(stamp), camera, stamp, min_range, max_range);
     if (!frame_data) {
       std::cerr << "Failed to reconstruct FrameData for stamp " << stamp << "; skipping.\n";
       continue;
