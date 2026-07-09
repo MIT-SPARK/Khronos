@@ -188,6 +188,19 @@ bool loadDepth(const std::string& dir, int width, int height, cv::Mat* depth) {
   return static_cast<bool>(file) || file.eof();
 }
 
+// Not fatal if missing/unreadable: color is not needed for tracking itself (only depth/pose/
+// clusters are), only for optional visualization (e.g. overlay images); callers should treat an
+// empty color_image as "not available" rather than failing the whole load.
+cv::Mat loadColor(const std::string& dir) {
+  cv::Mat bgr_image = cv::imread(dir + "/color.png", cv::IMREAD_COLOR);
+  if (bgr_image.empty()) {
+    return {};
+  }
+  cv::Mat rgb_image;
+  cv::cvtColor(bgr_image, rgb_image, cv::COLOR_BGR2RGB);
+  return rgb_image;
+}
+
 bool loadRawInt32(const std::string& path, int width, int height, cv::Mat* out) {
   std::ifstream file(path, std::ios::binary);
   if (!file.is_open()) {
@@ -283,6 +296,8 @@ FrameData::Ptr FrameData::load(const std::string& observation_dir,
   hydra::InputData input(camera);
   input.timestamp_ns = stamp;
   input.world_T_body = *pose;  // valid since camera extrinsics are identity (loadCameraIntrinsics).
+
+  input.color_image = loadColor(observation_dir);
 
   const auto& cam_config = camera->getConfig();
   if (!loadDepth(observation_dir, cam_config.width, cam_config.height, &input.depth_image)) {
