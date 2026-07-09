@@ -72,6 +72,8 @@ struct MatchResult {
   } const status;
 
   const std::optional<float> similiarity = std::nullopt;
+  const std::optional<int> lhs_category = std::nullopt;
+  const std::optional<int> rhs_category = std::nullopt;
 };
 
 std::ostream& operator<<(std::ostream& out, const MatchResult& result) {
@@ -80,7 +82,8 @@ std::ostream& operator<<(std::ostream& out, const MatchResult& result) {
       out << "no match (invalid semantics)";
       break;
     case MatchResult::Status::kMismatchedCategories:
-      out << "no match (categories are different)";
+      out << "no match (categories are different: " << result.lhs_category.value_or(-1) << " vs "
+          << result.rhs_category.value_or(-1) << ")";
       break;
     case MatchResult::Status::kMismatchedFeatures:
       out << "no match (feature dimensions disagree)";
@@ -110,7 +113,10 @@ MatchResult semanticsMatch(const std::optional<SemanticClusterInfo>& lhs,
 
   // For openset cases, all objects have the same (unknown) semantic ID.
   if (lhs->category_id != rhs->category_id) {
-    return {MatchResult::Status::kMismatchedCategories};
+    return {MatchResult::Status::kMismatchedCategories,
+           std::nullopt,
+           lhs->category_id,
+           rhs->category_id};
   }
 
   if (lhs->feature.size() != rhs->feature.size()) {
