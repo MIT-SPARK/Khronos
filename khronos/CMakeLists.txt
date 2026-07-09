@@ -128,6 +128,12 @@ add_executable(test_frame_data_serialization app/test_frame_data_serialization.c
 target_link_libraries(test_frame_data_serialization PRIVATE ${PROJECT_NAME})
 install(TARGETS test_frame_data_serialization RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+# Replays an entire saved run through a fresh MaxIoUTracker, with active-window eviction
+# simulation, for parameter tuning (see tracker_debug.md Step 4).
+add_executable(full_run_tracker_replay app/full_run_tracker_replay.cpp)
+target_link_libraries(full_run_tracker_replay PRIVATE ${PROJECT_NAME} CLI11::CLI11)
+install(TARGETS full_run_tracker_replay RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
 ##########
 # Export #
 ##########
