@@ -24,12 +24,14 @@ find_package(khronos_msgs REQUIRED)
 
 add_library(
   ${PROJECT_NAME}
+  src/active_window/external_object_extractor.cpp
   src/utils/ros_conversions.cpp
   src/experiments/experiment_logger.cpp
   src/experiments/experiment_manager.cpp
   src/experiments/experiment_directory.cpp
   src/khronos_pipeline.cpp
   src/visualization/active_window_visualizer.cpp
+  src/visualization/implicit_shape_plugin.cpp
   src/visualization/visualization_utils.cpp
   src/visualization/spatio_temporal_visualizer.cpp)
 target_include_directories(
