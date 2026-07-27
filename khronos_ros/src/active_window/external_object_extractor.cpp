@@ -23,8 +23,8 @@ namespace {
 
 static const auto registration =
     config::RegistrationWithConfig<khronos::ObjectExtractor,
-                                   CrispObjectExtractor,
-                                   CrispObjectExtractor::Config>("CrispObjectExtractor");
+                                   ExternalObjectExtractor,
+                                   ExternalObjectExtractor::Config>("ExternalObjectExtractor");
 
 const MeasurementCluster* findClusterForId(const FrameData& frame, int target_id) {
   const auto it = std::find_if(frame.semantic_clusters.begin(),
@@ -55,21 +55,20 @@ void fillMessage(sensor_msgs::msg::Image& msg,
 
 }  // namespace
 
-void declare_config(CrispObjectExtractor::Config& config) {
+void declare_config(ExternalObjectExtractor::Config& config) {
   using namespace config;
-  name("CrispObjectExtractor::Config");
+  name("ExternalObjectExtractor::Config");
   field(config.min_object_allocation_confidence, "min_object_allocation_confidence");
   field(config.excluded_labels, "excluded_labels");
 }
 
-CrispObjectExtractor::CrispObjectExtractor(Config& config)
+ExternalObjectExtractor::ExternalObjectExtractor(Config& config)
     : config(config::checkValid(config)),
       nh_(ianvs::NodeHandle::this_node("~")),
       client_(nh_.create_client<InferenceSrv>("detect_object")) {}
 
-std::unique_ptr<KhronosObjectAttributes> CrispObjectExtractor::extractObject(
-    const Track& track,
-    const FrameDataBuffer& buffer) {
+auto ExternalObjectExtractor::extractObject(const Track& track, const FrameDataBuffer& buffer)
+    -> KhronosObjectAttributes::Ptr {
   if (track.confidence <= config.min_object_allocation_confidence) {
     return nullptr;
   }

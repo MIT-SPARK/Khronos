@@ -10,7 +10,7 @@ namespace hydra_multi_system {
 
 using spark_dsg::KhronosObjectAttributes;
 
-class CrispObjectExtractor : public khronos::ObjectExtractor {
+class ExternalObjectExtractor : public khronos::ObjectExtractor {
  public:
   using InferenceSrv = khronos_msgs::srv::ExtractImplicitObject;
 
@@ -19,8 +19,8 @@ class CrispObjectExtractor : public khronos::ObjectExtractor {
     std::set<int32_t> excluded_labels;
   } const config;
 
-  explicit CrispObjectExtractor(Config& config);
-  virtual ~CrispObjectExtractor() = default;
+  explicit ExternalObjectExtractor(Config& config);
+  virtual ~ExternalObjectExtractor() = default;
 
   virtual KhronosObjectAttributes::Ptr extractObject(const khronos::Track& track,
                                                      const khronos::FrameDataBuffer& buffer);

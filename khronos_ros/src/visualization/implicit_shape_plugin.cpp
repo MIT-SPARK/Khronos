@@ -51,10 +51,10 @@ namespace hydra {
 namespace {
 
 static const auto registration = config::RegistrationWithConfig<VisualizerPlugin,
-                                                                CrispMeshPlugin,
-                                                                CrispMeshPlugin::Config,
+                                                                ImplicitShapePlugin,
+                                                                ImplicitShapePlugin::Config,
                                                                 ianvs::NodeHandle,
-                                                                std::string>("CrispMeshPlugin");
+                                                                std::string>("ImplicitShapePlugin");
 
 inline std::string node_namespace(spark_dsg::NodeSymbol id) { return "crisp_mesh_" + id.str(true); }
 
@@ -67,9 +67,9 @@ using visualization_msgs::msg::MarkerArray;
 using BaseInterface = rclcpp::node_interfaces::NodeBaseInterface;
 using rclcpp::CallbackGroupType;
 
-void declare_config(CrispMeshPlugin::Config& config) {
+void declare_config(ImplicitShapePlugin::Config& config) {
   using namespace config;
-  name("CrispMeshPlugin");
+  name("ImplicitShapePlugin");
   field(config.min_embedding_diff, "min_embedding_diff");
   field(config.queue_size, "queue_size");
   field(config.layer, "layer");
@@ -78,9 +78,9 @@ void declare_config(CrispMeshPlugin::Config& config) {
   check(config.queue_size, GT, 0, "queue_size");
 }
 
-CrispMeshPlugin::CrispMeshPlugin(const Config& config,
-                                 ianvs::NodeHandle nh,
-                                 const std::string& name)
+ImplicitShapePlugin::ImplicitShapePlugin(const Config& config,
+                                         ianvs::NodeHandle nh,
+                                         const std::string& name)
     : VisualizerPlugin(name),
       config(config::checkValid(config)),
       tf_broadcaster_(nh.node()),
@@ -91,7 +91,7 @@ CrispMeshPlugin::CrispMeshPlugin(const Config& config,
                                                   rclcpp::ServicesQoS(),
                                                   group_)) {}
 
-void CrispMeshPlugin::draw(const std_msgs::msg::Header& header, const SceneGraph& graph) {
+void ImplicitShapePlugin::draw(const std_msgs::msg::Header& header, const SceneGraph& graph) {
   if (!graph.hasLayer(config.layer)) {
     return;
   }
@@ -200,7 +200,7 @@ void CrispMeshPlugin::draw(const std_msgs::msg::Header& header, const SceneGraph
   }
 }
 
-void CrispMeshPlugin::reset(const std_msgs::msg::Header& header) {
+void ImplicitShapePlugin::reset(const std_msgs::msg::Header& header) {
   // Reset static meshes.
   for (const auto& [id, vec] : embedding_cache_) {
     kimera_pgmo_msgs::msg::Mesh msg;

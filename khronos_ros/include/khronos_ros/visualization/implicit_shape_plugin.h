@@ -52,7 +52,7 @@
 namespace hydra {
 
 //! @brief Plugin to render and visualize crisp object meshes based on shape codes
-class CrispMeshPlugin : public VisualizerPlugin {
+class ImplicitShapePlugin : public VisualizerPlugin {
  public:
   using ReconstructionSrv = khronos_msgs::srv::ReconstructImplicitObject;
 
@@ -67,7 +67,7 @@ class CrispMeshPlugin : public VisualizerPlugin {
     config::VirtualConfig<NodeColorAdapter> color{LabelColorAdapter::Config()};
   } const config;
 
-  CrispMeshPlugin(const Config& config, ianvs::NodeHandle nh, const std::string& name);
+  ImplicitShapePlugin(const Config& config, ianvs::NodeHandle nh, const std::string& name);
 
   void draw(const std_msgs::msg::Header& header, const spark_dsg::SceneGraph& graph) override;
 
@@ -82,6 +82,6 @@ class CrispMeshPlugin : public VisualizerPlugin {
   rclcpp::Client<ReconstructionSrv>::SharedPtr client_;
 };
 
-void declare_config(CrispMeshPlugin::Config& config);
+void declare_config(ImplicitShapePlugin::Config& config);
 
 }  // namespace hydra
