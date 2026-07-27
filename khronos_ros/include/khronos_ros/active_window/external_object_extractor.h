@@ -1,9 +1,9 @@
 #pragma once
 #include <set>
 
-#include <hydra_multi_system_msgs/srv/crisp_object_inference.hpp>
 #include <ianvs/node_handle.h>
 #include <khronos/active_window/object_extraction/object_extractor.h>
+#include <khronos_msgs/srv/extract_implicit_object.hpp>
 #include <spark_dsg/node_attributes.h>
 
 namespace hydra_multi_system {
@@ -12,7 +12,7 @@ using spark_dsg::KhronosObjectAttributes;
 
 class CrispObjectExtractor : public khronos::ObjectExtractor {
  public:
-  using InferenceSrv = hydra_multi_system_msgs::srv::CrispObjectInference;
+  using InferenceSrv = khronos_msgs::srv::ExtractImplicitObject;
 
   struct Config {
     float min_object_allocation_confidence = 0.5f;

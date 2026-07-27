@@ -1,3 +1,5 @@
+#include "khronos_ros/active_window/external_object_extractor.h"
+
 #include <memory>
 
 #include <Eigen/Dense>
@@ -8,8 +10,6 @@
 #include <hydra/input/camera.h>
 #include <khronos/active_window/data/measurement_clusters.h>
 #include <tf2_eigen/tf2_eigen.hpp>
-
-#include "hydra_multi_system/crisp_object_extractor.h"
 
 namespace hydra_multi_system {
 
