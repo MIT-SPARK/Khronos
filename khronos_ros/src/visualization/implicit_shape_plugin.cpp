@@ -23,6 +23,46 @@ static const auto registration = config::RegistrationWithConfig<VisualizerPlugin
 
 inline std::string node_namespace(spark_dsg::NodeSymbol id) { return "crisp_mesh_" + id.str(true); }
 
+void fillRequest(const spark_dsg::KhronosObjectAttributes& attrs,
+                 khronos_msgs::srv::ReconstructImplicitObject::Request& req) {
+  const auto meta = attrs.metadata.get();
+  if (meta.contains("scale")) {
+    req.scale = meta["scale"].get<float>();
+  }
+
+  req.shape_code.insert(req.shape_code.end(),
+                        attrs.semantic_feature.reshaped().begin(),
+                        attrs.semantic_feature.reshaped().end());
+}
+
+void fillMesh(const std_msgs::msg::Header& header,
+              const khronos_msgs::srv::ReconstructImplicitObject::Response& response,
+              const std::string& ns,
+              const spark_dsg::Color& color,
+              kimera_pgmo_msgs::msg::Mesh& msg) {
+  const auto rgb = visualizer::makeColorMsg(color, 1.0);
+  msg.header = header;
+  msg.header.frame_id = ns;
+  msg.ns = ns;
+  msg.vertices.resize(response.vertices.size() / 3);
+  for (size_t i = 0; i + 2 < response.vertices.size(); i += 3) {
+    auto& v = msg.vertices[i / 3];
+    v.pos.x = response.vertices[i];
+    v.pos.y = response.vertices[i + 1];
+    v.pos.z = response.vertices[i + 2];
+    v.has_color = true;
+    v.color = rgb;
+  }
+
+  msg.triangles.resize(response.triangles.size() / 3);
+  for (size_t i = 0; i + 2 < response.triangles.size(); i += 3) {
+    auto& face = msg.triangles[i / 3];
+    face.vertex_indices[0] = response.triangles[i];
+    face.vertex_indices[1] = response.triangles[i + 1];
+    face.vertex_indices[2] = response.triangles[i + 2];
+  }
+}
+
 }  // namespace
 
 using spark_dsg::KhronosObjectAttributes;
@@ -73,7 +113,7 @@ void ImplicitShapePlugin::draw(const std_msgs::msg::Header& header, const SceneG
 
   for (const auto& [node_id, node] : layer.nodes()) {
     const auto attrs = node->tryAttributes<KhronosObjectAttributes>();
-    if (!attrs) {
+    if (!attrs || !attrs->semantic_feature.size()) {
       continue;
     }
 
@@ -101,15 +141,7 @@ void ImplicitShapePlugin::draw(const std_msgs::msg::Header& header, const SceneG
     }
 
     auto req = std::make_shared<ReconstructionSrv::Request>();
-    const auto meta = attrs->metadata.get();
-    if (meta.contains("scale")) {
-      req->scale = meta["scale"].get<float>();
-    }
-
-    req->shape_code.insert(req->shape_code.end(),
-                           attrs->semantic_feature.reshaped().begin(),
-                           attrs->semantic_feature.reshaped().end());
-
+    fillRequest(*attrs, *req);
     const auto rep = ianvs::call_service(*client_, req);
     if (!rep) {
       LOG(ERROR) << "CRISP service call failed!";
@@ -121,32 +153,12 @@ void ImplicitShapePlugin::draw(const std_msgs::msg::Header& header, const SceneG
       color = color_adapter_->getColor(graph, *node);
     }
 
-    VLOG(1) << "Got response of " << rep->vertices.size() << " vertices and "
-            << rep->triangles.size() << " faces";
+    const auto num_verts = rep->vertices.size();
+    const auto num_faces = rep->triangles.size();
+    VLOG(1) << "Got " << num_verts << " vertices and " << num_faces << " faces";
 
-    const auto rgb = visualizer::makeColorMsg(color, 1.0);
     auto msg = std::make_unique<kimera_pgmo_msgs::msg::Mesh>();
-    msg->header = header;
-    msg->header.frame_id = ns;
-    msg->ns = ns;
-    msg->vertices.resize(rep->vertices.size() / 3);
-    for (size_t i = 0; i + 2 < rep->vertices.size(); i += 3) {
-      auto& v = msg->vertices[i / 3];
-      v.pos.x = rep->vertices[i];
-      v.pos.y = rep->vertices[i + 1];
-      v.pos.z = rep->vertices[i + 2];
-      v.has_color = true;
-      v.color = rgb;
-    }
-
-    msg->triangles.resize(rep->triangles.size() / 3);
-    for (size_t i = 0; i + 2 < rep->triangles.size(); i += 3) {
-      auto& face = msg->triangles[i / 3];
-      face.vertex_indices[0] = rep->triangles[i];
-      face.vertex_indices[1] = rep->triangles[i + 1];
-      face.vertex_indices[2] = rep->triangles[i + 2];
-    }
-
+    fillMesh(header, *rep, ns, color, *msg);
     pub_->publish(std::move(msg));
   }
 
