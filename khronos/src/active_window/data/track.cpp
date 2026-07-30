@@ -49,8 +49,8 @@ void Track::updateSemantics(const std::optional<SemanticClusterInfo>& other) {
     return;
   }
 
-  const bool other_has_feature = other->feature.size() != 1;
-  const bool has_feature = semantics->feature.size() != 1;
+  const bool other_has_feature = other->feature.size() > 0;
+  const bool has_feature = semantics->feature.size() > 0;
   if (has_feature && !other_has_feature) {
     return;  // prefer to keep feature
   }

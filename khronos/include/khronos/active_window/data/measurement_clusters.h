@@ -49,7 +49,7 @@ struct SemanticClusterInfo {
   //! Semantic category ID of this cluster.
   int category_id = -1;
   //! Feature vector (used for open-set)
-  FeatureVector feature = FeatureVector::Zero(1, 1);
+  FeatureVector feature = FeatureVector(0, 0);
 
   explicit SemanticClusterInfo(int category_id) : category_id(category_id) {}
   explicit SemanticClusterInfo(const FeatureVector& feature) : feature(feature) {}
@@ -57,27 +57,20 @@ struct SemanticClusterInfo {
       : category_id(category_id), feature(feature) {}
 };
 
-/**
- * @brief Common data structurefor all detected measurement clusters.
- */
+//! Common data structurefor all detected measurement clusters.
 struct MeasurementCluster {
-  // All pixels associated with this cluster in the object_image.
+  //! All pixels associated with this cluster in the object_image.
   Pixels pixels;
-
-  // 3D axis aligned bounding box of this cluster in world frame.
+  //! 3D axis aligned bounding box of this cluster in world frame.
   BoundingBox bounding_box;
-
-  // Center points of all voxels associated with this cluster in world frame.
+  //! Center points of all voxels associated with this cluster in world frame.
   GlobalIndexSet voxels;
-
-  // ID of this cluster (=value of pixels in the corresponding image).
+  //! ID of this cluster (=value of pixels in the corresponding image).
   int id;
-
   //! Semantic information associated with the cluster
   std::optional<SemanticClusterInfo> semantics;
-
-  // NOTE(nathan) someone might want to consider a dynamic info struct here
 };
+
 using MeasurementClusters = std::vector<MeasurementCluster>;
 
 }  // namespace khronos
