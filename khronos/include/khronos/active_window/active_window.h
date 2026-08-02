@@ -108,7 +108,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     std::vector<KhronosSink::Factory> khronos_sinks;
 
     //! Minimum confidence before object is forwarded to graph builder
-    float min_object_confidence = 0.5f;  
+    float min_object_confidence = 0.5f;
 
     // override layer defaults of Hydra
     Config() : hydra::ActiveWindowModule::Config(false, true) {}
@@ -177,7 +177,10 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   hydra::ActiveWindowOutput::Ptr extractOutputData(const FrameData& data, bool threaded);
 
   /**
-   * @brief Update the tracking status of all blocks and tracks based on the given data. This will update the active/inactive status of blocks and tracks, but will not reset any voxels or tracks. This should be called after meshing and before extracting output data to ensure that the correct objects are extracted and the correct blocks are archived. 
+   * @brief Update the tracking status of all blocks and tracks based on the given data. This will
+   * update the active/inactive status of blocks and tracks, but will not reset any voxels or
+   * tracks. This should be called after meshing and before extracting output data to ensure that
+   * the correct objects are extracted and the correct blocks are archived.
    */
   void updateTrackingStatus(const FrameData& data);
 

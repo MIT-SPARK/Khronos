@@ -38,7 +38,6 @@
 #pragma once
 
 #include <deque>
-#include <vector>
 
 #include "khronos/active_window/data/frame_data.h"
 #include "khronos/active_window/data/track.h"
