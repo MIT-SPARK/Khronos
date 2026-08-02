@@ -43,6 +43,30 @@
 #include "khronos/utils/geometry_utils.h"
 
 namespace khronos {
+namespace {
+
+std::optional<SemanticClusterInfo> extractSemantics(const FrameData& data,
+                                                    InputData::LabelType id,
+                                                    const Pixels& pixels) {
+  if (!data.input.label_features.empty()) {
+    const auto feature = data.input.label_features.find(id);
+    if (feature != data.input.label_features.end()) {
+      return SemanticClusterInfo(id, feature->second);
+    }
+
+    return std::nullopt;
+  }
+
+  if (data.input.label_image.empty()) {
+    return std::nullopt;
+  }
+
+  const auto [u, v] = pixels.front();
+  int16_t category_id = data.input.label_image.at<int16_t>(v, u);
+  return SemanticClusterInfo(category_id);
+}
+
+}  // namespace
 
 void declare_config(InstanceForwarding::Config& config) {
   using namespace config;
@@ -55,7 +79,6 @@ void declare_config(InstanceForwarding::Config& config) {
   field(config.min_object_volume, "min_object_volume", "m");
   field(config.max_object_volume, "max_object_volume", "m");
   field(config.max_background_score, "max_background_score");
-  field(config.instance_id, "instance_id");
   config.background.setOptional();
   field(config.background, "background");
   config.metric.setOptional();
@@ -82,13 +105,13 @@ void InstanceForwarding::processInput(const VolumetricMap& /* map */, FrameData&
 void InstanceForwarding::extractSemanticClusters(FrameData& data) {
   // Forward the semantic image from the input.
   // NOTE(lschmid): This assumes both images have the same type.
-  data.object_image = data.input.label_image;
+  data.object_image = data.input.instance_image;
 
   // Extract clusters.
   std::unordered_map<FrameData::ObjectImageType, Pixels> clusters;
-  for (int u = 0; u < data.input.label_image.cols; u++) {
-    for (int v = 0; v < data.input.label_image.rows; v++) {
-      const auto& id = data.input.label_image.at<InputData::LabelType>(v, u);
+  for (int u = 0; u < data.input.instance_image.cols; u++) {
+    for (int v = 0; v < data.input.instance_image.rows; v++) {
+      const auto& id = data.input.instance_image.at<InputData::LabelType>(v, u);
       if (id == 0) {
         continue;
       }
@@ -99,6 +122,7 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
         if (feature == data.input.label_features.end()) {
           continue;
         }
+
         auto score = background_->getBestScore(*metric_, feature->second);
         if (score.score > config.max_background_score) {
           continue;
@@ -124,12 +148,8 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
       continue;
     }
 
-    MeasurementCluster cluster;
-    cluster.pixels.insert(cluster.pixels.end(), pixels.begin(), pixels.end());
-    cluster.id = id;
-
     if (filter_by_volume_) {
-      const auto bbox = BoundingBox(utils::VertexMapAdaptor(cluster.pixels, data.input.vertex_map));
+      const auto bbox = BoundingBox(utils::VertexMapAdaptor(pixels, data.input.vertex_map));
       const auto volume = bbox.volume();
       if (volume < config.min_object_volume ||
           (config.max_object_volume > 0.0 && volume > config.max_object_volume)) {
@@ -137,22 +157,10 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
       }
     }
 
-    // Closed set version
-    if (data.input.label_features.empty()) {
-      // modify to parse category id and instance id
-      if (config.instance_id) {
-        int16_t category_id = static_cast<int16_t>((id >> 16) & 0xFFFF);
-        cluster.semantics = SemanticClusterInfo(category_id);
-      } else {
-        cluster.semantics = SemanticClusterInfo(id);
-      }
-    }
-    // TODO(Yun) For now all semantic id is the same (so all label checks are invalid)
-    const auto feature = data.input.label_features.find(id);
-    if (feature != data.input.label_features.end()) {
-      cluster.semantics = SemanticClusterInfo(id, feature->second);
-    }
-
+    MeasurementCluster cluster;
+    cluster.id = id;
+    cluster.pixels.insert(cluster.pixels.end(), pixels.begin(), pixels.end());
+    cluster.semantics = extractSemantics(data, id, pixels);
     data.semantic_clusters.emplace_back(std::move(cluster));
   }
 }

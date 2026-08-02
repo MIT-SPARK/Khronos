@@ -86,9 +86,6 @@ class InstanceForwarding : public ObjectDetector {
     // Discard clusters that is overly similary to background
     double max_background_score = 0.2;
 
-    // Treat segmentation with instance id
-    bool instance_id = true;
-
     // Background is specified by the following embedding group (prompts)
     config::VirtualConfig<hydra::EmbeddingGroup> background;
     config::VirtualConfig<hydra::EmbeddingDistance> metric{hydra::CosineDistance::Config()};
