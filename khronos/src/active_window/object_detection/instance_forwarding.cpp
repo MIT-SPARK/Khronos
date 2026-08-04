@@ -46,7 +46,7 @@ namespace khronos {
 namespace {
 
 std::optional<SemanticClusterInfo> extractSemantics(const FrameData& data,
-                                                    InputData::LabelType id,
+                                                    InputData::InstanceType id,
                                                     const Pixels& pixels) {
   if (!data.input.label_features.empty()) {
     const auto feature = data.input.label_features.find(id);
@@ -62,7 +62,7 @@ std::optional<SemanticClusterInfo> extractSemantics(const FrameData& data,
   }
 
   const auto [u, v] = pixels.front();
-  int16_t category_id = data.input.label_image.at<int16_t>(v, u);
+  const auto category_id = data.input.label_image.at<InputData::LabelType>(v, u);
   return SemanticClusterInfo(category_id);
 }
 
@@ -111,7 +111,7 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
   std::unordered_map<FrameData::ObjectImageType, Pixels> clusters;
   for (int u = 0; u < data.input.instance_image.cols; u++) {
     for (int v = 0; v < data.input.instance_image.rows; v++) {
-      const auto& id = data.input.instance_image.at<InputData::LabelType>(v, u);
+      const auto id = data.input.instance_image.at<InputData::InstanceType>(v, u);
       if (id == 0) {
         continue;
       }
