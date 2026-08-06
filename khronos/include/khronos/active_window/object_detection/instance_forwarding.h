@@ -121,6 +121,24 @@ class InstanceForwarding : public ObjectDetector {
     double max_object_volume = -1.0;
     //! Discard instances that match the filter.
     config::VirtualConfig<InstanceFilter> instance_filter;
+
+    // Discard clusters that is overly similary to background
+    double max_background_score = 0.2;
+
+    // Treat segmentation with instance id
+    bool instance_id = true;
+
+    // Background is specified by the following embedding group (prompts)
+    config::VirtualConfig<hydra::EmbeddingGroup> background;
+    config::VirtualConfig<hydra::EmbeddingDistance> metric{hydra::CosineDistance::Config()};
+
+    // Filter spatial outliers out of each cluster via DBSCAN over the cluster's 3D points,
+    // keeping only the largest density-connected cluster. Disabled by default.
+    bool outlier_filter_enabled = false;
+    // DBSCAN neighbor radius in meters.
+    float outlier_filter_eps = 0.2f;
+    // Minimum neighbors (including self) for a point to be a DBSCAN core point.
+    int outlier_filter_min_points = 5;
   } const config;
 
   // Construction.

@@ -37,6 +37,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include <spark_dsg/bounding_box_extraction.h>
 
 #include "khronos/common/common_types.h"
@@ -44,6 +46,28 @@
 namespace khronos::utils {
 
 Point computeCentroid(const Points& points);
+
+// Label for a point not assigned to any density-connected cluster.
+inline constexpr int kDbscanNoise = -1;
+
+/**
+ * @brief Density-based clustering (DBSCAN) over 3D points. Two points are neighbors if their
+ * Euclidean distance is <= eps; a point is a core point if it has >= min_points neighbors
+ * (including itself). Clusters are formed by density-connecting core points and their neighbors.
+ * @param points Input points.
+ * @param eps Neighbor radius in meters.
+ * @param min_points Minimum neighbors (including self) for a point to be a core point.
+ * @return Per-point cluster label, same size/order as `points`. Labels are 0-indexed cluster ids;
+ * points not assigned to any cluster get `kDbscanNoise`.
+ */
+std::vector<int> dbscan(const Points& points, float eps, int min_points);
+
+/**
+ * @brief Runs dbscan() and returns the indices belonging to the single largest cluster (ties
+ * broken by lowest cluster id). Returns an empty vector if no cluster is found (e.g. all points
+ * are noise).
+ */
+std::vector<size_t> largestDbscanCluster(const Points& points, float eps, int min_points);
 
 /**
  * @brief Adaptor to create bounding boxes from pixels in a vertex map. Note that this assumes all

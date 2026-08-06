@@ -149,6 +149,19 @@ void declare_config(InstanceForwarding::Config& config) {
   field(config.max_object_volume, "max_object_volume", "m");
   config.instance_filter.setOptional();
   field(config.instance_filter, "instance_filter");
+  field(config.max_background_score, "max_background_score");
+  field(config.instance_id, "instance_id");
+  config.background.setOptional();
+  field(config.background, "background");
+  config.metric.setOptional();
+  field(config.metric, "metric");
+
+  {
+    NameSpace ns("outlier_filter");
+    field(config.outlier_filter_enabled, "enabled");
+    field(config.outlier_filter_eps, "eps", "m");
+    field(config.outlier_filter_min_points, "min_points");
+  }
 }
 
 InstanceForwarding::InstanceForwarding(const Config& config)
@@ -201,6 +214,30 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
     if (curr_num_pixels < config.min_cluster_size ||
         (config.max_cluster_size > 0 && curr_num_pixels > config.max_cluster_size)) {
       continue;
+    }
+
+    MeasurementCluster cluster;
+    cluster.pixels.insert(cluster.pixels.end(), pixels.begin(), pixels.end());
+    cluster.id = id;
+
+    if (config.outlier_filter_enabled) {
+      Points points;
+      points.reserve(cluster.pixels.size());
+      for (const auto& pixel : cluster.pixels) {
+        const auto& vertex = data.input.vertex_map.at<InputData::VertexType>(pixel.v, pixel.u);
+        points.emplace_back(vertex[0], vertex[1], vertex[2]);
+      }
+      const auto inlier_indices = utils::largestDbscanCluster(
+          points, config.outlier_filter_eps, config.outlier_filter_min_points);
+      if (inlier_indices.empty()) {
+        continue;
+      }
+      Pixels filtered_pixels;
+      filtered_pixels.reserve(inlier_indices.size());
+      for (const size_t idx : inlier_indices) {
+        filtered_pixels.push_back(cluster.pixels[idx]);
+      }
+      cluster.pixels = std::move(filtered_pixels);
     }
 
     if (filter_by_volume_) {
