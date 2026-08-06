@@ -37,9 +37,102 @@
 
 #include "khronos/utils/geometry_utils.h"
 
+#include <deque>
+#include <unordered_map>
+
 #include <hydra/input/input_data.h>
 
 namespace khronos::utils {
+
+namespace {
+
+std::vector<int> regionQuery(const Points& points, size_t index, float eps_sq) {
+  std::vector<int> neighbors;
+  for (size_t i = 0; i < points.size(); ++i) {
+    if ((points[i] - points[index]).squaredNorm() <= eps_sq) {
+      neighbors.push_back(static_cast<int>(i));
+    }
+  }
+  return neighbors;
+}
+
+}  // namespace
+
+std::vector<int> dbscan(const Points& points, float eps, int min_points) {
+  std::vector<int> labels(points.size(), kDbscanNoise);
+  std::vector<bool> visited(points.size(), false);
+  const float eps_sq = eps * eps;
+  int next_cluster_id = 0;
+
+  for (size_t i = 0; i < points.size(); ++i) {
+    if (visited[i]) {
+      continue;
+    }
+    visited[i] = true;
+
+    auto neighbors = regionQuery(points, i, eps_sq);
+    if (static_cast<int>(neighbors.size()) < min_points) {
+      // Stays labeled as noise unless later claimed as a border point of another cluster.
+      continue;
+    }
+
+    const int cluster_id = next_cluster_id++;
+    labels[i] = cluster_id;
+
+    std::deque<int> to_visit(neighbors.begin(), neighbors.end());
+    while (!to_visit.empty()) {
+      const int j = to_visit.front();
+      to_visit.pop_front();
+
+      if (!visited[j]) {
+        visited[j] = true;
+        auto j_neighbors = regionQuery(points, j, eps_sq);
+        if (static_cast<int>(j_neighbors.size()) >= min_points) {
+          to_visit.insert(to_visit.end(), j_neighbors.begin(), j_neighbors.end());
+        }
+      }
+
+      if (labels[j] == kDbscanNoise) {
+        labels[j] = cluster_id;
+      }
+    }
+  }
+
+  return labels;
+}
+
+std::vector<size_t> largestDbscanCluster(const Points& points, float eps, int min_points) {
+  const auto labels = dbscan(points, eps, min_points);
+
+  std::unordered_map<int, size_t> cluster_sizes;
+  for (const int label : labels) {
+    if (label != kDbscanNoise) {
+      ++cluster_sizes[label];
+    }
+  }
+
+  if (cluster_sizes.empty()) {
+    return {};
+  }
+
+  int best_cluster_id = cluster_sizes.begin()->first;
+  size_t best_size = cluster_sizes.begin()->second;
+  for (const auto& [id, size] : cluster_sizes) {
+    if (size > best_size || (size == best_size && id < best_cluster_id)) {
+      best_cluster_id = id;
+      best_size = size;
+    }
+  }
+
+  std::vector<size_t> indices;
+  indices.reserve(best_size);
+  for (size_t i = 0; i < labels.size(); ++i) {
+    if (labels[i] == best_cluster_id) {
+      indices.push_back(i);
+    }
+  }
+  return indices;
+}
 
 Point computeCentroid(const Points& points) {
   Point centroid(0, 0, 0);

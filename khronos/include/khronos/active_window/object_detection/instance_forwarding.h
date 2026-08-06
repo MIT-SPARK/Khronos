@@ -121,6 +121,14 @@ class InstanceForwarding : public ObjectDetector {
     double max_object_volume = -1.0;
     //! Discard instances that match the filter.
     config::VirtualConfig<InstanceFilter> instance_filter;
+
+    // Filter spatial outliers out of each cluster via DBSCAN over the cluster's 3D points,
+    // keeping only the largest density-connected cluster. Disabled by default.
+    bool outlier_filter_enabled = false;
+    // DBSCAN neighbor radius in meters.
+    float outlier_filter_eps = 0.2f;
+    // Minimum neighbors (including self) for a point to be a DBSCAN core point.
+    int outlier_filter_min_points = 5;
   } const config;
 
   // Construction.
