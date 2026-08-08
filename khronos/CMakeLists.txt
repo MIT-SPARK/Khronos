@@ -80,6 +80,12 @@ ${PROJECT_NAME}
 set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)
 add_library(khronos::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 
+include(CTest)
+if(BUILD_TESTING)
+  enable_testing()
+  add_subdirectory(tests)
+endif()
+
 ##########
 # Export #
 ##########
