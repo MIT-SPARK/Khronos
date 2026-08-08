@@ -117,7 +117,7 @@ MatchResult semanticsMatch(const std::optional<SemanticClusterInfo>& lhs,
     return {MatchResult::Status::kMismatchedFeatures};
   }
 
-  if (lhs->feature.size() == 1) {
+  if (!lhs->feature.size()) {
     return {MatchResult::Status::kMatch};  // no openset features
   }
 

@@ -37,11 +37,7 @@
 
 #pragma once
 
-#include <map>
 #include <memory>
-#include <string>
-#include <utility>
-#include <vector>
 
 #include <config_utilities/config_utilities.h>
 #include <config_utilities/virtual_config.h>
@@ -57,6 +53,50 @@
 
 namespace khronos {
 
+class InstanceFilter {
+ public:
+  virtual ~InstanceFilter() = default;
+  virtual bool valid(const FrameData& data, int32_t id, const Pixels& pixels) const = 0;
+};
+
+class CategoryFilter : public InstanceFilter {
+ public:
+  struct Config {
+    Config();
+    //! Invalid labels
+    std::vector<int32_t> invalid;
+  } const config;
+
+  explicit CategoryFilter(const Config& config);
+  bool valid(const FrameData& data, int32_t id, const Pixels& pixels) const override;
+
+ private:
+  const std::unordered_set<int32_t> invalid_;
+};
+
+void declare_config(CategoryFilter::Config& config);
+
+class OpenVocabBackgroundFilter : public InstanceFilter {
+ public:
+  struct Config {
+    //! Discard clusters that are overly similar to background
+    double max_background_score = 0.2;
+    //! Background is specified by the following embedding group (prompts)
+    config::VirtualConfig<hydra::EmbeddingGroup> background;
+    //! Metric to use when comparing embeddings
+    config::VirtualConfig<hydra::EmbeddingDistance> metric{hydra::CosineDistance::Config()};
+  } const config;
+
+  explicit OpenVocabBackgroundFilter(const Config& config);
+  bool valid(const FrameData& data, int32_t id, const Pixels& pixels) const override;
+
+ private:
+  hydra::EmbeddingGroup::Ptr background_;
+  std::unique_ptr<hydra::EmbeddingDistance> metric_;
+};
+
+void declare_config(OpenVocabBackgroundFilter::Config& config);
+
 /**
  * @brief Proxy object detector that forwards already detected object instances.
  */
@@ -65,33 +105,22 @@ class InstanceForwarding : public ObjectDetector {
   // Config.
   struct Config {
     int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
-    // Maximum depth values to consider for object extraction in meters. Use 0 for infinity.
+    //! Maximum depth values to consider for object extraction in meters. Use 0 for infinity.
     float max_range = 0.f;
-
-    // Minimum depth values to consider for object extraction in meters. Use 0 to disable.
+    //! Minimum depth values to consider for object extraction in meters. Use 0 to disable.
     float min_range = 0.f;
-
-    // Discard clusters with fewer pixels than this.
+    //! Treat instance IDs of 0 as unlabeled.
+    bool zero_is_unlabeled = true;
+    //! Discard clusters with fewer pixels than this.
     int min_cluster_size = 0;
-
-    // Discard clusters with more pixels than this (<= 0 disables).
+    //! Discard clusters with more pixels than this (<= 0 disables).
     int max_cluster_size = -1;
-
-    // Discard clusters with less volume than this
+    //! Discard clusters with less volume than this.
     double min_object_volume = 0.0;
-
-    // Discard clusters with more volume than this (if enabled)
+    //! Discard clusters with more volume than this (if enabled).
     double max_object_volume = -1.0;
-
-    // Discard clusters that is overly similary to background
-    double max_background_score = 0.2;
-
-    // Treat segmentation with instance id
-    bool instance_id = true;
-
-    // Background is specified by the following embedding group (prompts)
-    config::VirtualConfig<hydra::EmbeddingGroup> background;
-    config::VirtualConfig<hydra::EmbeddingDistance> metric{hydra::CosineDistance::Config()};
+    //! Discard instances that match the filter.
+    config::VirtualConfig<InstanceFilter> instance_filter;
   } const config;
 
   // Construction.
@@ -116,18 +145,9 @@ class InstanceForwarding : public ObjectDetector {
   void extractSemanticClusters(FrameData& data);
 
  private:
-  inline static const auto registration_ =
-      config::RegistrationWithConfig<ObjectDetector,
-                                     InstanceForwarding,
-                                     InstanceForwarding::Config>("InstanceForwarding");
-
   const bool filter_by_volume_;
-
-  // Filter out background.
-  hydra::EmbeddingGroup::Ptr background_;
-  std::unique_ptr<hydra::EmbeddingDistance> metric_;
-
   TimeStamp processing_stamp_;
+  std::unique_ptr<InstanceFilter> instance_filter_;
 };
 
 void declare_config(InstanceForwarding::Config& config);

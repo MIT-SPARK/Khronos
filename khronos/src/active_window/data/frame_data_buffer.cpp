@@ -37,9 +37,6 @@
 
 #include "khronos/active_window/data/frame_data_buffer.h"
 
-#include <map>
-#include <vector>
-
 #include <config_utilities/config_utilities.h>
 
 namespace khronos {
@@ -108,17 +105,18 @@ void FrameDataBuffer::storeData(const FrameData::Ptr& data) {
   }
 }
 
-FrameData::Ptr FrameDataBuffer::getData(const TimeStamp time_stamp) const {
-  if (time_stamp < oldest_time_stamp_) {
+FrameData::Ptr FrameDataBuffer::getData(const TimeStamp stamp) const {
+  if (stamp < oldest_time_stamp_) {
     return nullptr;
   }
-  const auto it =
-      std::find_if(buffer_.begin(), buffer_.end(), [time_stamp](const FrameData::Ptr& data) {
-        return data->input.timestamp_ns == time_stamp;
-      });
+
+  const auto it = std::find_if(buffer_.begin(), buffer_.end(), [stamp](const FrameData::Ptr& data) {
+    return data->input.timestamp_ns == stamp;
+  });
   if (it == buffer_.end()) {
     return nullptr;
   }
+
   return *it;
 }
 

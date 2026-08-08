@@ -56,6 +56,7 @@ struct Pixel {
   Pixel operator+(const Pixel& other) const { return Pixel(u + other.u, v + other.v); }
   Pixel operator-(const Pixel& other) const { return Pixel(u - other.u, v - other.v); }
   bool operator<(const Pixel& other) const { return u < other.u || (u == other.u && v < other.v); }
+  bool operator==(const Pixel& other) const { return u == other.u && v == other.v; }
 
   // Utilities.
   bool isInImage(const cv::Mat& image) const {

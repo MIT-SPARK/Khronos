@@ -37,7 +37,6 @@
 
 #pragma once
 
-#include <map>
 #include <vector>
 
 #include "khronos/active_window/data/measurement_clusters.h"
@@ -66,6 +65,7 @@ struct Observation {
   // ID of the corresponding DynamicCluster, -1 indicates none.
   int dynamic_cluster_id = -1;
 };
+
 using Observations = std::vector<Observation>;
 
 /**
@@ -109,6 +109,7 @@ struct Track {
 
   void updateSemantics(const std::optional<SemanticClusterInfo>& other_semantics);
 };
+
 using Tracks = std::vector<Track>;
 
 }  // namespace khronos

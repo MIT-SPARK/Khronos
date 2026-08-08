@@ -43,6 +43,97 @@
 #include "khronos/utils/geometry_utils.h"
 
 namespace khronos {
+namespace {
+
+static const auto registration =
+    config::RegistrationWithConfig<ObjectDetector, InstanceForwarding, InstanceForwarding::Config>(
+        "InstanceForwarding");
+
+static const auto open_vocab_registration =
+    config::RegistrationWithConfig<InstanceFilter,
+                                   OpenVocabBackgroundFilter,
+                                   OpenVocabBackgroundFilter::Config>("OpenVocabBackgroundFilter");
+
+static const auto category_registration =
+    config::RegistrationWithConfig<InstanceFilter, CategoryFilter, CategoryFilter::Config>(
+        "CategoryFilter");
+
+std::vector<int32_t> getDefaultInvalidLabels() {
+  const auto& invalid = hydra::GlobalInfo::instance().labelspace().invalid_labels;
+  return {invalid.begin(), invalid.end()};
+}
+
+std::optional<SemanticClusterInfo> extractSemantics(const FrameData& data,
+                                                    InputData::InstanceType id,
+                                                    const Pixels& pixels) {
+  if (!data.input.label_features.empty()) {
+    const auto feature = data.input.label_features.find(id);
+    if (feature != data.input.label_features.end()) {
+      return SemanticClusterInfo(feature->second);
+    }
+
+    return std::nullopt;
+  }
+
+  if (data.input.label_image.empty()) {
+    return std::nullopt;
+  }
+
+  const auto [u, v] = pixels.front();
+  const auto category_id = data.input.label_image.at<InputData::LabelType>(v, u);
+  return SemanticClusterInfo(category_id);
+}
+
+}  // namespace
+
+void declare_config(CategoryFilter::Config& config) {
+  using namespace config;
+  name("CategoryFilter::Config");
+  field(config.invalid, "invalid");
+}
+
+CategoryFilter::Config::Config() : invalid(getDefaultInvalidLabels()) {}
+
+CategoryFilter::CategoryFilter(const Config& config)
+    : config(config::checkValid(config)), invalid_(config.invalid.begin(), config.invalid.end()) {}
+
+bool CategoryFilter::valid(const FrameData& data, int32_t, const Pixels& pixels) const {
+  if (pixels.empty() || data.input.label_image.empty()) {
+    return false;
+  }
+
+  const auto [u, v] = pixels.front();
+  const auto label = data.input.label_image.at<InputData::LabelType>(v, u);
+  return !invalid_.count(label);
+}
+
+void declare_config(OpenVocabBackgroundFilter::Config& config) {
+  using namespace config;
+  name("OpenVocabBackgroundFilter::Config");
+  field(config.max_background_score, "max_background_score");
+  field(config.background, "background");
+  field(config.metric, "metric");
+}
+
+OpenVocabBackgroundFilter::OpenVocabBackgroundFilter(const Config& config)
+    : config(config::checkValid(config)),
+      background_(config.background.create()),
+      metric_(config.metric.create()) {}
+
+bool OpenVocabBackgroundFilter::valid(const FrameData& data, int32_t id, const Pixels&) const {
+  // Filter background based on given prompt
+  const auto feature = data.input.label_features.find(id);
+  if (feature == data.input.label_features.end()) {
+    return false;
+  }
+
+  auto score = background_->getBestScore(*metric_, feature->second);
+  if (score.score > config.max_background_score) {
+    return false;
+  }
+
+  return true;
+}
 
 void declare_config(InstanceForwarding::Config& config) {
   using namespace config;
@@ -50,27 +141,19 @@ void declare_config(InstanceForwarding::Config& config) {
   field(config.verbosity, "verbosity");
   field(config.max_range, "max_range", "m");
   field(config.min_range, "min_range", "m");
+  field(config.zero_is_unlabeled, "zero_is_unlabeled");
   field(config.min_cluster_size, "min_cluster_size");
   field(config.max_cluster_size, "max_cluster_size");
   field(config.min_object_volume, "min_object_volume", "m");
   field(config.max_object_volume, "max_object_volume", "m");
-  field(config.max_background_score, "max_background_score");
-  field(config.instance_id, "instance_id");
-  config.background.setOptional();
-  field(config.background, "background");
-  config.metric.setOptional();
-  field(config.metric, "metric");
+  config.instance_filter.setOptional();
+  field(config.instance_filter, "instance_filter");
 }
 
 InstanceForwarding::InstanceForwarding(const Config& config)
     : config(config::checkValid(config)),
       filter_by_volume_(config.min_object_volume > 0.0 || config.max_object_volume > 0.0),
-      background_(config.background.create()),
-      metric_(config.metric.create()) {
-  if (background_) {
-    CHECK(metric_) << "Specify the metric if background is set.";
-  }
-}
+      instance_filter_(config.instance_filter.create()) {}
 
 void InstanceForwarding::processInput(const VolumetricMap& /* map */, FrameData& data) {
   processing_stamp_ = data.input.timestamp_ns;
@@ -80,43 +163,25 @@ void InstanceForwarding::processInput(const VolumetricMap& /* map */, FrameData&
 }
 
 void InstanceForwarding::extractSemanticClusters(FrameData& data) {
-  // Forward the semantic image from the input.
-  // NOTE(lschmid): This assumes both images have the same type.
-  data.object_image = data.input.label_image;
-
-  // Extract clusters.
+  // Extract clusters
   std::unordered_map<FrameData::ObjectImageType, Pixels> clusters;
-  for (int u = 0; u < data.input.label_image.cols; u++) {
-    for (int v = 0; v < data.input.label_image.rows; v++) {
-      const auto& id = data.input.label_image.at<InputData::LabelType>(v, u);
-      if (id == 0) {
+  for (int u = 0; u < data.input.instance_image.cols; u++) {
+    for (int v = 0; v < data.input.instance_image.rows; v++) {
+      const auto id = data.input.instance_image.at<InputData::InstanceType>(v, u);
+      if (config.zero_is_unlabeled && id == 0) {
         continue;
       }
 
-      // Filter background based on given prompt
-      if (background_) {
-        const auto feature = data.input.label_features.find(id);
-        if (feature == data.input.label_features.end()) {
-          continue;
-        }
-        auto score = background_->getBestScore(*metric_, feature->second);
-        if (score.score > config.max_background_score) {
-          continue;
-        }
+      const auto range = data.input.range_image.at<InputData::RangeType>(v, u);
+      if (range < config.min_range || (config.max_range > 0.f && range > config.max_range)) {
+        continue;
       }
 
-      if (config.max_range > 0.f || config.min_range > 0.f) {
-        const float range = data.input.range_image.at<InputData::RangeType>(v, u);
-        if (range < config.min_range || (config.max_range > 0.f && range > config.max_range)) {
-          continue;
-        }
-      }
-
-      data.object_image.at<FrameData::ObjectImageType>(v, u) = id;
       clusters[id].emplace_back(u, v);
     }
   }
 
+  // Filter clusters and populate object image
   for (const auto& [id, pixels] : clusters) {
     const auto curr_num_pixels = static_cast<int>(pixels.size());
     if (curr_num_pixels < config.min_cluster_size ||
@@ -124,12 +189,8 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
       continue;
     }
 
-    MeasurementCluster cluster;
-    cluster.pixels.insert(cluster.pixels.end(), pixels.begin(), pixels.end());
-    cluster.id = id;
-
     if (filter_by_volume_) {
-      const auto bbox = BoundingBox(utils::VertexMapAdaptor(cluster.pixels, data.input.vertex_map));
+      const auto bbox = BoundingBox(utils::VertexMapAdaptor(pixels, data.input.vertex_map));
       const auto volume = bbox.volume();
       if (volume < config.min_object_volume ||
           (config.max_object_volume > 0.0 && volume > config.max_object_volume)) {
@@ -137,22 +198,20 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
       }
     }
 
-    // Closed set version
-    if (data.input.label_features.empty()) {
-      // modify to parse category id and instance id
-      if (config.instance_id) {
-        int16_t category_id = static_cast<int16_t>((id >> 16) & 0xFFFF);
-        cluster.semantics = SemanticClusterInfo(category_id);
-      } else {
-        cluster.semantics = SemanticClusterInfo(id);
-      }
-    }
-    // TODO(Yun) For now all semantic id is the same (so all label checks are invalid)
-    const auto feature = data.input.label_features.find(id);
-    if (feature != data.input.label_features.end()) {
-      cluster.semantics = SemanticClusterInfo(id, feature->second);
+    if (instance_filter_ && !instance_filter_->valid(data, id, pixels)) {
+      continue;
     }
 
+    // Technically we could fill the object image during extraction and not worry about filtered
+    // instances but this is probably better
+    for (const auto& [u, v] : pixels) {
+      data.object_image.at<FrameData::ObjectImageType>(v, u) = id;
+    }
+
+    MeasurementCluster cluster;
+    cluster.id = id;
+    cluster.pixels.insert(cluster.pixels.end(), pixels.begin(), pixels.end());
+    cluster.semantics = extractSemantics(data, id, pixels);
     data.semantic_clusters.emplace_back(std::move(cluster));
   }
 }
