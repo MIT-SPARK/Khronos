@@ -55,6 +55,10 @@ struct SemanticClusterInfo {
   explicit SemanticClusterInfo(const FeatureVector& feature) : feature(feature) {}
   explicit SemanticClusterInfo(int category_id, const FeatureVector& feature)
       : category_id(category_id), feature(feature) {}
+
+  bool operator==(const SemanticClusterInfo& other) const {
+    return category_id == other.category_id && feature == other.feature;
+  }
 };
 
 //! Common data structurefor all detected measurement clusters.

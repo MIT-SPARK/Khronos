@@ -38,7 +38,6 @@
 #pragma once
 
 #include <memory>
-#include <string>
 
 #include <config_utilities/config_utilities.h>
 #include <config_utilities/virtual_config.h>
@@ -60,6 +59,23 @@ class InstanceFilter {
   virtual bool valid(const FrameData& data, int32_t id, const Pixels& pixels) const = 0;
 };
 
+class CategoryFilter : public InstanceFilter {
+ public:
+  struct Config {
+    Config();
+    //! Invalid labels
+    std::vector<int32_t> invalid;
+  } const config;
+
+  explicit CategoryFilter(const Config& config);
+  bool valid(const FrameData& data, int32_t id, const Pixels& pixels) const override;
+
+ private:
+  const std::unordered_set<int32_t> invalid_;
+};
+
+void declare_config(CategoryFilter::Config& config);
+
 class OpenVocabBackgroundFilter : public InstanceFilter {
  public:
   struct Config {
@@ -80,23 +96,6 @@ class OpenVocabBackgroundFilter : public InstanceFilter {
 };
 
 void declare_config(OpenVocabBackgroundFilter::Config& config);
-
-class CategoryFilter : public InstanceFilter {
- public:
-  struct Config {
-    Config();
-    //! Invalid labels
-    std::vector<int32_t> invalid;
-  } const config;
-
-  explicit CategoryFilter(const Config& config);
-  bool valid(const FrameData& data, int32_t id, const Pixels& pixels) const override;
-
- private:
-  const std::unordered_set<int32_t> invalid_;
-};
-
-void declare_config(CategoryFilter::Config& config);
 
 /**
  * @brief Proxy object detector that forwards already detected object instances.

@@ -69,7 +69,7 @@ std::optional<SemanticClusterInfo> extractSemantics(const FrameData& data,
   if (!data.input.label_features.empty()) {
     const auto feature = data.input.label_features.find(id);
     if (feature != data.input.label_features.end()) {
-      return SemanticClusterInfo(id, feature->second);
+      return SemanticClusterInfo(feature->second);
     }
 
     return std::nullopt;
@@ -85,6 +85,27 @@ std::optional<SemanticClusterInfo> extractSemantics(const FrameData& data,
 }
 
 }  // namespace
+
+void declare_config(CategoryFilter::Config& config) {
+  using namespace config;
+  name("CategoryFilter::Config");
+  field(config.invalid, "invalid");
+}
+
+CategoryFilter::Config::Config() : invalid(getDefaultInvalidLabels()) {}
+
+CategoryFilter::CategoryFilter(const Config& config)
+    : config(config::checkValid(config)), invalid_(config.invalid.begin(), config.invalid.end()) {}
+
+bool CategoryFilter::valid(const FrameData& data, int32_t, const Pixels& pixels) const {
+  if (pixels.empty() || data.input.label_image.empty()) {
+    return false;
+  }
+
+  const auto [u, v] = pixels.front();
+  const auto label = data.input.label_image.at<InputData::LabelType>(v, u);
+  return !invalid_.count(label);
+}
 
 void declare_config(OpenVocabBackgroundFilter::Config& config) {
   using namespace config;
@@ -112,27 +133,6 @@ bool OpenVocabBackgroundFilter::valid(const FrameData& data, int32_t id, const P
   }
 
   return true;
-}
-
-void declare_config(CategoryFilter::Config& config) {
-  using namespace config;
-  name("CategoryFilter::Config");
-  field(config.invalid, "invalid");
-}
-
-CategoryFilter::Config::Config() : invalid(getDefaultInvalidLabels()) {}
-
-CategoryFilter::CategoryFilter(const Config& config)
-    : config(config::checkValid(config)), invalid_(config.invalid.begin(), config.invalid.end()) {}
-
-bool CategoryFilter::valid(const FrameData& data, int32_t, const Pixels& pixels) const {
-  if (pixels.empty() || data.input.label_image.empty()) {
-    return false;
-  }
-
-  const auto [u, v] = pixels.front();
-  const auto label = data.input.label_image.at<InputData::LabelType>(v, u);
-  return !invalid_.count(label);
 }
 
 void declare_config(InstanceForwarding::Config& config) {
