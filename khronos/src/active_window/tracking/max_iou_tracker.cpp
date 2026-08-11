@@ -505,7 +505,8 @@ void MaxIoUTracker::updateTrack(const FrameData& data,
   track.last_seen = processing_stamp_;
   track.observations.emplace_back(processing_stamp_,
                                   !is_observation_dynamic ? observation.id : -1,
-                                  is_observation_dynamic ? observation.id : -1);
+                                  is_observation_dynamic ? observation.id : -1,
+                                  data.input.getSensor().name);
 
   // NOTE(nathan) sensors may have different confidence weights, so we add confidence for each obs
   // Simple existence probability estimate: count number of observations. We multiply by

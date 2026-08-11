@@ -105,14 +105,16 @@ void FrameDataBuffer::storeData(const FrameData::Ptr& data) {
   }
 }
 
-FrameData::Ptr FrameDataBuffer::getData(const TimeStamp stamp) const {
+FrameData::Ptr FrameDataBuffer::getData(const TimeStamp stamp,
+                                        const std::string& sensor_name) const {
   if (stamp < oldest_time_stamp_) {
     return nullptr;
   }
 
-  const auto it = std::find_if(buffer_.begin(), buffer_.end(), [stamp](const FrameData::Ptr& data) {
-    return data->input.timestamp_ns == stamp;
-  });
+  const auto it = std::find_if(
+      buffer_.begin(), buffer_.end(), [stamp, sensor_name](const FrameData::Ptr& data) {
+        return data->input.timestamp_ns == stamp && data->input.getSensor().name == sensor_name;
+      });
   if (it == buffer_.end()) {
     return nullptr;
   }

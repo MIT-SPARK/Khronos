@@ -277,7 +277,6 @@ void declare_config(ExternalObjectExtractor::Config& config) {
   field(config.min_object_allocation_confidence, "min_object_allocation_confidence");
   field(config.min_cluster_size, "min_cluster_size");
   field(config.excluded_labels, "excluded_labels");
-  field(config.associate_lidar_name, "associate_lidar_name");
   enum_field(config.depth_mode,
              "depth_mode",
              {{ExternalObjectExtractor::Config::DepthMode::CAMERA_ONLY, "camera_only"},
@@ -386,10 +385,10 @@ auto ExternalObjectExtractor::getBestCluster(const Track& track, const FrameData
       continue;
     }
 
-    const auto sensor_name = frame->input.getSensor().name;
-    // TODO(nathan) add config field
-    if (sensor_name != "rgbd") {
-      continue;
+    const auto sensor = &frame->input.getSensor();
+    const auto camera = dynamic_cast<const Camera*>(sensor);
+    if (!camera) {
+      continue;  // assumption that external object shape extraction requires images
     }
 
     const auto cluster = findClusterForId(*frame, obs.semantic_cluster_id);
@@ -472,7 +471,7 @@ cv::Mat ExternalObjectExtractor::projectLidarPoints(const FrameData& cam_frame,
       input_to_cam = (cam_T_world * world_T_lidar.cast<float>());
     }
 
-    const cv::Mat& vertex_map = lidar_frame->input.vertex_map;
+    const auto& vertex_map = lidar_frame->input.vertex_map;
     for (int row = 0; row < vertex_map.rows; ++row) {
       for (int col = 0; col < vertex_map.cols; ++col) {
         const auto& p_raw = vertex_map.at<cv::Vec3f>(row, col);
