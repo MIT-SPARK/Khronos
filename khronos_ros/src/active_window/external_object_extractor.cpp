@@ -50,30 +50,6 @@ void fillMessage(sensor_msgs::msg::Image& msg,
   img.toImageMsg(msg);
 }
 
-cv::Rect getClusterROI(const Pixels& pixels) {
-  bool first = true;
-  Eigen::Vector2i min;
-  Eigen::Vector2i max;
-  for (const auto& [u, v] : pixels) {
-    const Eigen::Vector2i p_curr(u, v);
-    if (first) {
-      min = p_curr;
-      max = p_curr;
-      first = false;
-    } else {
-      min = min.cwiseMin(p_curr);
-      max = max.cwiseMax(p_curr);
-    }
-  }
-
-  const Eigen::Vector2i dims = max - min + Eigen::Vector2i::Ones();
-  const cv::Rect roi(min.x(), min.y(), dims.x(), dims.y());
-  VLOG(1) << "Got ROI: min=[" << min.x() << ", " << min.y() << "], max=[" << dims.x() << ", "
-          << dims.y() << "]";
-
-  return roi;
-}
-
 void fillMaskFromCluster(const MeasurementCluster& cluster, cv::Mat& mask) {
   for (const auto& [u, v] : cluster.pixels) {
     mask.at<uint8_t>(u, v) = 255;
@@ -277,6 +253,7 @@ void declare_config(ExternalObjectExtractor::Config& config) {
   field(config.min_object_allocation_confidence, "min_object_allocation_confidence");
   field(config.min_cluster_size, "min_cluster_size");
   field(config.excluded_labels, "excluded_labels");
+  field(config.excluded_sensors, "excluded_sensors");
   enum_field(config.depth_mode,
              "depth_mode",
              {{ExternalObjectExtractor::Config::DepthMode::CAMERA_ONLY, "camera_only"},
@@ -300,7 +277,8 @@ auto ExternalObjectExtractor::extractObject(const Track& track, const FrameDataB
     return nullptr;
   }
 
-  const auto best = getBestCluster(track, buffer);
+  std::vector<const FrameData*> lidar_frames;
+  const auto best = getBestCluster(track, buffer, lidar_frames);
   if (!best.frame) {
     return nullptr;
   }
@@ -319,16 +297,6 @@ auto ExternalObjectExtractor::extractObject(const Track& track, const FrameDataB
     fillMaskFromCluster(*best.cluster, mask);
   } else {
     fillMaskFromInstance(*best.frame, *best.cluster, mask);
-  }
-
-  std::vector<const FrameData*> lidar_frames;
-  if (!config.associate_lidar_name.empty() && config.depth_mode != Config::DepthMode::CAMERA_ONLY) {
-    for (const auto& obs : track.observations) {
-      auto lf = buffer.getData(obs.stamp, config.associate_lidar_name);
-      if (lf) {
-        lidar_frames.push_back(lf);
-      }
-    }
   }
 
   cv::Mat depth_to_send;
@@ -376,24 +344,33 @@ auto ExternalObjectExtractor::extractObject(const Track& track, const FrameDataB
   return makeAttributes(*best.frame, *best.cluster, *rep);
 }
 
-auto ExternalObjectExtractor::getBestCluster(const Track& track, const FrameDataBuffer& buffer)
-    const -> InstanceResult {
+auto ExternalObjectExtractor::getBestCluster(const Track& track,
+                                             const FrameDataBuffer& buffer,
+                                             Frames& lidar_frames) const -> InstanceResult {
   InstanceResult best;
   for (const auto& obs : track.observations) {
-    const auto frame = buffer.getData(obs.stamp);
+    const auto frame = buffer.getData(obs.stamp, obs.sensor);
     if (!frame) {
       continue;
-    }
-
-    const auto sensor = &frame->input.getSensor();
-    const auto camera = dynamic_cast<const Camera*>(sensor);
-    if (!camera) {
-      continue;  // assumption that external object shape extraction requires images
     }
 
     const auto cluster = findClusterForId(*frame, obs.semantic_cluster_id);
     if (!cluster) {
       continue;
+    }
+
+    const auto sensor = &frame->input.getSensor();
+    if (config.excluded_sensors.count(sensor->name)) {
+      continue;
+    }
+
+    const auto camera = dynamic_cast<const Camera*>(sensor);
+    if (!camera) {
+      if (config.depth_mode != Config::DepthMode::CAMERA_ONLY) {
+        lidar_frames.push_back(frame.get());
+      }
+
+      continue;  // assumption that external object shape extraction requires images
     }
 
     const auto curr_volume = cluster->bounding_box.volume();

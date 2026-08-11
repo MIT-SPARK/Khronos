@@ -59,11 +59,13 @@ void FrameDataBuffer::trimBuffer(const Tracks& tracks) {
     const FrameData& frame_data = **it;
     for (const Track& track : tracks) {
       // Check the frame time stamps.
-      const auto it2 = std::find_if(track.observations.begin(),
-                                    track.observations.end(),
-                                    [&frame_data](const Observation& observation) {
-                                      return observation.stamp == frame_data.input.timestamp_ns;
-                                    });
+      const auto it2 =
+          std::find_if(track.observations.begin(),
+                       track.observations.end(),
+                       [&frame_data](const Observation& observation) {
+                         return observation.stamp == frame_data.input.timestamp_ns &&
+                                observation.sensor == frame_data.input.getSensor().name;
+                       });
       if (it2 != track.observations.end()) {
         has_track = true;
         break;

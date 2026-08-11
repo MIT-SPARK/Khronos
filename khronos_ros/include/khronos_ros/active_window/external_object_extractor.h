@@ -23,15 +23,15 @@ class ExternalObjectExtractor : public ObjectExtractor {
     size_t min_cluster_size = 10;
     //! Set of labels to ignore
     std::set<int32_t> excluded_labels;
-    //! LiDAR sensor name(s)
-    std::set<std::string> lidar_names;
+    //! Names of sensors to drop observations from
+    std::set<std::string> excluded_sensors;
     //! LiDAR depth projection settings
     enum class DepthMode : int {
       LIDAR_ONLY,
       REPLACE_CAMERA,
       CAMERA_ONLY
     } depth_mode = DepthMode::REPLACE_CAMERA;
-    //! If false, will use instance seg to find direct match in label image
+    //! Toggles between filling extraction mask from observation or instance image
     bool mask_from_cluster = true;
     //! Enable post-projection depth filtering
     bool filter_projected_depth = false;
@@ -39,8 +39,7 @@ class ExternalObjectExtractor : public ObjectExtractor {
     float filter_cluster_tolerance = 0.3f;
     //! Keep the nearest cluster if true (otherwise furthest)
     bool filter_prefer_near = true;
-    //! Min fraction of largest cluster size to qualify as a candidate (only used when
-    //! filter_prefer_near=true)
+    //! Min fraction of largest cluster size to qualify as a candidate
     float filter_quality_ratio = 0.3f;
   } const config;
 
@@ -57,7 +56,9 @@ class ExternalObjectExtractor : public ObjectExtractor {
     const FrameData* frame = nullptr;
     const MeasurementCluster* cluster = nullptr;
   };
-  InstanceResult getBestCluster(const Track& track, const FrameDataBuffer& buffer) const;
+  InstanceResult getBestCluster(const Track& track,
+                                const FrameDataBuffer& buffer,
+                                Frames& lidar_frames) const;
 
   cv::Mat createLidarOnlyDepthImage(const FrameData& cam_frame,
                                     const Frames& lidar_frames,
