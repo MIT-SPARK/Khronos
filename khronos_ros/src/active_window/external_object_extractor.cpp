@@ -21,6 +21,8 @@ static const auto registration =
                                    ExternalObjectExtractor,
                                    ExternalObjectExtractor::Config>("ExternalObjectExtractor");
 
+using SrvResponse = khronos_msgs::srv::ExtractImplicitObject::Response;
+
 const MeasurementCluster* findClusterForId(const FrameData& frame, int target_id) {
   const auto it = std::find_if(frame.semantic_clusters.begin(),
                                frame.semantic_clusters.end(),
@@ -90,8 +92,6 @@ void fillMaskFromInstance(const FrameData& frame,
   }
 }
 
-using SrvResponse = khronos_msgs::srv::ExtractImplicitObject::Response;
-
 std::unique_ptr<KhronosObjectAttributes> makeAttributes(const FrameData& frame,
                                                         const MeasurementCluster& cluster,
                                                         const SrvResponse& rep) {
@@ -117,11 +117,40 @@ std::unique_ptr<KhronosObjectAttributes> makeAttributes(const FrameData& frame,
   return attrs;
 }
 
-void runDBSCAN(const std::vector<Eigen::Vector3f>& points, float eps, size_t min_size) {
+struct ImagePoint {
+  int u;
+  int v;
+  Eigen::Vector3f pos;
+};
+
+void fillMaskPoints(const hydra::Camera& camera,
+                    const cv::Mat& mask,
+                    const cv::Mat& depth,
+                    std::vector<ImagePoint>& points) {
+  for (int r = 0; r < depth.rows; ++r) {
+    for (int c = 0; c < depth.cols; ++c) {
+      if (mask.at<uint8_t>(r, c) == 0) {
+        continue;
+      }
+
+      const auto d = depth.at<float>(r, c);
+      if (!std::isfinite(d) || d <= 0.f) {
+        continue;
+      }
+
+      points.push_back({c, r, camera.unprojectPixel(c, r, d)});
+    }
+  }
+}
+
+size_t runDBSCAN(const std::vector<ImagePoint>& points,
+                 std::vector<int>& labels,
+                 float eps,
+                 size_t min_size) {
   const auto n = static_cast<size_t>(points.size());
 
-  int num_clusters = 0;
-  std::vector<int> labels(n, -1);  // -1 = unvisited, 0 = noise, >0 = cluster id
+  size_t num_clusters = 0;
+  labels = std::vector<int>(n, -1);  // -1 = unvisited, 0 = noise, >0 = cluster id
   for (size_t i = 0; i < n; ++i) {
     if (labels[i] != -1) {
       continue;
@@ -129,7 +158,7 @@ void runDBSCAN(const std::vector<Eigen::Vector3f>& points, float eps, size_t min
 
     std::vector<size_t> neighbors;
     for (size_t j = 0; j < n; ++j) {
-      if ((points[i] - points[j]).norm() <= eps) {
+      if ((points[i].pos - points[j].pos).norm() <= eps) {
         neighbors.push_back(j);
       }
     }
@@ -154,7 +183,7 @@ void runDBSCAN(const std::vector<Eigen::Vector3f>& points, float eps, size_t min
 
       std::vector<size_t> candidates;
       for (size_t j = 0; j < n; ++j) {
-        if ((points[q] - points[j]).norm() <= eps) {
+        if ((points[q].pos - points[j].pos).norm() <= eps) {
           candidates.push_back(j);
         }
       }
@@ -164,6 +193,77 @@ void runDBSCAN(const std::vector<Eigen::Vector3f>& points, float eps, size_t min
       }
     }
   }
+
+  return num_clusters;
+}
+
+int getLargestCluster(const std::vector<int>& labels, size_t num_clusters) {
+  size_t max_count = 0;
+  int target_label = -1;
+  std::vector<size_t> counts(num_clusters + 1, 0);
+  for (size_t i = 0; i < labels.size(); ++i) {
+    const auto label = labels[i];
+    if (label <= 0) {
+      continue;
+    }
+
+    const auto new_count = counts[labels[i]] + 1;
+    counts[labels[i]] = new_count;
+    if (new_count > max_count) {
+      target_label = label;
+      max_count = new_count;
+    }
+  }
+
+  return target_label;
+}
+
+int getNearestCluster(const std::vector<ImagePoint>& points,
+                      const std::vector<int>& labels,
+                      size_t num_clusters,
+                      float ratio) {
+  size_t max_count = 0;
+  std::vector<float> total_z(num_clusters + 1, 0.0f);
+  std::vector<size_t> counts(num_clusters + 1, 0);
+  for (size_t i = 0; i < labels.size(); ++i) {
+    const auto label = labels[i];
+    if (label <= 0) {
+      continue;
+    }
+
+    const auto new_count = counts[labels[i]] + 1;
+    counts[labels[i]] = new_count;
+    total_z[labels[i]] += points[i].pos.z();
+    if (new_count > max_count) {
+      max_count = new_count;
+    }
+  }
+
+  if (max_count == 0) {
+    return -1;
+  }
+
+  // try to pick nearest cluster with at least threshold points
+  int target_label = -1;
+  float best_z = std::numeric_limits<float>::max();
+  auto threshold = std::min<size_t>(static_cast<size_t>(ratio * max_count), 1u);
+  if (max_count < threshold) {
+    threshold = 0;  // no cluster has threshold points, fall back to picking nearest
+  }
+
+  for (size_t k = 1; k <= num_clusters; ++k) {
+    if (counts[k] < threshold) {
+      continue;
+    }
+
+    const auto mean_z = static_cast<float>(total_z[k] / counts[k]);
+    if (mean_z < best_z) {
+      best_z = mean_z;
+      target_label = k;
+    }
+  }
+
+  return target_label;
 }
 
 }  // namespace
@@ -277,9 +377,8 @@ auto ExternalObjectExtractor::extractObject(const Track& track, const FrameDataB
   return makeAttributes(*best.frame, *best.cluster, *rep);
 }
 
-auto ExternalObjectExtractor::getBestCluster(const Track& track,
-                                             const FrameDataBuffer& buffer) const
-    -> InstanceResult {
+auto ExternalObjectExtractor::getBestCluster(const Track& track, const FrameDataBuffer& buffer)
+    const -> InstanceResult {
   InstanceResult best;
   for (const auto& obs : track.observations) {
     const auto frame = buffer.getData(obs.stamp);
@@ -365,9 +464,8 @@ cv::Mat ExternalObjectExtractor::projectLidarPoints(const FrameData& cam_frame,
       continue;
     }
 
-    const auto points_in_world = lidar_frame->input.points_in_world_frame;
     Eigen::Isometry3f input_to_cam;
-    if (points_in_world) {
+    if (lidar_frame->input.points_in_world_frame) {
       input_to_cam = cam_T_world;
     } else {
       const auto world_T_lidar = lidar_frame->input.getSensorPose();
@@ -414,85 +512,29 @@ cv::Mat ExternalObjectExtractor::projectLidarPoints(const FrameData& cam_frame,
 void ExternalObjectExtractor::filterDepthByCluster(cv::Mat& depth,
                                                    const cv::Mat& mask,
                                                    const Camera& camera) const {
-  const auto& K = camera.getConfig();  // provides fx, fy, cx, cy
-
-  // --- 1. Back-project masked pixels to 3D ---
-  struct MaskedPoint {
-    float x, y, z;
-    int row, col;
-  };
-  std::vector<MaskedPoint> pts;
-  pts.reserve(512);
-  for (int r = 0; r < depth.rows; ++r) {
-    for (int c = 0; c < depth.cols; ++c) {
-      if (mask.at<uint8_t>(r, c) == 0) continue;
-      const float d = depth.at<float>(r, c);
-      if (d <= 0.f) continue;
-      pts.push_back({(c - K.cx) * d / K.fx, (r - K.cy) * d / K.fy, d, r, c});
-    }
-  }
-
-  if (pts.empty()) {
+  std::vector<ImagePoint> points;
+  fillMaskPoints(camera, mask, depth, points);
+  if (points.empty()) {
     return;
   }
 
+  std::vector<int> labels;
+  const auto num_clusters =
+      runDBSCAN(points, labels, config.filter_cluster_tolerance, config.min_cluster_size);
   if (num_clusters == 0) {
-    CLOG(2) << "filterDepthByCluster: no valid clusters found, skipping.";
     return;
   }
 
-  // --- 3. Select target cluster ---
-  std::vector<double> sum_z(num_clusters + 1, 0.0);
-  std::vector<int> cnt(num_clusters + 1, 0);
-  for (int i = 0; i < n; ++i) {
-    if (labels[i] > 0) {
-      sum_z[labels[i]] += pts[i].z;
-      ++cnt[labels[i]];
-    }
-  }
-
-  // Largest cluster size (for quality thresholding)
-  int max_cnt = 0;
-  for (int k = 1; k <= num_clusters; ++k) {
-    if (cnt[k] > max_cnt) max_cnt = cnt[k];
-  }
-
-  int target = -1;
+  int target_cluster = -1;
   if (!config.filter_prefer_near) {
-    // Pick the largest cluster — filtered-out points become outliers relative to it
-    for (int k = 1; k <= num_clusters; ++k) {
-      if (target == -1 || cnt[k] > cnt[target]) target = k;
-    }
+    target_cluster = getLargestCluster(labels, num_clusters);
   } else {
-    // Quality-filter: only consider clusters with cnt >= ratio * max_cnt, then pick nearest
-    const int quality_threshold =
-        static_cast<int>(config.filter_quality_ratio * static_cast<float>(max_cnt));
-    float best_z = std::numeric_limits<float>::max();
-    for (int k = 1; k <= num_clusters; ++k) {
-      if (cnt[k] < quality_threshold) continue;
-      const float mean_z = static_cast<float>(sum_z[k] / cnt[k]);
-      if (mean_z < best_z) {
-        best_z = mean_z;
-        target = k;
-      }
-    }
-    if (target == -1) {
-      // Fallback: no cluster passed quality threshold — pick nearest unconditionally
-      float best_z_fb = std::numeric_limits<float>::max();
-      for (int k = 1; k <= num_clusters; ++k) {
-        if (cnt[k] == 0) continue;
-        const float mean_z = static_cast<float>(sum_z[k] / cnt[k]);
-        if (mean_z < best_z_fb) {
-          best_z_fb = mean_z;
-          target = k;
-        }
-      }
-    }
+    target_cluster = getNearestCluster(points, labels, num_clusters, config.filter_quality_ratio);
   }
 
-  for (int i = 0; i < n; ++i) {
-    if (labels[i] != target) {
-      depth.at<float>(pts[i].row, pts[i].col) = 0.f;
+  for (size_t i = 0; i < labels.size(); ++i) {
+    if (labels[i] != target_cluster) {
+      depth.at<float>(points[i].v, points[i].u) = 0.0f;
     }
   }
 }
