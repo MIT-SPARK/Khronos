@@ -117,6 +117,55 @@ std::unique_ptr<KhronosObjectAttributes> makeAttributes(const FrameData& frame,
   return attrs;
 }
 
+void runDBSCAN(const std::vector<Eigen::Vector3f>& points, float eps, size_t min_size) {
+  const auto n = static_cast<size_t>(points.size());
+
+  int num_clusters = 0;
+  std::vector<int> labels(n, -1);  // -1 = unvisited, 0 = noise, >0 = cluster id
+  for (size_t i = 0; i < n; ++i) {
+    if (labels[i] != -1) {
+      continue;
+    }
+
+    std::vector<size_t> neighbors;
+    for (size_t j = 0; j < n; ++j) {
+      if ((points[i] - points[j]).norm() <= eps) {
+        neighbors.push_back(j);
+      }
+    }
+
+    if (neighbors.size() < min_size) {
+      labels[i] = 0;  // noise
+      continue;
+    }
+
+    ++num_clusters;
+    labels[i] = num_clusters;
+    for (const auto q : neighbors) {
+      if (labels[q] == 0) {
+        labels[q] = num_clusters;
+      }
+
+      if (labels[q] != -1) {
+        continue;
+      }
+
+      labels[q] = num_clusters;
+
+      std::vector<size_t> candidates;
+      for (size_t j = 0; j < n; ++j) {
+        if ((points[q] - points[j]).norm() <= eps) {
+          candidates.push_back(j);
+        }
+      }
+
+      if (candidates.size() >= min_size) {
+        neighbors.insert(neighbors.end(), candidates.begin(), candidates.end());
+      }
+    }
+  }
+}
+
 }  // namespace
 
 using namespace std::chrono_literals;
@@ -228,8 +277,9 @@ auto ExternalObjectExtractor::extractObject(const Track& track, const FrameDataB
   return makeAttributes(*best.frame, *best.cluster, *rep);
 }
 
-auto ExternalObjectExtractor::getBestCluster(const Track& track, const FrameDataBuffer& buffer)
-    const -> InstanceResult {
+auto ExternalObjectExtractor::getBestCluster(const Track& track,
+                                             const FrameDataBuffer& buffer) const
+    -> InstanceResult {
   InstanceResult best;
   for (const auto& obs : track.observations) {
     const auto frame = buffer.getData(obs.stamp);
@@ -384,49 +434,6 @@ void ExternalObjectExtractor::filterDepthByCluster(cv::Mat& depth,
 
   if (pts.empty()) {
     return;
-  }
-
-  // --- 2. DBSCAN on 3D points ---
-  const float eps2 = config.filter_cluster_tolerance * config.filter_cluster_tolerance;
-  const int n = static_cast<int>(pts.size());
-  std::vector<int> labels(n, -1);  // -1 = unvisited, 0 = noise, >0 = cluster id
-  int num_clusters = 0;
-
-  auto dist2 = [&](int i, int j) -> float {
-    const float dx = pts[i].x - pts[j].x;
-    const float dy = pts[i].y - pts[j].y;
-    const float dz = pts[i].z - pts[j].z;
-    return dx * dx + dy * dy + dz * dz;
-  };
-
-  for (int i = 0; i < n; ++i) {
-    if (labels[i] != -1) continue;
-    std::vector<int> neighbours;
-    for (int j = 0; j < n; ++j) {
-      if (dist2(i, j) <= eps2) neighbours.push_back(j);
-    }
-
-    if (static_cast<int>(neighbours.size()) < config.min_cluster_size) {
-      labels[i] = 0;  // noise
-      continue;
-    }
-
-    ++num_clusters;
-    labels[i] = num_clusters;
-    for (int ni = 0; ni < static_cast<int>(neighbours.size()); ++ni) {
-      const int q = neighbours[ni];
-      if (labels[q] == 0) labels[q] = num_clusters;  // noise promoted to border
-      if (labels[q] != -1) continue;
-      labels[q] = num_clusters;
-      std::vector<int> q_nbrs;
-      for (int j = 0; j < n; ++j) {
-        if (dist2(q, j) <= eps2) q_nbrs.push_back(j);
-      }
-
-      if (static_cast<int>(q_nbrs.size()) >= config.min_cluster_size) {
-        for (const int idx : q_nbrs) neighbours.push_back(idx);
-      }
-    }
   }
 
   if (num_clusters == 0) {
