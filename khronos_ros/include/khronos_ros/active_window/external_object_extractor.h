@@ -30,7 +30,7 @@ class ExternalObjectExtractor : public ObjectExtractor {
       LIDAR_ONLY,
       REPLACE_CAMERA,
       CAMERA_ONLY
-    } depth_mode = DepthMode::REPLACE_CAMERA;
+    } depth_mode = DepthMode::CAMERA_ONLY;
     //! Toggles between filling extraction mask from observation or instance image
     bool mask_from_cluster = true;
     //! Enable post-projection depth filtering

@@ -52,7 +52,7 @@ void fillMessage(sensor_msgs::msg::Image& msg,
 
 void fillMaskFromCluster(const MeasurementCluster& cluster, cv::Mat& mask) {
   for (const auto& [u, v] : cluster.pixels) {
-    mask.at<uint8_t>(u, v) = 255;
+    mask.at<uint8_t>(v, u) = 255;
   }
 }
 
