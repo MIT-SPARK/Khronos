@@ -51,19 +51,23 @@ struct Observation {
   // Construction.
   Observation() = default;
   explicit Observation(const TimeStamp& stamp) : stamp(stamp) {}
-  Observation(const TimeStamp& stamp, int semantic_cluster_id, int dynamic_cluster_id)
+  Observation(const TimeStamp& stamp,
+              int semantic_cluster_id,
+              int dynamic_cluster_id,
+              const std::string& sensor)
       : stamp(stamp),
         semantic_cluster_id(semantic_cluster_id),
-        dynamic_cluster_id(dynamic_cluster_id) {}
+        dynamic_cluster_id(dynamic_cluster_id),
+        sensor(sensor) {}
 
-  // Timestamp of the observation.
+  //! Timestamp of the observation.
   TimeStamp stamp;
-
-  // ID of the corresponding SemanticCluster, -1 indicates none.
+  //! ID of the corresponding SemanticCluster, -1 indicates none.
   int semantic_cluster_id = -1;
-
-  // ID of the corresponding DynamicCluster, -1 indicates none.
+  //! ID of the corresponding DynamicCluster, -1 indicates none.
   int dynamic_cluster_id = -1;
+  //! Sensor ID associated with observation
+  std::string sensor;
 };
 
 using Observations = std::vector<Observation>;

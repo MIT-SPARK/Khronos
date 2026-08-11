@@ -81,9 +81,10 @@ class FrameDataBuffer {
   /**
    * @brief Get the frame data at the given time stamp if it exists.
    * @param time_stamp The time stamp of the frame data to retrieve.
+   * @param sensor_name Sensor name associated with data
    * @returns The frame data if it exists, otherwise nullptr.
    */
-  FrameData::Ptr getData(const TimeStamp time_stamp) const;
+  FrameData::Ptr getData(const TimeStamp time_stamp, const std::string& sensor_name) const;
 
   size_t size() const { return buffer_.size(); }
 

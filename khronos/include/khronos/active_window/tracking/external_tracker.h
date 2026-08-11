@@ -55,7 +55,6 @@ class ExternalTracker : public Tracker {
   struct Config {
     int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
 
-
     // Number of times a track has to be observed to be considered existent.
     int min_num_observations = 20;
   } const config;
@@ -70,8 +69,10 @@ class ExternalTracker : public Tracker {
  protected:
   // Processing.
   void associateTracks(const FrameData& data, Tracks& tracks);
-  void addNewTrack(const MeasurementCluster& observation, Tracks& tracks);
-  void updateTrack(const MeasurementCluster& observation, Track& track) const;
+  void addNewTrack(const FrameData& data, const MeasurementCluster& observation, Tracks& tracks);
+  void updateTrack(const FrameData& data,
+                   const MeasurementCluster& observation,
+                   Track& track) const;
 
  private:
   TimeStamp processing_stamp_;

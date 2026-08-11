@@ -93,7 +93,7 @@ void ExternalTracker::associateTracks(const FrameData& data, Tracks& tracks) {
       if (track.id == cluster.id) {
         // Track and cluster IDs match, associate them.
         associated_objects.insert(cluster.id);
-        updateTrack(cluster, track);
+        updateTrack(data, cluster, track);
         break;
       }
     }
@@ -102,26 +102,31 @@ void ExternalTracker::associateTracks(const FrameData& data, Tracks& tracks) {
   // Create new tracks for unassociated objects.
   for (const auto& cluster : data.semantic_clusters) {
     if (associated_objects.find(cluster.id) == associated_objects.end()) {
-      addNewTrack(cluster, tracks);
+      addNewTrack(data, cluster, tracks);
     }
   }
 }
 
-void ExternalTracker::addNewTrack(const MeasurementCluster& observation, Tracks& tracks) {
+void ExternalTracker::addNewTrack(const FrameData& data,
+                                  const MeasurementCluster& observation,
+                                  Tracks& tracks) {
   auto& track = tracks.emplace_back();
   track.is_dynamic = false;
   track.id = observation.id;
   track.first_seen = processing_stamp_;
-  updateTrack(observation, track);
+  updateTrack(data, observation, track);
 }
 
-void ExternalTracker::updateTrack(const MeasurementCluster& observation, Track& track) const {
+void ExternalTracker::updateTrack(const FrameData& data,
+                                  const MeasurementCluster& observation,
+                                  Track& track) const {
   // Simple existence probability estimate: count number of observations. We multiply by
   // two so that the minimum observations yield 50% confidence.
   track.updateSemantics(observation.semantics);
 
   track.last_seen = processing_stamp_;
-  track.observations.emplace_back(processing_stamp_, observation.id, -1);
+  track.observations.emplace_back(
+      processing_stamp_, observation.id, -1, data.input.getSensor().name);
   track.confidence = std::min(
       static_cast<float>(track.observations.size()) / (config.min_num_observations * 2), 1.f);
 }

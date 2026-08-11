@@ -118,7 +118,7 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractDynamicObject(
     }
 
     // Get the data for this observation.
-    const auto frame = frame_data.getData(observation.stamp);
+    const auto frame = frame_data.getData(observation.stamp, observation.sensor);
     if (!frame) {
       continue;
     }
@@ -321,7 +321,7 @@ std::vector<std::pair<FrameData::Ptr, int>> MeshObjectExtractor::collectSemantic
       // TODO(nathan) this might need to be relaxed
       continue;
     }
-    const auto frame = frame_data.getData(observation.stamp);
+    const auto frame = frame_data.getData(observation.stamp, observation.sensor);
     if (!frame) {
       continue;
     }

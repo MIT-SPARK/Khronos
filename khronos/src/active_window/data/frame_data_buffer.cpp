@@ -59,11 +59,13 @@ void FrameDataBuffer::trimBuffer(const Tracks& tracks) {
     const FrameData& frame_data = **it;
     for (const Track& track : tracks) {
       // Check the frame time stamps.
-      const auto it2 = std::find_if(track.observations.begin(),
-                                    track.observations.end(),
-                                    [&frame_data](const Observation& observation) {
-                                      return observation.stamp == frame_data.input.timestamp_ns;
-                                    });
+      const auto it2 =
+          std::find_if(track.observations.begin(),
+                       track.observations.end(),
+                       [&frame_data](const Observation& observation) {
+                         return observation.stamp == frame_data.input.timestamp_ns &&
+                                observation.sensor == frame_data.input.getSensor().name;
+                       });
       if (it2 != track.observations.end()) {
         has_track = true;
         break;
@@ -105,14 +107,16 @@ void FrameDataBuffer::storeData(const FrameData::Ptr& data) {
   }
 }
 
-FrameData::Ptr FrameDataBuffer::getData(const TimeStamp stamp) const {
+FrameData::Ptr FrameDataBuffer::getData(const TimeStamp stamp,
+                                        const std::string& sensor_name) const {
   if (stamp < oldest_time_stamp_) {
     return nullptr;
   }
 
-  const auto it = std::find_if(buffer_.begin(), buffer_.end(), [stamp](const FrameData::Ptr& data) {
-    return data->input.timestamp_ns == stamp;
-  });
+  const auto it = std::find_if(
+      buffer_.begin(), buffer_.end(), [stamp, sensor_name](const FrameData::Ptr& data) {
+        return data->input.timestamp_ns == stamp && data->input.getSensor().name == sensor_name;
+      });
   if (it == buffer_.end()) {
     return nullptr;
   }
