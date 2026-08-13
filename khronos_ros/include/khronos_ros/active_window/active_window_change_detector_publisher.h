@@ -70,8 +70,10 @@ class ActiveWindowChangeDetectorPublisher : public ActiveWindowChangeDetector::A
     //! Name of the robot reporting the changes, forwarded into AwcdChanges::robot_name.
     std::string robot_name;
 
-    //! Topic to publish AwcdChanges messages on.
-    std::string topic = "awcd_changes";
+    //! Topic to publish AwcdChanges messages on. Leading '/' makes this a global (non-namespaced)
+    //! topic so all robots' change detectors publish to the same topic; the base station
+    //! distinguishes robots via AwcdChanges::robot_name.
+    std::string topic = "/awcd_changes";
 
     //! Publisher queue size.
     int queue_size = 10;
