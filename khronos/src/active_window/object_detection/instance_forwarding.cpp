@@ -216,30 +216,6 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
       continue;
     }
 
-    MeasurementCluster cluster;
-    cluster.pixels.insert(cluster.pixels.end(), pixels.begin(), pixels.end());
-    cluster.id = id;
-
-    if (config.outlier_filter_enabled) {
-      Points points;
-      points.reserve(cluster.pixels.size());
-      for (const auto& pixel : cluster.pixels) {
-        const auto& vertex = data.input.vertex_map.at<InputData::VertexType>(pixel.v, pixel.u);
-        points.emplace_back(vertex[0], vertex[1], vertex[2]);
-      }
-      const auto inlier_indices = utils::largestDbscanCluster(
-          points, config.outlier_filter_eps, config.outlier_filter_min_points);
-      if (inlier_indices.empty()) {
-        continue;
-      }
-      Pixels filtered_pixels;
-      filtered_pixels.reserve(inlier_indices.size());
-      for (const size_t idx : inlier_indices) {
-        filtered_pixels.push_back(cluster.pixels[idx]);
-      }
-      cluster.pixels = std::move(filtered_pixels);
-    }
-
     if (filter_by_volume_) {
       const auto bbox = BoundingBox(utils::VertexMapAdaptor(pixels, data.input.vertex_map));
       const auto volume = bbox.volume();
@@ -264,6 +240,26 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
     cluster.pixels.insert(cluster.pixels.end(), pixels.begin(), pixels.end());
     cluster.semantics = extractSemantics(data, id, pixels);
     data.semantic_clusters.emplace_back(std::move(cluster));
+
+    if (config.outlier_filter_enabled) {
+      Points points;
+      points.reserve(cluster.pixels.size());
+      for (const auto& pixel : cluster.pixels) {
+        const auto& vertex = data.input.vertex_map.at<InputData::VertexType>(pixel.v, pixel.u);
+        points.emplace_back(vertex[0], vertex[1], vertex[2]);
+      }
+      const auto inlier_indices = utils::largestDbscanCluster(
+          points, config.outlier_filter_eps, config.outlier_filter_min_points);
+      if (inlier_indices.empty()) {
+        continue;
+      }
+      Pixels filtered_pixels;
+      filtered_pixels.reserve(inlier_indices.size());
+      for (const size_t idx : inlier_indices) {
+        filtered_pixels.push_back(cluster.pixels[idx]);
+      }
+      cluster.pixels = std::move(filtered_pixels);
+    }
   }
 }
 
