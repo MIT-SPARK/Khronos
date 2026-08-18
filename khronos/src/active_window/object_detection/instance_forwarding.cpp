@@ -238,8 +238,6 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
     MeasurementCluster cluster;
     cluster.id = id;
     cluster.pixels.insert(cluster.pixels.end(), pixels.begin(), pixels.end());
-    cluster.semantics = extractSemantics(data, id, pixels);
-    data.semantic_clusters.emplace_back(std::move(cluster));
 
     if (config.outlier_filter_enabled) {
       Points points;
@@ -260,6 +258,9 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
       }
       cluster.pixels = std::move(filtered_pixels);
     }
+
+    cluster.semantics = extractSemantics(data, id, pixels);
+    data.semantic_clusters.emplace_back(std::move(cluster));
   }
 }
 
