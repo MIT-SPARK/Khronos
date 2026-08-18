@@ -87,7 +87,7 @@ class ActiveWindowChangeDetectorPublisher : public ActiveWindowChangeDetector::A
   // added object ids differs from the last published sets (see last_removed_ids_/last_added_ids_).
   void call(const DynamicSceneGraph::Ptr& dsg,
             const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects,
-            const std::vector<Track>& newly_added_tracks,
+            const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects,
             const Eigen::Isometry3d& current_T_prior) const override;
 
  private:
@@ -95,9 +95,10 @@ class ActiveWindowChangeDetectorPublisher : public ActiveWindowChangeDetector::A
   khronos_msgs::msg::ChangedObjectInfo makeRemovedInfo(
       const ActiveWindowChangeDetector::RemovedObject& obj) const;
 
-  //! Fills in a ChangedObjectInfo entry (full attributes) for a newly-added track.
-  khronos_msgs::msg::ChangedObjectInfo makeAddedInfo(const Track& track,
-                                                     const Eigen::Isometry3d& prior_T_current) const;
+  //! Fills in a ChangedObjectInfo entry (full attributes) for a newly-added (possibly merged) object.
+  khronos_msgs::msg::ChangedObjectInfo makeAddedInfo(
+      const ActiveWindowChangeDetector::AddedObject& obj,
+      const Eigen::Isometry3d& prior_T_current) const;
 
   // ROS
   ianvs::NodeHandle nh_;

@@ -47,6 +47,7 @@
 #include <hydra/openset/embedding_distances.h>
 
 #include "khronos/active_window/data/reconstruction_types.h"
+#include "khronos/active_window/tracking/semantic_matching.h"
 #include "khronos/utils/geometry_utils.h"
 
 namespace khronos {
@@ -54,80 +55,6 @@ namespace {
 
 static const auto registration =
     config::RegistrationWithConfig<Tracker, MaxIoUTracker, MaxIoUTracker::Config>("MaxIouTracker");
-
-float computeCosineSim(const FeatureVector& lhs, const FeatureVector& rhs) {
-  static const auto metric = hydra::CosineDistance();
-  return metric.score(lhs, rhs);
-}
-
-struct MatchResult {
-  inline operator bool() const { return status == Status::kMatch; }
-
-  enum class Status {
-    kNoSemantics,
-    kMismatchedCategories,
-    kMismatchedFeatures,
-    kLowSimiliarity,
-    kMatch,
-  } const status;
-
-  const std::optional<float> similiarity = std::nullopt;
-};
-
-std::ostream& operator<<(std::ostream& out, const MatchResult& result) {
-  switch (result.status) {
-    case MatchResult::Status::kNoSemantics:
-      out << "no match (invalid semantics)";
-      break;
-    case MatchResult::Status::kMismatchedCategories:
-      out << "no match (categories are different)";
-      break;
-    case MatchResult::Status::kMismatchedFeatures:
-      out << "no match (feature dimensions disagree)";
-      break;
-    case MatchResult::Status::kLowSimiliarity:
-      out << "no match (low similiarity: "
-          << result.similiarity.value_or(std::numeric_limits<float>::quiet_NaN()) << ")";
-      break;
-    case MatchResult::Status::kMatch:
-      out << "match!";
-      break;
-  }
-
-  return out;
-}
-
-MatchResult semanticsMatch(const std::optional<SemanticClusterInfo>& lhs,
-                           const std::optional<SemanticClusterInfo>& rhs,
-                           float min_cosine_sim) {
-  if (lhs.has_value() != rhs.has_value()) {
-    return {MatchResult::Status::kNoSemantics};
-  }
-
-  if (!lhs && !rhs) {
-    return {MatchResult::Status::kMatch};
-  }
-
-  // For openset cases, all objects have the same (unknown) semantic ID.
-  if (lhs->category_id != rhs->category_id) {
-    return {MatchResult::Status::kMismatchedCategories};
-  }
-
-  if (lhs->feature.size() != rhs->feature.size()) {
-    return {MatchResult::Status::kMismatchedFeatures};
-  }
-
-  if (!lhs->feature.size()) {
-    return {MatchResult::Status::kMatch};  // no openset features
-  }
-
-  const auto cosine_sim = computeCosineSim(lhs->feature, rhs->feature);
-  if (cosine_sim < min_cosine_sim) {
-    return {MatchResult::Status::kLowSimiliarity, cosine_sim};
-  }
-
-  return {MatchResult::Status::kMatch, cosine_sim};
-}
 
 }  // namespace
 
@@ -347,7 +274,7 @@ void MaxIoUTracker::assignClustersToStaticTrack(const FrameData& data,
       const auto result = semanticsMatch(cluster.semantics, track.semantics, config.min_cosine_sim);
       if (!result) {
         CLOG(6) << "[IoU Tracker] rejected cluster " << cluster.id << " for cluster " << track.id
-                << ": " << result;
+                << ": " << toString(result);
         continue;
       }
 
@@ -400,7 +327,7 @@ void MaxIoUTracker::assignStaticTracksToCluster(const FrameData& data,
       const auto result = semanticsMatch(cluster.semantics, track.semantics, config.min_cosine_sim);
       if (!result) {
         CLOG(6) << "[IoU Tracker] rejected track " << track.id << " for cluster " << cluster.id
-                << ": " << result;
+                << ": " << toString(result);
         continue;
       }
 

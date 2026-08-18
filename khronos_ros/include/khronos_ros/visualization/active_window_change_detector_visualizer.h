@@ -96,7 +96,7 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
   // KhronosSink callback - called each frame.
   void call(const DynamicSceneGraph::Ptr& dsg,
             const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects,
-            const std::vector<Track>& newly_added_tracks,
+            const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects,
             const Eigen::Isometry3d& current_T_prior) const override;
 
  private:
@@ -106,8 +106,9 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
       const DynamicSceneGraph::Ptr& dsg,
       const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects) const;
 
-  void visualizeAddedObjects(const std::vector<Track>& newly_added_tracks,
-                             const Eigen::Isometry3d& current_T_prior) const;
+  void visualizeAddedObjects(
+      const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects,
+      const Eigen::Isometry3d& current_T_prior) const;
 
   // ROS
   ianvs::NodeHandle nh_;

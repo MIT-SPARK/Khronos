@@ -37,11 +37,16 @@
 
 #include "khronos/active_window/change_detection/active_window_change_detector.h"
 
+#include <algorithm>
+#include <limits>
+
+#include <config_utilities/types/enum.h>
 #include <config_utilities/types/path.h>
 #include <spark_dsg/node_attributes.h>
 #include <spark_dsg/scene_graph_types.h>
 #include <spatial_hash/grid.h>
 
+#include "khronos/active_window/tracking/semantic_matching.h"
 #include "khronos/utils/icp_registration_utils.h"
 
 namespace khronos {
@@ -66,6 +71,14 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.added_probability_threshold, "added_probability_threshold");
   field(config.added_min_frames_observed, "added_min_frames_observed");
   field(config.added_prune_after_frames, "added_prune_after_frames");
+  field(config.enable_added_object_merging, "enable_added_object_merging");
+  field(config.merge_bbox_iou_threshold, "merge_bbox_iou_threshold");
+  field(config.merge_centroid_distance_threshold, "merge_centroid_distance_threshold", "m");
+  field(config.merge_min_semantic_cosine_sim, "merge_min_semantic_cosine_sim");
+  field(config.reassociate_every_frame, "reassociate_every_frame");
+  enum_field(config.bbox_merge_type,
+             "bbox_merge_type",
+             std::vector<std::string>{"union", "weighted_average"});
   field<Path::Absolute>(config.prior_map_path, "prior_map_path");
   field(config.awcd_sinks, "awcd_sinks");
   field(config.transformation_getter, "transformation_getter");
@@ -76,6 +89,8 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.icp_downsampling_resolution, "icp_downsampling_resolution");
   field(config.icp_max_correspondence_distance, "icp_max_correspondence_distance");
   field(config.icp_min_inliers, "icp_min_inliers");
+  checkInRange(
+      config.merge_min_semantic_cosine_sim, -1.0f, 1.0f, "merge_min_semantic_cosine_sim");
   check<Path::Exists>(config.prior_map_path, "prior_map_path");
   //   check<Path::Extension>(config.prior_map_path, "prior_map_path", ".spark_dsg"); // Add the
   //   check back sometimes.
@@ -199,7 +214,10 @@ std::vector<ActiveWindowChangeDetector::RemovedObject> ActiveWindowChangeDetecto
       if (state.first_removed_ns == 0) {
         state.first_removed_ns = stamp;
       }
-      removed_objects.push_back(RemovedObject{object_id, state.first_removed_ns});
+      removed_objects.push_back(RemovedObject{object_id,
+                                              state.first_removed_ns,
+                                              static_cast<float>(state.free_probability),
+                                              state.num_frames_observed});
       MLOG(3) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
               << " REMOVED (p=" << state.free_probability
               << ", frames=" << state.num_frames_observed << ")";
@@ -334,82 +352,249 @@ std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRat
   return measurements;
 }
 
-std::vector<Track> ActiveWindowChangeDetector::updateAddedFilter(
+int ActiveWindowChangeDetector::findBestObjectMatch(
+    const BoundingBox& bbox,
+    const std::optional<SemanticClusterInfo>& semantics,
+    int exclude_id) const {
+  if (!config.enable_added_object_merging || !bbox.isValid()) {
+    return -1;
+  }
+  const Point centroid = bbox.world_P_center;
+
+  int best_id = -1;
+  float best_iou = -1.0f;
+  float best_dist = std::numeric_limits<float>::max();
+
+  for (const auto& [object_id, state] : added_object_states_) {
+    if (object_id == exclude_id || !state.bounding_box.isValid()) {
+      continue;
+    }
+
+    // Semantics must match (category_id + feature cosine sim); geometry is an OR of bbox IoU
+    // and centroid distance (either disabled by setting its threshold <= 0).
+    const auto semantic_result =
+        semanticsMatch(semantics, state.semantics, config.merge_min_semantic_cosine_sim);
+    if (!semantic_result) {
+      continue;
+    }
+
+    const float iou = state.bounding_box.computeIoU(bbox);
+    const float dist = (state.bounding_box.world_P_center - centroid).norm();
+
+    bool geometric_match = config.merge_bbox_iou_threshold > 0.0f &&
+                           iou >= config.merge_bbox_iou_threshold;
+    if (!geometric_match && config.merge_centroid_distance_threshold > 0.0f) {
+      geometric_match = dist < config.merge_centroid_distance_threshold;
+    }
+    if (!geometric_match) {
+      continue;
+    }
+
+    // Prefer the highest-IoU candidate; break ties with the smaller centroid distance.
+    if (iou > best_iou || (iou == best_iou && dist < best_dist)) {
+      best_iou = iou;
+      best_dist = dist;
+      best_id = object_id;
+    }
+  }
+
+  return best_id;
+}
+
+void ActiveWindowChangeDetector::foldTrackIntoObject(AddedObjectState& state,
+                                                      const Track& track,
+                                                      const TrackAddedState& track_state) const {
+  const bool first_member = state.member_track_ids.empty();
+
+  if (first_member) {
+    // Nothing to blend with yet -- initialize the object directly from this track.
+    state.bounding_box = track.last_bounding_box;
+    state.first_seen = track.first_seen;
+    state.last_seen = track.last_seen;
+    state.semantics = track.semantics;
+    state.confidence = track.confidence;
+  } else {
+    // Fold the track's bounding box into the object's per Config::bbox_merge_type.
+    const float w_obj = state.confidence;
+    const float w_trk = track.confidence;
+    const float total = w_obj + w_trk;
+    if (config.bbox_merge_type == Config::BboxMergeType::kUnion ||
+        !state.bounding_box.isValid() || !track.last_bounding_box.isValid() || total <= 0.0f) {
+      state.bounding_box.merge(track.last_bounding_box);
+    } else if (state.bounding_box.type == BoundingBox::Type::AABB &&
+               track.last_bounding_box.type == BoundingBox::Type::AABB) {
+      // AABB: average the min/max corner points component-wise, then re-derive center/dims.
+      // (minCorner()/maxCorner() are protected on BoundingBox, so derive them from
+      // world_P_center +/- dimensions/2, valid since AABB has no rotation.)
+      const Eigen::Vector3f obj_min =
+          state.bounding_box.world_P_center - state.bounding_box.dimensions * 0.5f;
+      const Eigen::Vector3f obj_max =
+          state.bounding_box.world_P_center + state.bounding_box.dimensions * 0.5f;
+      const Eigen::Vector3f trk_min = track.last_bounding_box.world_P_center -
+                                      track.last_bounding_box.dimensions * 0.5f;
+      const Eigen::Vector3f trk_max = track.last_bounding_box.world_P_center +
+                                      track.last_bounding_box.dimensions * 0.5f;
+      const Eigen::Vector3f new_min = (w_obj * obj_min + w_trk * trk_min) / total;
+      const Eigen::Vector3f new_max = (w_obj * obj_max + w_trk * trk_max) / total;
+      state.bounding_box = BoundingBox(new_max - new_min, (new_min + new_max) * 0.5f);
+    } else {
+      // OBB/RAABB: average centroid and extent directly. Orientation is inherited from whichever
+      // side has the larger weight (proper rotation averaging, e.g. SLERP, is not implemented).
+      const Eigen::Vector3f new_center = (w_obj * state.bounding_box.world_P_center +
+                                          w_trk * track.last_bounding_box.world_P_center) /
+                                         total;
+      const Eigen::Vector3f new_dims = (w_obj * state.bounding_box.dimensions +
+                                        w_trk * track.last_bounding_box.dimensions) /
+                                       total;
+      const Eigen::Matrix3f& new_rotation = w_trk > w_obj ? track.last_bounding_box.world_R_center
+                                                           : state.bounding_box.world_R_center;
+      state.bounding_box =
+          BoundingBox(state.bounding_box.type, new_dims, new_center, new_rotation);
+    }
+
+    state.first_seen = std::min(state.first_seen, track.first_seen);
+    state.last_seen = std::max(state.last_seen, track.last_seen);
+    state.confidence = std::max(state.confidence, track.confidence);
+
+    // Fuse semantics similarly to Track::updateSemantics: prefer to keep/acquire openset
+    // features, and average them (unweighted) when both sides carry one.
+    if (track.semantics) {
+      if (!state.semantics) {
+        state.semantics = track.semantics;
+      } else {
+        const bool obj_has_feature = state.semantics->feature.size() != 1;
+        const bool track_has_feature = track.semantics->feature.size() != 1;
+        if (track_has_feature && !obj_has_feature) {
+          state.semantics->feature = track.semantics->feature;
+        } else if (track_has_feature && obj_has_feature) {
+          state.semantics->feature =
+              0.5f * state.semantics->feature + 0.5f * track.semantics->feature;
+        }
+      }
+    }
+  }
+
+  state.change_confidence = std::max(state.change_confidence, track_state.change_confidence);
+  state.num_frames_observed = std::max(state.num_frames_observed, track_state.num_frames_observed);
+  state.member_track_ids.insert(track.id);
+  state.last_updated_frame = frame_index_;
+}
+
+std::vector<ActiveWindowChangeDetector::AddedObject> ActiveWindowChangeDetector::updateAddedFilter(
     const std::unordered_map<int, float>& measurements,
     const Tracks& tracks) const {
   ++frame_index_;
 
-  // Build a quick lookup from track ID to Track pointer for snapshot refresh.
+  // Build a quick lookup from track ID to Track pointer for this frame's live info.
   std::unordered_map<int, const Track*> track_lookup;
   track_lookup.reserve(tracks.size());
   for (const Track& t : tracks) {
     track_lookup[t.id] = &t;
   }
 
-  // Update EMA state for each track that has a measurement this frame.
-  // Tracks absent from measurements are left untouched (freeze-last policy).
   for (const auto& [track_id, containment] : measurements) {
-    auto& state = added_object_states_[track_id];
-
-    if (state.num_frames_observed == 0) {
-      // First observation: initialize the filter to the raw measurement.
-      state.added_probability = containment;
+    // 1. Per-track EMA update, independent of any object association.
+    auto& track_state = track_added_states_[track_id];
+    if (track_state.num_frames_observed == 0) {
+      track_state.change_confidence = containment;
     } else {
-      // EMA update: p = alpha * containment + (1 - alpha) * p
-      state.added_probability =
-          config.added_ema_alpha * containment +
-          (1.0 - config.added_ema_alpha) * state.added_probability;
+      track_state.change_confidence = config.added_ema_alpha * containment +
+                                      (1.0 - config.added_ema_alpha) * track_state.change_confidence;
     }
-    ++state.num_frames_observed;
-    state.last_containment = containment;
-    state.last_updated_frame = frame_index_;
-
-    // Refresh the cached Track snapshot.
-    auto it = track_lookup.find(track_id);
-    if (it != track_lookup.end()) {
-      state.last_track = *(it->second);
-    }
+    ++track_state.num_frames_observed;
+    track_state.last_containment = containment;
+    track_state.last_updated_frame = frame_index_;
 
     MLOG(4) << "[ActiveWindowChangeDetector] Track " << track_id
             << " EMA update: raw=" << containment
-            << " smoothed=" << state.added_probability
-            << " frames=" << state.num_frames_observed;
+            << " smoothed=" << track_state.change_confidence
+            << " frames=" << track_state.num_frames_observed;
+
+    const auto lookup_it = track_lookup.find(track_id);
+    if (lookup_it == track_lookup.end()) {
+      continue;  // Should not happen (measurement implies the track is in `tracks`); guard anyway.
+    }
+    const Track& track = *lookup_it->second;
+
+    // 2. Association: already-associated tracks fold into their object (optionally re-checking
+    // for a better match first); unassociated tracks search for a match or create a new object.
+    if (track_state.object_id != -1) {
+      if (config.reassociate_every_frame) {
+        const int best_id = findBestObjectMatch(
+            track.last_bounding_box, track.semantics, track_state.object_id);
+        if (best_id != -1 && best_id != track_state.object_id) {
+          MLOG(3) << "[ActiveWindowChangeDetector] Track " << track_id
+                  << " re-associated from object " << track_state.object_id << " to " << best_id;
+          track_state.object_id = best_id;
+        }
+      }
+      foldTrackIntoObject(added_object_states_[track_state.object_id], track, track_state);
+    } else {
+      const int best_id = findBestObjectMatch(track.last_bounding_box, track.semantics);
+      const int object_id = best_id != -1 ? best_id : next_object_id_++;
+      MLOG(4) << "[ActiveWindowChangeDetector] Track " << track_id
+              << (best_id != -1 ? " associated to existing object " : " created new object ")
+              << object_id;
+      track_state.object_id = object_id;
+      foldTrackIntoObject(added_object_states_[object_id], track, track_state);
+    }
   }
 
-  // Threshold the full state map and collect confirmed-added Track snapshots.
-  // Prune stale non-added records along the way.
-  std::vector<Track> newly_added_tracks;
+  // 3. Gate & prune.
+  std::vector<AddedObject> newly_added_objects;
   for (auto it = added_object_states_.begin(); it != added_object_states_.end();) {
-    auto& [track_id, state] = *it;
+    const int object_id = it->first;
+    auto& state = it->second;
 
-    const bool above_prob = state.added_probability >= config.added_probability_threshold;
+    const bool above_prob = state.change_confidence >= config.added_probability_threshold;
     const bool enough_frames = state.num_frames_observed >= config.added_min_frames_observed;
 
     if (above_prob && enough_frames) {
       state.ever_added = true;
-      newly_added_tracks.push_back(state.last_track);
-      MLOG(3) << "[ActiveWindowChangeDetector] Track " << track_id
-              << " ADDED (p=" << state.added_probability
-              << ", frames=" << state.num_frames_observed << ")";
+
+      AddedObject obj;
+      obj.id = object_id;
+      obj.member_track_ids = state.member_track_ids;
+      obj.first_seen = state.first_seen;
+      obj.last_seen = state.last_seen;
+      obj.bounding_box = state.bounding_box;
+      obj.centroid = state.bounding_box.isValid() ? state.bounding_box.world_P_center : Point::Zero();
+      obj.semantics = state.semantics;
+      obj.confidence = state.confidence;
+      obj.change_confidence = static_cast<float>(state.change_confidence);
+      obj.num_frames_observed = state.num_frames_observed;
+      newly_added_objects.push_back(std::move(obj));
+
+      MLOG(3) << "[ActiveWindowChangeDetector] Object " << object_id
+              << " ADDED (confidence=" << state.confidence
+              << ", change_confidence=" << state.change_confidence
+              << ", frames=" << state.num_frames_observed
+              << ", members=" << state.member_track_ids.size() << ")";
       ++it;
     } else if (!state.ever_added &&
                (frame_index_ - state.last_updated_frame) > config.added_prune_after_frames) {
-      // Stale non-added record — prune it.
-      MLOG(4) << "[ActiveWindowChangeDetector] Pruning stale non-added track " << track_id;
+      // Stale non-added record — prune it, freeing its member tracks to re-associate elsewhere.
+      MLOG(4) << "[ActiveWindowChangeDetector] Pruning stale non-added object " << object_id;
+      for (const int member_track_id : state.member_track_ids) {
+        auto ts_it = track_added_states_.find(member_track_id);
+        if (ts_it != track_added_states_.end() && ts_it->second.object_id == object_id) {
+          ts_it->second.object_id = -1;
+        }
+      }
       it = added_object_states_.erase(it);
     } else {
-      MLOG(4) << "[ActiveWindowChangeDetector] Track " << track_id
-              << " not added (p=" << state.added_probability
+      MLOG(4) << "[ActiveWindowChangeDetector] Object " << object_id
+              << " not added (change_confidence=" << state.change_confidence
               << ", frames=" << state.num_frames_observed << ")";
       ++it;
     }
   }
 
   MLOG(2) << "[ActiveWindowChangeDetector] Added-object filter: "
-          << newly_added_tracks.size() << " added out of "
+          << newly_added_objects.size() << " added out of "
           << added_object_states_.size() << " tracked candidates";
 
-  return newly_added_tracks;
+  return newly_added_objects;
 }
 
 void ActiveWindowChangeDetector::call(const FrameData& data,
@@ -438,15 +623,15 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   // Known limitation: objects on tables cannot be detected this way (footprint-on-ground heuristic).
   const auto containment_measurements = computeContainmentRatios(tracks, map);
 
-  // 5. Update EMA filter, prune stale records, and return filtered Track snapshots.
-  const auto newly_added_tracks = updateAddedFilter(containment_measurements, tracks);
+  // 5. Update EMA filter, merge fragmented tracks, prune stale records, and return fused objects.
+  const auto newly_added_objects = updateAddedFilter(containment_measurements, tracks);
 
   MLOG(2) << "[ActiveWindowChangeDetector] Detected " << removed_objects.size()
-          << " removed objects and " << newly_added_tracks.size() << " newly added tracks.";
+          << " removed objects and " << newly_added_objects.size() << " newly added objects.";
 
-  // Call all sinks with removed objects, newly-added tracks, and the prior-to-current transform.
+  // Call all sinks with removed objects, newly-added objects, and the prior-to-current transform.
   ActiveWindowCDSink::callAll(
-      sinks_, prior_graph_, removed_objects, newly_added_tracks, current_T_prior_);
+      sinks_, prior_graph_, removed_objects, newly_added_objects, current_T_prior_);
 }
 
 void ActiveWindowChangeDetector::loadPriorMap() {
