@@ -77,7 +77,7 @@ TfIcpPublisher::TfIcpPublisher(const Config& cfg, const ianvs::NodeHandle* nh)
 
 void TfIcpPublisher::call(const DynamicSceneGraph::Ptr& /*dsg*/,
                           const std::vector<ActiveWindowChangeDetector::RemovedObject>& /*removed_objects*/,
-                          const std::vector<Track>& /*newly_added_tracks*/,
+                          const std::vector<ActiveWindowChangeDetector::AddedObject>& /*newly_added_objects*/,
                           const Eigen::Isometry3d& current_T_prior) const {
   // Look up map → pre_icp_odom (the ROMAN-only result = pre_icp_odom_T_map).
   Eigen::Isometry3d pre_icp_odom_T_map;

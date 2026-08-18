@@ -75,7 +75,7 @@ ActiveWindowChangeDetectorPublisher::ActiveWindowChangeDetectorPublisher(
 void ActiveWindowChangeDetectorPublisher::call(
     const DynamicSceneGraph::Ptr& /* dsg */,
     const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects,
-    const std::vector<Track>& newly_added_tracks,
+    const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects,
     const Eigen::Isometry3d& current_T_prior) const {
   // Gate publishing on set-membership change: only publish if the set of removed and/or added
   // object ids differs from the last message actually published (not just from last frame's
@@ -85,8 +85,8 @@ void ActiveWindowChangeDetectorPublisher::call(
     cur_removed_ids.insert(static_cast<int64_t>(obj.id));
   }
   std::set<int64_t> cur_added_ids;
-  for (const Track& track : newly_added_tracks) {
-    cur_added_ids.insert(static_cast<int64_t>(track.id));
+  for (const auto& obj : newly_added_objects) {
+    cur_added_ids.insert(static_cast<int64_t>(obj.id));
   }
 
   if (last_removed_ids_.has_value() && last_added_ids_.has_value() &&
@@ -104,12 +104,12 @@ void ActiveWindowChangeDetectorPublisher::call(
     msg.removed_objects.push_back(makeRemovedInfo(obj));
   }
 
-  // Track bounding boxes / centroids are stored in the current (odom) frame; transform
+  // Object bounding boxes / centroids are stored in the current (odom) frame; transform
   // them into the prior/report frame before publishing, mirroring the visualizer.
   const Eigen::Isometry3d prior_T_current = current_T_prior.inverse();
-  msg.added_objects.reserve(newly_added_tracks.size());
-  for (const Track& track : newly_added_tracks) {
-    msg.added_objects.push_back(makeAddedInfo(track, prior_T_current));
+  msg.added_objects.reserve(newly_added_objects.size());
+  for (const auto& obj : newly_added_objects) {
+    msg.added_objects.push_back(makeAddedInfo(obj, prior_T_current));
   }
 
   changes_pub_->publish(msg);
@@ -124,23 +124,25 @@ khronos_msgs::msg::ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeRe
   // Latched at the detector: constant across every message that reports this object as removed.
   info.stamp = static_cast<builtin_interfaces::msg::Time>(
       rclcpp::Time(static_cast<int64_t>(obj.first_removed_ns)));
+  info.change_confidence = obj.change_confidence;
+  info.num_frames_observed = obj.num_frames_observed;
   return info;
 }
 
 khronos_msgs::msg::ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeAddedInfo(
-    const Track& track,
+    const ActiveWindowChangeDetector::AddedObject& obj,
     const Eigen::Isometry3d& prior_T_current) const {
   khronos_msgs::msg::ChangedObjectInfo info;
-  info.id = static_cast<int64_t>(track.id);
+  info.id = static_cast<int64_t>(obj.id);
   info.stamp = static_cast<builtin_interfaces::msg::Time>(
-      rclcpp::Time(static_cast<int64_t>(track.first_seen)));
+      rclcpp::Time(static_cast<int64_t>(obj.first_seen)));
 
-  const Eigen::Vector3d centroid = prior_T_current * track.last_centroid.cast<double>();
+  const Eigen::Vector3d centroid = prior_T_current * obj.centroid.cast<double>();
   info.centroid.x = centroid.x();
   info.centroid.y = centroid.y();
   info.centroid.z = centroid.z();
 
-  BoundingBox bbox = track.last_bounding_box;
+  BoundingBox bbox = obj.bounding_box;
   if (bbox.isValid()) {
     bbox.transform(prior_T_current);
     info.bbox_center.x = bbox.world_P_center.x();
@@ -156,15 +158,17 @@ khronos_msgs::msg::ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeAd
     info.bbox_orientation.z = q.z();
   }
 
-  if (track.semantics.has_value()) {
-    info.semantic_label = track.semantics->category_id;
+  if (obj.semantics.has_value()) {
+    info.semantic_label = obj.semantics->category_id;
   } else {
     info.semantic_label = -1;
   }
-  // NOTE(multy): Track only carries a numeric category_id; no label-space name lookup is
+  // NOTE(multy): AddedObject only carries a numeric category_id; no label-space name lookup is
   // wired in here, so `name` is left empty. The base station can resolve it against the
   // same label space config (instance_seg_label_space.yaml) used to produce category_id.
-  info.confidence = track.confidence;
+  info.confidence = obj.confidence;
+  info.change_confidence = obj.change_confidence;
+  info.num_frames_observed = obj.num_frames_observed;
 
   return info;
 }

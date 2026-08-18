@@ -92,7 +92,7 @@ ActiveWindowChangeDetectorVisualizer::ActiveWindowChangeDetectorVisualizer(
 void ActiveWindowChangeDetectorVisualizer::call(
     const DynamicSceneGraph::Ptr& dsg,
     const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects,
-    const std::vector<Track>& newly_added_tracks,
+    const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects,
     const Eigen::Isometry3d& current_T_prior) const {
   // Throttle visualization redraws to reduce flicker from high-frequency calls.
   if (config.min_draw_period_s > 0.0) {
@@ -117,7 +117,7 @@ void ActiveWindowChangeDetectorVisualizer::call(
 
   // Visualize removed objects
   visualizeChangedObjects(dsg, removed_objects);
-  visualizeAddedObjects(newly_added_tracks, current_T_prior);
+  visualizeAddedObjects(newly_added_objects, current_T_prior);
   stamp_is_set_ = false;
 }
 
@@ -184,34 +184,35 @@ void ActiveWindowChangeDetectorVisualizer::visualizeChangedObjects(
 }
 
 void ActiveWindowChangeDetectorVisualizer::visualizeAddedObjects(
-    const std::vector<Track>& newly_added_tracks,
+    const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects,
     const Eigen::Isometry3d& current_T_prior) const {
   if (object_bbox_pub_->get_subscription_count() == 0u) {
     return;
   }
 
-  // Transform track bounding boxes (in current/odom frame) into map frame for RViz.
+  // Transform object bounding boxes (in current/odom frame) into map frame for RViz.
   const Eigen::Isometry3d prior_T_current = current_T_prior.inverse();
 
   MarkerArray new_markers;
-  new_markers.markers.reserve(newly_added_tracks.size());
+  new_markers.markers.reserve(newly_added_objects.size());
 
   std_msgs::msg::Header header;
   header.frame_id = config.global_frame_name;
   header.stamp = getStamp();
-  for (const Track& track : newly_added_tracks) {
-    MLOG(2) << "[ActiveWindowChangeDetectorVisualizer] Visualizing newly added track with id " << track.id;
-    BoundingBox bbox = track.last_bounding_box;
+  for (const auto& obj : newly_added_objects) {
+    MLOG(2) << "[ActiveWindowChangeDetectorVisualizer] Visualizing newly added object with id "
+            << obj.id << " (" << obj.member_track_ids.size() << " merged track(s))";
+    BoundingBox bbox = obj.bounding_box;
     if (!bbox.isValid()) {
       continue;
     }
     bbox.transform(prior_T_current);
     auto& marker = new_markers.markers.emplace_back(
         setBoundingBox(bbox, Color(0, 255, 0, 255), header, config.bounding_box_line_width));
-    // Use stable track.id as marker id (monotonically increasing, never reused by MaxIoUTracker).
+    // Use the stable, detector-owned object id (independent of any Track::id) as marker id.
     // Namespace "added_objects" avoids collision with red removed-object markers on the same publisher.
     marker.ns = "added_objects";
-    marker.id = static_cast<int>(track.id);
+    marker.id = obj.id;
   }
 
   MarkerArray msg;
