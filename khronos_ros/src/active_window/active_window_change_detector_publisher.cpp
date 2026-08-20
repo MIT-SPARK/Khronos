@@ -42,6 +42,13 @@
 #include <rclcpp/time.hpp>
 
 namespace khronos {
+
+// Local aliases (this .cpp only) to shorten the function signatures below; the header keeps the
+// fully-qualified names since it's the sink interface's public contract.
+using ChangedObjectInfo = khronos_msgs::msg::ChangedObjectInfo;
+using RemovedObject = ActiveWindowChangeDetector::RemovedObject;
+using AddedObject = ActiveWindowChangeDetector::AddedObject;
+
 namespace {
 
 static const auto registration =
@@ -74,8 +81,8 @@ ActiveWindowChangeDetectorPublisher::ActiveWindowChangeDetectorPublisher(
 
 void ActiveWindowChangeDetectorPublisher::call(
     const DynamicSceneGraph::Ptr& /* dsg */,
-    const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects,
-    const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects,
+    const std::vector<RemovedObject>& removed_objects,
+    const std::vector<AddedObject>& newly_added_objects,
     const Eigen::Isometry3d& current_T_prior) const {
   // Gate publishing on set-membership change: only publish if the set of removed and/or added
   // object ids differs from the last message actually published (not just from last frame's
@@ -117,9 +124,9 @@ void ActiveWindowChangeDetectorPublisher::call(
   last_added_ids_ = std::move(cur_added_ids);
 }
 
-khronos_msgs::msg::ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeRemovedInfo(
-    const ActiveWindowChangeDetector::RemovedObject& obj) const {
-  khronos_msgs::msg::ChangedObjectInfo info;
+ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeRemovedInfo(
+    const RemovedObject& obj) const {
+  ChangedObjectInfo info;
   info.id = static_cast<int64_t>(obj.id);
   // Latched at the detector: constant across every message that reports this object as removed.
   info.stamp = static_cast<builtin_interfaces::msg::Time>(
@@ -129,10 +136,10 @@ khronos_msgs::msg::ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeRe
   return info;
 }
 
-khronos_msgs::msg::ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeAddedInfo(
-    const ActiveWindowChangeDetector::AddedObject& obj,
+ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeAddedInfo(
+    const AddedObject& obj,
     const Eigen::Isometry3d& prior_T_current) const {
-  khronos_msgs::msg::ChangedObjectInfo info;
+  ChangedObjectInfo info;
   info.id = static_cast<int64_t>(obj.id);
   info.stamp = static_cast<builtin_interfaces::msg::Time>(
       rclcpp::Time(static_cast<int64_t>(obj.first_seen)));
