@@ -40,8 +40,7 @@
 #include <memory>
 #include <string>
 
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
+#include <hydra_ros/utils/tf_lookup.h>
 
 #include "khronos/active_window/change_detection/transformation_getter.h"
 
@@ -50,10 +49,10 @@ namespace khronos {
 /**
  * @brief TransformationGetter that obtains odom_T_prior by querying TF2.
  *
- * Looks up `prior_frame_id` → `robot_frame_id` (odom frame) via tf_buffer each
+ * Looks up `prior_frame_id` → `robot_frame_id` (odom frame) via hydra::TFLookup each
  * call, computes odom_T_prior = inverse(map_T_odom), and applies a change-
- * threshold filter: returns nullopt when the translation change since the last
- * reported transform is below tf_change_threshold_m.
+ * threshold filter: returns nullopt when neither the translation change nor the
+ * rotation change since the last reported transform exceeds its threshold.
  */
 class TFTransformationGetter : public TransformationGetter {
  public:
@@ -68,6 +67,16 @@ class TFTransformationGetter : public TransformationGetter {
     std::string robot_frame_id = "";
     //! Minimum translation change [m] before reporting a new transform.
     double tf_change_threshold_m = 0.05;
+    //! Minimum rotation change [rad] before reporting a new transform.
+    double tf_change_threshold_rad = 0.05;
+    //! Underlying TF lookup config. max_tries defaults to 1 (non-blocking): TF being
+    //! unavailable is the expected steady state before relocalization fires, and the
+    //! default TFLookup retry loop would otherwise stall the AWCD call() path.
+    hydra::TFLookup::Config tf_lookup = [] {
+      hydra::TFLookup::Config c;
+      c.max_tries = 1;
+      return c;
+    }();
   } const config;
 
   explicit TFTransformationGetter(const Config& config);
@@ -82,8 +91,7 @@ class TFTransformationGetter : public TransformationGetter {
   //! Returns robot_frame_id from config if set, otherwise GlobalInfo odom frame.
   std::string getRobotFrame() const;
 
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  std::unique_ptr<hydra::TFLookup> tf_lookup_;
 
   mutable Eigen::Isometry3d last_reported_ = Eigen::Isometry3d::Identity();
   mutable bool has_last_ = false;

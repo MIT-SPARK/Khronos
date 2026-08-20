@@ -41,8 +41,8 @@
 #include <config_utilities/validation.h>
 #include <hydra/common/global_info.h>
 #include <hydra/utils/logging.h>
-#include <ianvs/node_handle.h>
-#include <tf2/exceptions.h>
+
+#include <Eigen/Geometry>
 
 namespace khronos {
 namespace {
@@ -61,45 +61,47 @@ void declare_config(TFTransformationGetter::Config& config) {
   field(config.prior_frame_id, "prior_frame_id");
   field(config.robot_frame_id, "robot_frame_id");
   field(config.tf_change_threshold_m, "tf_change_threshold_m");
+  field(config.tf_change_threshold_rad, "tf_change_threshold_rad", "rad");
+  field(config.tf_lookup, "tf_lookup");
 }
 
 TFTransformationGetter::TFTransformationGetter(const Config& cfg)
-    : config(config::checkValid(cfg)) {
-  auto nh = ianvs::NodeHandle::this_node();
-  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(nh.clock());
-  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    : config(config::checkValid(cfg)), tf_lookup_(std::make_unique<hydra::TFLookup>(config.tf_lookup)) {
   MLOG(1) << "[TFTransformationGetter] TF listener created (" << config.prior_frame_id << " -> "
           << getRobotFrame() << ")";
 }
 
 std::optional<Eigen::Isometry3d> TFTransformationGetter::getTransformation() const {
-  try {
-    const auto tf =
-        tf_buffer_->lookupTransform(config.prior_frame_id, getRobotFrame(), tf2::TimePointZero);
-
-    // Convert geometry_msgs::TransformStamped to Eigen: this is map_T_{robot}/odom.
-    const auto& t = tf.transform.translation;
-    const auto& r = tf.transform.rotation;
-    Eigen::Isometry3d map_T_odom = Eigen::Isometry3d::Identity();
-    map_T_odom.translation() << t.x, t.y, t.z;
-    map_T_odom.linear() = Eigen::Quaterniond(r.w, r.x, r.y, r.z).toRotationMatrix();
-
-    // current_T_prior = inverse of map_T_odom (odom frame is "current").
-    const Eigen::Isometry3d current_T_prior = map_T_odom.inverse();
-
-    const double delta = (current_T_prior.translation() - last_reported_.translation()).norm();
-    if (has_last_ && delta <= config.tf_change_threshold_m) {
-      return std::nullopt;
-    }
-
-    MLOG(1) << "[TFTransformationGetter] TF changed by " << delta << " m, reporting new transform.";
-    last_reported_ = current_T_prior;
-    has_last_ = true;
-    return current_T_prior;
-  } catch (const tf2::TransformException& e) {
-    MLOG(3) << "[TFTransformationGetter] TF lookup failed: " << e.what();
+  std::string err;
+  const auto status = hydra::lookupTransform(tf_lookup_->buffer,
+                                             std::nullopt,
+                                             config.prior_frame_id,
+                                             getRobotFrame(),
+                                             config.tf_lookup.max_tries,
+                                             config.tf_lookup.wait_duration_s,
+                                             config.tf_lookup.verbosity,
+                                             &err);
+  if (!status) {
+    MLOG(3) << "[TFTransformationGetter] TF lookup failed: " << err;
     return std::nullopt;
   }
+
+  // status.target_T_source() is map_T_{robot}/odom; current_T_prior is its inverse
+  // (odom frame is "current").
+  const Eigen::Isometry3d current_T_prior = status.target_T_source().inverse();
+
+  const Eigen::Isometry3d delta = last_reported_.inverse() * current_T_prior;
+  const double dt = delta.translation().norm();
+  const double dr = Eigen::AngleAxisd(delta.linear()).angle();
+  if (has_last_ && dt <= config.tf_change_threshold_m && dr <= config.tf_change_threshold_rad) {
+    return std::nullopt;
+  }
+
+  MLOG(1) << "[TFTransformationGetter] TF changed by " << dt << " m, " << dr
+          << " rad, reporting new transform.";
+  last_reported_ = current_T_prior;
+  has_last_ = true;
+  return current_T_prior;
 }
 
 std::string TFTransformationGetter::getRobotFrame() const {
