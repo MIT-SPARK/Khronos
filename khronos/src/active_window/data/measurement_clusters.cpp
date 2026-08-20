@@ -35,13 +35,14 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#include "khronos/utils/json_utils.h"
+#include "khronos/active_window/data/measurement_clusters.h"
 
+#include <nlohmann/json.hpp>
 #include <spark_dsg/serialization/json_conversions.h>  // Eigen adl_serializer (Vector3f, VectorXf, ...)
 
 namespace khronos {
 
-nlohmann::json toJson(const BoundingBox& bbox) {
+nlohmann::json boundingBoxToJson(const BoundingBox& bbox) {
   return nlohmann::json{{"type", static_cast<int32_t>(bbox.type)},
                         {"dimensions", bbox.dimensions},
                         {"world_P_center", bbox.world_P_center},
@@ -57,20 +58,48 @@ BoundingBox boundingBoxFromJson(const nlohmann::json& j) {
   return bbox;
 }
 
-nlohmann::json toJson(const SemanticClusterInfo& semantics) {
-  nlohmann::json j{{"category_id", semantics.category_id}};
-  if (semantics.feature.size() > 1) {
-    j["feature"] = semantics.feature;
+nlohmann::json SemanticClusterInfo::toJson() const {
+  nlohmann::json j{{"category_id", category_id}};
+  if (feature.size() > 1) {
+    j["feature"] = feature;
   }
   return j;
 }
 
-SemanticClusterInfo semanticsFromJson(const nlohmann::json& j) {
+SemanticClusterInfo SemanticClusterInfo::fromJson(const nlohmann::json& j) {
   SemanticClusterInfo semantics(j.at("category_id").get<int>());
   if (j.contains("feature")) {
     semantics.feature = j.at("feature").get<FeatureVector>();
   }
   return semantics;
+}
+
+nlohmann::json MeasurementCluster::toJson() const {
+  nlohmann::json j{{"id", id}, {"bounding_box", boundingBoxToJson(bounding_box)}};
+  j["semantics"] = semantics ? semantics->toJson() : nlohmann::json(nullptr);
+  return j;
+}
+
+MeasurementCluster MeasurementCluster::fromJson(const nlohmann::json& j) {
+  MeasurementCluster cluster;
+  cluster.id = j.at("id").get<int>();
+  cluster.bounding_box = boundingBoxFromJson(j.at("bounding_box"));
+  if (!j.at("semantics").is_null()) {
+    cluster.semantics = SemanticClusterInfo::fromJson(j.at("semantics"));
+  }
+  return cluster;
+}
+
+void to_json(nlohmann::json& j, const SemanticClusterInfo& semantics) { j = semantics.toJson(); }
+
+void from_json(const nlohmann::json& j, SemanticClusterInfo& semantics) {
+  semantics = SemanticClusterInfo::fromJson(j);
+}
+
+void to_json(nlohmann::json& j, const MeasurementCluster& cluster) { j = cluster.toJson(); }
+
+void from_json(const nlohmann::json& j, MeasurementCluster& cluster) {
+  cluster = MeasurementCluster::fromJson(j);
 }
 
 }  // namespace khronos
