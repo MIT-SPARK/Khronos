@@ -115,9 +115,7 @@ struct Track {
   void updateSemantics(const std::optional<SemanticClusterInfo>& other_semantics);
 
   /**
-   * @brief Serialize this track (all fields consumed by trackers, e.g. MaxIoUTracker) to a JSON
-   * file at the given path. `is_active` is intentionally not persisted: reconstructed tracks are
-   * meant to be fed into a tracker for offline replay, where activity is re-derived, not restored.
+   * @brief Save track to filepath (excluding active state)
    * @param filepath Destination path, e.g. ".../track_<id>/track.json".
    */
   void save(const std::string& filepath) const;
