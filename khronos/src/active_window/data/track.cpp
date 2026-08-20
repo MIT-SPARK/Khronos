@@ -47,23 +47,6 @@ namespace {
 
 using json = nlohmann::json;
 
-json toJson(const Observation& obs) {
-  return json{{"stamp", obs.stamp},
-              {"semantic_cluster_id", obs.semantic_cluster_id},
-              {"dynamic_cluster_id", obs.dynamic_cluster_id},
-              {"sensor", obs.sensor}};
-}
-
-Observation observationFromJson(const json& j) {
-  Observation obs;
-  obs.stamp = j.at("stamp").get<TimeStamp>();
-  obs.semantic_cluster_id = j.at("semantic_cluster_id").get<int>();
-  obs.dynamic_cluster_id = j.at("dynamic_cluster_id").get<int>();
-  // Tolerant read: older saved tracks predate the "sensor" field.
-  obs.sensor = j.value("sensor", std::string());
-  return obs;
-}
-
 json toJson(const GlobalIndexSet& voxels) {
   json arr = json::array();
   for (const GlobalIndex& voxel : voxels) {
@@ -80,33 +63,45 @@ GlobalIndexSet globalIndexSetFromJson(const json& j) {
   return voxels;
 }
 
-json toJson(const Track& track) {
-  json j{{"id", track.id},
-        {"last_seen", track.last_seen},
-        {"first_seen", track.first_seen},
-        {"last_bounding_box", boundingBoxToJson(track.last_bounding_box)},
-        {"last_voxels", toJson(track.last_voxels)},
-        {"last_points", track.last_points},
-        {"last_voxel_size", track.last_voxel_size},
-        {"last_centroid", track.last_centroid},
-        {"num_features", track.num_features},
-        {"is_dynamic", track.is_dynamic},
-        {"confidence", track.confidence}};
+}  // namespace
 
-  j["observations"] = json::array();
-  for (const Observation& obs : track.observations) {
-    j["observations"].push_back(toJson(obs));
-  }
-
-  j["semantics"] = track.semantics ? track.semantics->toJson() : json(nullptr);
-  return j;
+void to_json(json& j, const Observation& obs) {
+  j = json{{"stamp", obs.stamp},
+          {"semantic_cluster_id", obs.semantic_cluster_id},
+          {"dynamic_cluster_id", obs.dynamic_cluster_id},
+          {"sensor", obs.sensor}};
 }
 
-Track trackFromJson(const json& j) {
-  Track track;
+void from_json(const json& j, Observation& obs) {
+  obs.stamp = j.at("stamp").get<TimeStamp>();
+  obs.semantic_cluster_id = j.at("semantic_cluster_id").get<int>();
+  obs.dynamic_cluster_id = j.at("dynamic_cluster_id").get<int>();
+  // Tolerant read: older saved tracks predate the "sensor" field.
+  obs.sensor = j.value("sensor", std::string());
+}
+
+void to_json(json& j, const Track& track) {
+  j = json{{"id", track.id},
+          {"last_seen", track.last_seen},
+          {"first_seen", track.first_seen},
+          {"observations", track.observations},
+          {"last_bounding_box", boundingBoxToJson(track.last_bounding_box)},
+          {"last_voxels", toJson(track.last_voxels)},
+          {"last_points", track.last_points},
+          {"last_voxel_size", track.last_voxel_size},
+          {"last_centroid", track.last_centroid},
+          {"num_features", track.num_features},
+          {"is_dynamic", track.is_dynamic},
+          {"confidence", track.confidence}};
+
+  j["semantics"] = track.semantics ? track.semantics->toJson() : json(nullptr);
+}
+
+void from_json(const json& j, Track& track) {
   track.id = j.at("id").get<int>();
   track.last_seen = j.at("last_seen").get<TimeStamp>();
   track.first_seen = j.at("first_seen").get<TimeStamp>();
+  track.observations = j.at("observations").get<Observations>();
   track.last_bounding_box = boundingBoxFromJson(j.at("last_bounding_box"));
   track.last_voxels = globalIndexSetFromJson(j.at("last_voxels"));
   track.last_points = j.at("last_points").get<Points>();
@@ -116,17 +111,10 @@ Track trackFromJson(const json& j) {
   track.is_dynamic = j.at("is_dynamic").get<bool>();
   track.confidence = j.at("confidence").get<float>();
 
-  for (const auto& obs_json : j.at("observations")) {
-    track.observations.push_back(observationFromJson(obs_json));
-  }
-
   if (!j.at("semantics").is_null()) {
     track.semantics = SemanticClusterInfo::fromJson(j.at("semantics"));
   }
-  return track;
 }
-
-}  // namespace
 
 void Track::save(const std::string& filepath) const {
   std::ofstream file(filepath);
@@ -134,7 +122,7 @@ void Track::save(const std::string& filepath) const {
     LOG(ERROR) << "[Track] Failed to open '" << filepath << "' for writing.";
     return;
   }
-  file << toJson(*this).dump(2);
+  file << json(*this).dump(2);
 }
 
 Track Track::load(const std::string& filepath) {
@@ -145,7 +133,7 @@ Track Track::load(const std::string& filepath) {
   }
   json j;
   file >> j;
-  return trackFromJson(j);
+  return j.get<Track>();
 }
 
 void Track::updateSemantics(const std::optional<SemanticClusterInfo>& other) {
