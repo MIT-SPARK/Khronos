@@ -52,7 +52,8 @@ using json = nlohmann::json;
 json toJson(const Observation& obs) {
   return json{{"stamp", obs.stamp},
               {"semantic_cluster_id", obs.semantic_cluster_id},
-              {"dynamic_cluster_id", obs.dynamic_cluster_id}};
+              {"dynamic_cluster_id", obs.dynamic_cluster_id},
+              {"sensor", obs.sensor}};
 }
 
 Observation observationFromJson(const json& j) {
@@ -60,6 +61,8 @@ Observation observationFromJson(const json& j) {
   obs.stamp = j.at("stamp").get<TimeStamp>();
   obs.semantic_cluster_id = j.at("semantic_cluster_id").get<int>();
   obs.dynamic_cluster_id = j.at("dynamic_cluster_id").get<int>();
+  // Tolerant read: older saved tracks predate the "sensor" field.
+  obs.sensor = j.value("sensor", std::string());
   return obs;
 }
 
