@@ -47,6 +47,7 @@ add_library(${PROJECT_NAME}
         src/active_window/change_detection/transformation_getter.cpp
         src/active_window/data/frame_data.cpp
         src/active_window/data/frame_data_buffer.cpp
+        src/active_window/data/measurement_clusters.cpp
         src/active_window/data/track.cpp
         src/active_window/integration/object_integrator.cpp
         src/active_window/integration/tracking_integrator.cpp
@@ -74,7 +75,6 @@ add_library(${PROJECT_NAME}
         src/spatio_temporal_map/spatio_temporal_map.cpp
         src/spatio_temporal_map/incremental_mesh.cpp
         src/utils/geometry_utils.cpp
-        src/utils/json_utils.cpp
         src/utils/khronos_attribute_utils.cpp
         src/utils/output_file_utils.cpp
         )

@@ -42,8 +42,6 @@
 #include <nlohmann/json.hpp>
 #include <spark_dsg/serialization/json_conversions.h>  // Eigen adl_serializer (Vector3f, VectorXf, ...)
 
-#include "khronos/utils/json_utils.h"
-
 namespace khronos {
 namespace {
 
@@ -86,7 +84,7 @@ json toJson(const Track& track) {
   json j{{"id", track.id},
         {"last_seen", track.last_seen},
         {"first_seen", track.first_seen},
-        {"last_bounding_box", khronos::toJson(track.last_bounding_box)},
+        {"last_bounding_box", boundingBoxToJson(track.last_bounding_box)},
         {"last_voxels", toJson(track.last_voxels)},
         {"last_points", track.last_points},
         {"last_voxel_size", track.last_voxel_size},
@@ -100,7 +98,7 @@ json toJson(const Track& track) {
     j["observations"].push_back(toJson(obs));
   }
 
-  j["semantics"] = track.semantics ? toJson(*track.semantics) : json(nullptr);
+  j["semantics"] = track.semantics ? track.semantics->toJson() : json(nullptr);
   return j;
 }
 
@@ -109,7 +107,7 @@ Track trackFromJson(const json& j) {
   track.id = j.at("id").get<int>();
   track.last_seen = j.at("last_seen").get<TimeStamp>();
   track.first_seen = j.at("first_seen").get<TimeStamp>();
-  track.last_bounding_box = khronos::boundingBoxFromJson(j.at("last_bounding_box"));
+  track.last_bounding_box = boundingBoxFromJson(j.at("last_bounding_box"));
   track.last_voxels = globalIndexSetFromJson(j.at("last_voxels"));
   track.last_points = j.at("last_points").get<Points>();
   track.last_voxel_size = j.at("last_voxel_size").get<float>();
@@ -123,7 +121,7 @@ Track trackFromJson(const json& j) {
   }
 
   if (!j.at("semantics").is_null()) {
-    track.semantics = khronos::semanticsFromJson(j.at("semantics"));
+    track.semantics = SemanticClusterInfo::fromJson(j.at("semantics"));
   }
   return track;
 }
