@@ -40,6 +40,8 @@
 #include <string>
 #include <vector>
 
+#include <nlohmann/json_fwd.hpp>
+
 #include "khronos/active_window/data/measurement_clusters.h"
 #include "khronos/common/common_types.h"
 
@@ -72,6 +74,9 @@ struct Observation {
 };
 
 using Observations = std::vector<Observation>;
+
+void to_json(nlohmann::json& j, const Observation& obs);
+void from_json(const nlohmann::json& j, Observation& obs);
 
 /**
  * @brief Data structure to track objects and associations throughout the active window.
@@ -129,5 +134,8 @@ struct Track {
 };
 
 using Tracks = std::vector<Track>;
+
+void to_json(nlohmann::json& j, const Track& track);
+void from_json(const nlohmann::json& j, Track& track);
 
 }  // namespace khronos
