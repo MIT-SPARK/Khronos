@@ -111,22 +111,11 @@ endif()
 # Executables #
 ###############
 
-# Standalone round-trip check for Track::save/Track::load (see tracker_debug.md Step 1).
-add_executable(test_track_serialization app/test_track_serialization.cpp)
-target_link_libraries(test_track_serialization PRIVATE ${PROJECT_NAME})
-install(TARGETS test_track_serialization RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-
 # Replays a saved track's observations through MaxIoUTracker against another loaded track (see
 # tracker_debug.md Step 2).
-add_executable(test_track_association app/test_track_association.cpp)
-target_link_libraries(test_track_association PRIVATE ${PROJECT_NAME} CLI11::CLI11)
-install(TARGETS test_track_association RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-
-# Standalone round-trip check for FrameData::save/FrameData::load and
-# saveCameraIntrinsics/loadCameraIntrinsics (see tracker_debug.md Step 3).
-add_executable(test_frame_data_serialization app/test_frame_data_serialization.cpp)
-target_link_libraries(test_frame_data_serialization PRIVATE ${PROJECT_NAME})
-install(TARGETS test_frame_data_serialization RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+add_executable(offline_track_association app/offline_track_association.cpp)
+target_link_libraries(offline_track_association PRIVATE ${PROJECT_NAME} CLI11::CLI11)
+install(TARGETS offline_track_association RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 # Replays an entire saved run through a fresh MaxIoUTracker, with active-window eviction
 # simulation, for parameter tuning (see tracker_debug.md Step 4).
