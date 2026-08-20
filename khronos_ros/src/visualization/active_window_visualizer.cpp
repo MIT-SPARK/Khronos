@@ -403,16 +403,11 @@ void ActiveWindowVisualizer::visualizeEverFreeSlice(const VolumetricMap& map,
           Point coords = block.getVoxelPosition(voxel_index);
           msg.points.emplace_back(setPoint(coords));
           if (is_unknown) {
-            msg.colors.emplace_back(
-                setColor(Color(125, 125, 125, config.marker_opacity)));  // Gray for unknown.
+            msg.colors.emplace_back(setColor(Color::gray(), config.marker_opacity));
           } else if (voxel.ever_free) {
-            // Free voxel.
-            msg.colors.emplace_back(
-                setColor(Color(0, 255, 0, config.marker_opacity)));  // Green for ever free.
+            msg.colors.emplace_back(setColor(Color::green(), config.marker_opacity));  // Free voxel.
           } else {
-            // Occupied voxel.
-            msg.colors.emplace_back(
-                setColor(Color(255, 0, 0, config.marker_opacity)));  // Red for occupied.
+            msg.colors.emplace_back(setColor(Color::red(), config.marker_opacity));  // Occupied voxel.
           }
         }
       }

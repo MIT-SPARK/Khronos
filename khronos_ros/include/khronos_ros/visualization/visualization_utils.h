@@ -55,6 +55,8 @@ geometry_msgs::msg::Vector3 setScale(const float scale);
 geometry_msgs::msg::Point setPoint(const Point& point);
 std_msgs::msg::ColorRGBA setColor(const std::vector<float>& color);
 std_msgs::msg::ColorRGBA setColor(const Color& color);
+// Overrides the color's alpha with the given value
+std_msgs::msg::ColorRGBA setColor(Color color, uint8_t alpha);
 cv::Vec3b colorToCv(const Color& color);
 Color cvToColor(const cv::Vec3b& color);
 void applyColor(const Color& color, cv::Vec3b& pixel, float alpha = 1.f);
