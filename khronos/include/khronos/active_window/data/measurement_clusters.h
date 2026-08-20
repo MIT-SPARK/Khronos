@@ -91,15 +91,11 @@ struct MeasurementCluster {
 using MeasurementClusters = std::vector<MeasurementCluster>;
 
 /**
- * @brief Serialize a BoundingBox to JSON manually (not via spark_dsg's to_json/from_json, since
- * the latter's from_json depends on a loaded io::GlobalInfo file header, which is not available
- * in this offline-debugging-tool context).
+ * @brief Serialize a BoundingBox to JSON manually
  */
 nlohmann::json boundingBoxToJson(const BoundingBox& bbox);
 BoundingBox boundingBoxFromJson(const nlohmann::json& j);
 
-// nlohmann ADL hooks; delegate to the member functions above so `json j = cluster;` and
-// `j.get<MeasurementCluster>()` work, including for containers.
 void to_json(nlohmann::json& j, const SemanticClusterInfo& semantics);
 void from_json(const nlohmann::json& j, SemanticClusterInfo& semantics);
 void to_json(nlohmann::json& j, const MeasurementCluster& cluster);
