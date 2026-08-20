@@ -43,6 +43,7 @@
 #include <vector>
 
 #include <spatial_hash/hash.h>
+#include <nlohmann/json_fwd.hpp>
 
 #include "khronos/active_window/data/measurement_clusters.h"
 #include "khronos/common/common_types.h"
@@ -76,6 +77,9 @@ struct Observation {
 };
 
 using Observations = std::vector<Observation>;
+
+void to_json(nlohmann::json& j, const Observation& obs);
+void from_json(const nlohmann::json& j, Observation& obs);
 
 /**
  * @brief Accumulated evidence of a single voxel of a track.
@@ -207,5 +211,8 @@ struct Track {
 };
 
 using Tracks = std::vector<Track>;
+
+void to_json(nlohmann::json& j, const Track& track);
+void from_json(const nlohmann::json& j, Track& track);
 
 }  // namespace khronos
