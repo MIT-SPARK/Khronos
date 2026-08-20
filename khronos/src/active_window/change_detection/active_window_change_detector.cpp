@@ -92,8 +92,6 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   checkInRange(
       config.merge_min_semantic_cosine_sim, -1.0f, 1.0f, "merge_min_semantic_cosine_sim");
   check<Path::Exists>(config.prior_map_path, "prior_map_path");
-  //   check<Path::Extension>(config.prior_map_path, "prior_map_path", ".spark_dsg"); // Add the
-  //   check back sometimes.
 }
 
 ActiveWindowChangeDetector::ActiveWindowChangeDetector(const Config& config)

@@ -17,7 +17,6 @@ find_package(gflags REQUIRED)
 find_package(hydra_ros REQUIRED)
 find_package(khronos REQUIRED)
 find_package(khronos_msgs REQUIRED)
-find_package(roman_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 
 # ##############################################################################
@@ -46,7 +45,7 @@ target_include_directories(
          "$<INSTALL_INTERFACE:include>"
 )
 target_link_libraries(${PROJECT_NAME} PUBLIC khronos::khronos hydra_ros::hydra_ros PRIVATE cv_bridge::cv_bridge)
-ament_target_dependencies(${PROJECT_NAME} PUBLIC khronos_msgs roman_msgs tf2_ros)
+ament_target_dependencies(${PROJECT_NAME} PUBLIC khronos_msgs tf2_ros)
 
 # ##############################################################################
 # Executables #
@@ -76,5 +75,5 @@ install(PROGRAMS
 )
 
 ament_export_targets(${PROJECT_NAME}-targets HAS_LIBRARY_TARGET)
-ament_export_dependencies(gflags hydra_ros khronos khronos_msgs roman_msgs tf2_ros)
+ament_export_dependencies(gflags hydra_ros khronos khronos_msgs tf2_ros)
 ament_package()
