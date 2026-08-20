@@ -343,14 +343,14 @@ int main(int argc, char** argv) {
                 "Tracker verbosity; >=6 prints per-cluster accept/reject reasons")
       ->default_val(6);
   app.add_option("--min-semantic-iou", min_semantic_iou, "MaxIoUTracker::Config::min_semantic_iou")
-      ->default_val(0.5f);
+      ->default_val(0.25f);
   app.add_option("--min-cosine-sim", min_cosine_sim, "MaxIoUTracker::Config::min_cosine_sim")
       ->default_val(0.0f);
   app.add_option("--min-cross-iou", min_cross_iou, "MaxIoUTracker::Config::min_cross_iou")
-      ->default_val(0.5f);
+      ->default_val(0.1f);
   app.add_option(
       "--min-num-observations", min_num_observations, "MaxIoUTracker::Config::min_num_observations")
-      ->default_val(20);
+      ->default_val(10);
   app.add_option("--bbox-type", bbox_type, "MaxIoUTracker::Config::bbox_type (aabb|raabb)")
       ->default_val("aabb");
   app.add_option("--existing-track-stamp", existing_track_stamp,
