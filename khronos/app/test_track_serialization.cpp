@@ -65,7 +65,9 @@ Track makeSampleTrack() {
   track.confidence = 0.75f;
   track.num_features = 3;
 
-  track.observations = {Observation(1000, 5, -1), Observation(1033, 6, -1), Observation(1066, 7, -1)};
+  track.observations = {Observation(1000, 5, -1, "camera_left"),
+                        Observation(1033, 6, -1, "camera_left"),
+                        Observation(1066, 7, -1, "camera_right")};
 
   track.last_points = {Point(1.0f, 2.0f, 3.0f), Point(4.0f, 5.0f, 6.0f), Point(-1.5f, 0.0f, 2.25f)};
 
@@ -105,7 +107,8 @@ bool tracksMatch(const Track& original, const Track& reloaded) {
     const auto& lhs = original.observations[i];
     const auto& rhs = reloaded.observations[i];
     ok &= checkEqual(lhs.stamp == rhs.stamp && lhs.semantic_cluster_id == rhs.semantic_cluster_id &&
-                         lhs.dynamic_cluster_id == rhs.dynamic_cluster_id,
+                         lhs.dynamic_cluster_id == rhs.dynamic_cluster_id &&
+                         lhs.camera_name == rhs.camera_name,
                      "observations[" + std::to_string(i) + "]");
   }
 
