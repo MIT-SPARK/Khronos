@@ -35,33 +35,25 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-// Standalone round-trip check for FrameData::save/FrameData::load and saveCameraIntrinsics/
+// Round-trip check for FrameData::save/FrameData::load and saveCameraIntrinsics/
 // loadCameraIntrinsics (khronos/active_window/data/frame_data.h). Builds a synthetic FrameData
 // with one semantic and one dynamic cluster (distinct pixel regions, category_id, and feature
-// vectors), saves it plus the camera intrinsics, reloads both, and compares field-by-field.
-// Exits non-zero and prints a diagnostic on the first mismatch. This validates Step 3 of the
-// tracker-debugging pipeline (see tracker_debug.md) -- the full per-frame segmentation format
-// (object_image/dynamic_image + clusters.json) that resolves Step 2's "no per-frame semantics"
-// caveat.
+// vectors), saves it plus the camera intrinsics, reloads both, and compares field-by-field. This
+// validates Step 3 of the tracker-debugging pipeline (see tracker_debug.md) -- the full
+// per-frame segmentation format (object_image/dynamic_image + clusters.json) that resolves Step
+// 2's "no per-frame semantics" caveat.
 
-#include <cstdlib>
-#include <filesystem>
-#include <iostream>
-#include <set>
-
+#include <gtest/gtest.h>
 #include <hydra/input/camera.h>
 #include <hydra/input/sensor_extrinsics.h>
 
+#include <filesystem>
+#include <set>
+
 #include "khronos/active_window/data/frame_data.h"
 
+namespace khronos {
 namespace {
-
-using khronos::FeatureVector;
-using khronos::FrameData;
-using khronos::MeasurementCluster;
-using khronos::Pixel;
-using khronos::SemanticClusterInfo;
-using khronos::TimeStamp;
 
 constexpr int kWidth = 8;
 constexpr int kHeight = 6;
@@ -123,14 +115,7 @@ FrameData::Ptr makeSampleFrameData(const std::shared_ptr<hydra::Camera>& camera)
   return frame_data;
 }
 
-bool checkEqual(bool condition, const std::string& what) {
-  if (!condition) {
-    std::cerr << "MISMATCH: " << what << std::endl;
-  }
-  return condition;
-}
-
-bool pixelsMatch(const khronos::Pixels& lhs, const khronos::Pixels& rhs) {
+bool pixelsMatch(const Pixels& lhs, const Pixels& rhs) {
   if (lhs.size() != rhs.size()) {
     return false;
   }
@@ -145,77 +130,70 @@ bool pixelsMatch(const khronos::Pixels& lhs, const khronos::Pixels& rhs) {
   return lhs_set == rhs_set;
 }
 
-bool clusterMatch(const MeasurementCluster& original, const MeasurementCluster& reloaded,
-                  const std::string& label) {
-  bool ok = true;
-  ok &= checkEqual(original.id == reloaded.id, label + ".id");
-  ok &= checkEqual(pixelsMatch(original.pixels, reloaded.pixels), label + ".pixels");
-  ok &= checkEqual(original.bounding_box == reloaded.bounding_box, label + ".bounding_box");
-  ok &= checkEqual(original.semantics.has_value() == reloaded.semantics.has_value(),
-                   label + ".semantics.has_value");
-  if (ok && original.semantics) {
-    ok &= checkEqual(original.semantics->category_id == reloaded.semantics->category_id,
-                     label + ".semantics.category_id");
-    ok &= checkEqual((original.semantics->feature - reloaded.semantics->feature).norm() < 1e-5f,
-                     label + ".semantics.feature");
+void expectClusterMatch(const MeasurementCluster& original, const MeasurementCluster& reloaded) {
+  EXPECT_EQ(original.id, reloaded.id);
+  EXPECT_TRUE(pixelsMatch(original.pixels, reloaded.pixels));
+  EXPECT_EQ(original.bounding_box, reloaded.bounding_box);
+  ASSERT_EQ(original.semantics.has_value(), reloaded.semantics.has_value());
+  if (original.semantics) {
+    EXPECT_EQ(original.semantics->category_id, reloaded.semantics->category_id);
+    EXPECT_LT((original.semantics->feature - reloaded.semantics->feature).norm(), 1e-5f);
   }
-  return ok;
 }
+
+class FrameDataSerializationTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    const std::string test_name = ::testing::UnitTest::GetInstance()->current_test_info()->name();
+    tmp_dir = std::filesystem::temp_directory_path() / ("khronos_frame_data_roundtrip_" + test_name);
+    std::filesystem::remove_all(tmp_dir);
+    std::filesystem::create_directories(tmp_dir);
+    camera = makeCamera();
+  }
+
+  void TearDown() override { std::filesystem::remove_all(tmp_dir); }
+
+  std::filesystem::path tmp_dir;
+  std::shared_ptr<hydra::Camera> camera;
+};
 
 }  // namespace
 
-int main() {
-  const auto tmp_dir = std::filesystem::temp_directory_path() / "khronos_frame_data_roundtrip_test";
-  std::filesystem::remove_all(tmp_dir);
-  std::filesystem::create_directories(tmp_dir);
-  const auto observation_dir = tmp_dir / "observations" / std::to_string(kStamp);
+TEST_F(FrameDataSerializationTest, CameraIntrinsicsRoundTrip) {
+  saveCameraIntrinsics(*camera, tmp_dir.string());
+  const auto reloaded_camera = loadCameraIntrinsics(tmp_dir.string());
+  ASSERT_TRUE(reloaded_camera);
 
-  const auto camera = makeCamera();
-  const auto original = makeSampleFrameData(camera);
-
-  original->save(observation_dir.string());
-  khronos::saveCameraIntrinsics(*camera, tmp_dir.string());
-
-  const auto reloaded_camera = khronos::loadCameraIntrinsics(tmp_dir.string());
-  const auto reloaded = FrameData::load(observation_dir.string(), reloaded_camera, kStamp);
-
-  std::filesystem::remove_all(tmp_dir);
-
-  if (!reloaded_camera) {
-    std::cerr << "FrameData round-trip FAILED: loadCameraIntrinsics returned nullptr." << std::endl;
-    return EXIT_FAILURE;
-  }
-  if (!reloaded) {
-    std::cerr << "FrameData round-trip FAILED: FrameData::load returned nullptr." << std::endl;
-    return EXIT_FAILURE;
-  }
-
-  bool ok = true;
   const auto& original_cfg = camera->getConfig();
   const auto& reloaded_cfg = reloaded_camera->getConfig();
-  ok &= checkEqual(std::abs(original_cfg.fx - reloaded_cfg.fx) < 1e-3f, "camera.fx");
-  ok &= checkEqual(std::abs(original_cfg.fy - reloaded_cfg.fy) < 1e-3f, "camera.fy");
-  ok &= checkEqual(std::abs(original_cfg.cx - reloaded_cfg.cx) < 1e-3f, "camera.cx");
-  ok &= checkEqual(std::abs(original_cfg.cy - reloaded_cfg.cy) < 1e-3f, "camera.cy");
-  ok &= checkEqual(original_cfg.width == reloaded_cfg.width, "camera.width");
-  ok &= checkEqual(original_cfg.height == reloaded_cfg.height, "camera.height");
-
-  ok &= checkEqual(reloaded->input.timestamp_ns == kStamp, "input.timestamp_ns");
-  ok &= checkEqual(reloaded->semantic_clusters.size() == 1, "semantic_clusters.size");
-  ok &= checkEqual(reloaded->dynamic_clusters.size() == 1, "dynamic_clusters.size");
-
-  if (ok && reloaded->semantic_clusters.size() == 1) {
-    ok &= clusterMatch(original->semantic_clusters[0], reloaded->semantic_clusters[0], "semantic");
-  }
-  if (ok && reloaded->dynamic_clusters.size() == 1) {
-    ok &= clusterMatch(original->dynamic_clusters[0], reloaded->dynamic_clusters[0], "dynamic");
-  }
-
-  if (!ok) {
-    std::cerr << "FrameData round-trip FAILED." << std::endl;
-    return EXIT_FAILURE;
-  }
-
-  std::cout << "FrameData round-trip OK: all fields match." << std::endl;
-  return EXIT_SUCCESS;
+  EXPECT_NEAR(original_cfg.fx, reloaded_cfg.fx, 1e-3f);
+  EXPECT_NEAR(original_cfg.fy, reloaded_cfg.fy, 1e-3f);
+  EXPECT_NEAR(original_cfg.cx, reloaded_cfg.cx, 1e-3f);
+  EXPECT_NEAR(original_cfg.cy, reloaded_cfg.cy, 1e-3f);
+  EXPECT_EQ(original_cfg.width, reloaded_cfg.width);
+  EXPECT_EQ(original_cfg.height, reloaded_cfg.height);
 }
+
+TEST_F(FrameDataSerializationTest, FrameDataRoundTrip) {
+  const auto observation_dir = tmp_dir / "observations" / std::to_string(kStamp);
+  const auto original = makeSampleFrameData(camera);
+  original->save(observation_dir.string());
+
+  const auto reloaded = FrameData::load(observation_dir.string(), camera, kStamp);
+  ASSERT_TRUE(reloaded);
+
+  EXPECT_EQ(reloaded->input.timestamp_ns, kStamp);
+  ASSERT_EQ(reloaded->semantic_clusters.size(), 1u);
+  ASSERT_EQ(reloaded->dynamic_clusters.size(), 1u);
+
+  {
+    SCOPED_TRACE("semantic_clusters[0]");
+    expectClusterMatch(original->semantic_clusters[0], reloaded->semantic_clusters[0]);
+  }
+  {
+    SCOPED_TRACE("dynamic_clusters[0]");
+    expectClusterMatch(original->dynamic_clusters[0], reloaded->dynamic_clusters[0]);
+  }
+}
+
+}  // namespace khronos
