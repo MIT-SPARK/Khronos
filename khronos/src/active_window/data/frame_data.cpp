@@ -51,7 +51,6 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include "khronos/utils/json_utils.h"
 #include "khronos/utils/output_file_utils.h"
 
 namespace khronos {
@@ -116,8 +115,8 @@ void saveRawInt32(const cv::Mat& image, const std::string& path) {
 }
 
 json clusterToJson(const MeasurementCluster& cluster, bool is_dynamic) {
-  json j{{"id", cluster.id}, {"is_dynamic", is_dynamic}, {"bounding_box", toJson(cluster.bounding_box)}};
-  j["semantics"] = cluster.semantics ? toJson(*cluster.semantics) : json(nullptr);
+  json j = cluster.toJson();
+  j["is_dynamic"] = is_dynamic;
   return j;
 }
 
@@ -275,12 +274,7 @@ void loadClustersJson(const std::string& dir,
   for (const auto& entry : clusters_json) {
     const bool is_dynamic = entry.at("is_dynamic").get<bool>();
 
-    MeasurementCluster cluster;
-    cluster.id = entry.at("id").get<int>();
-    cluster.bounding_box = boundingBoxFromJson(entry.at("bounding_box"));
-    if (!entry.at("semantics").is_null()) {
-      cluster.semantics = semanticsFromJson(entry.at("semantics"));
-    }
+    MeasurementCluster cluster = MeasurementCluster::fromJson(entry);
 
     const auto& pixels_by_id = is_dynamic ? dynamic_pixels : object_pixels;
     const auto it = pixels_by_id.find(cluster.id);
