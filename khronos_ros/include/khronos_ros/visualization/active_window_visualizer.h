@@ -105,7 +105,7 @@ class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
     uint8_t marker_opacity = 255;
 
     // Number of slice to visualize
-    int num_slices = 1;
+    uint8_t num_slices = 1;
 
     // slice distance
     float slice_distance_multiplier = 1.0f;

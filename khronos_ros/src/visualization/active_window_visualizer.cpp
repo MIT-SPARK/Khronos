@@ -374,7 +374,7 @@ void ActiveWindowVisualizer::visualizeEverFreeSlice(const VolumetricMap& map,
   // const VoxelKey slice_key = map.getTrackingLayer()->getVoxelKey(slice_coords);
 
   std::vector<VoxelKey> slice_keys;
-  for (int i = 0; i < config.num_slices; ++i) {
+  for (uint8_t i = 0; i < config.num_slices; ++i) {
     int num_distance = (i + 1) / 2;
     float current_slice_height = slice_height + std::pow(-1, i) * num_distance *
                                                     config.slice_distance_multiplier *

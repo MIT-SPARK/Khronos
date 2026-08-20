@@ -70,7 +70,7 @@ class TfIcpPublisher : public ActiveWindowChangeDetector::ActiveWindowCDSink {
     Config()
         : hydra::VerbosityConfig{hydra::GlobalInfo::instance().getConfig().default_verbosity} {}
 
-    //! Frame published by hydra_multi as the ROMAN-only odom estimate (child of map).
+    //! Frame published by upper stream pose estimation modules (usually child of map).
     std::string pre_icp_odom_frame = "";
     //! Robot odometry frame (child of pre_icp_odom_frame). Empty = GlobalInfo odom frame.
     std::string odom_frame = "";
