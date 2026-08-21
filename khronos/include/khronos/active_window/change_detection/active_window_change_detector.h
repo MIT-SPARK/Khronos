@@ -265,10 +265,6 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! Enable ICP refinement on the transform returned by transformation_getter.
     bool enable_icp_refinement = false;
 
-    //! If true, invert the roman LC transform before using as ICP initial guess.
-    //! Verify at runtime: if ICP delta is > ~2m, flip this flag.
-    bool invert_roman_lc_transform = false;
-
     //! Crop radius around robot (m) for mesh point selection.
     float icp_crop_radius = 10.0f;
 
@@ -280,6 +276,13 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
 
     //! Max ICP correspondence distance (m).
     float icp_max_correspondence_distance = 1.0f;
+
+    //! Max small_gicp optimizer iterations. small_gicp's own default (20) combined with its tight
+    //! default convergence tolerance (1mm translation / 0.1 deg rotation step size) rarely
+    //! settles for noisy TSDF-mesh-to-mesh registration even with a good fit (high inlier count);
+    //! raise this before loosening icp_max_correspondence_distance if converged=false persists
+    //! with plenty of inliers.
+    size_t icp_max_iterations = 50;
 
     //! Min inliers to accept refined transform.
     size_t icp_min_inliers = 50;

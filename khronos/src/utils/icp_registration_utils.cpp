@@ -48,11 +48,13 @@ Result ICPRegistrationUtils::registerPointClouds(const Cloud& p_source,
                                                  const Cloud& p_target,
                                                  size_t num_threads,
                                                  float downsampling_resolution,
-                                                 float max_correspondence_distance) {
+                                                 float max_correspondence_distance,
+                                                 size_t max_iterations) {
   small_gicp::RegistrationSetting setting;
   setting.num_threads = num_threads;
   setting.downsampling_resolution = downsampling_resolution;
   setting.max_correspondence_distance = max_correspondence_distance;
+  setting.max_iterations = max_iterations;
 
   // Note: small_gicp::align expects (target, source, initial_guess)
   // This will return T_target_source

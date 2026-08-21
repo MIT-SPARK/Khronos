@@ -67,13 +67,15 @@ class ICPRegistrationUtils {
    * @param num_threads Number of threads to use for registration (default: 1)
    * @param downsampling_resolution Voxel size for downsampling (meters)
    * @param max_correspondence_distance Maximum distance for point correspondences (meters)
+   * @param max_iterations Max optimizer iterations.
    * @return Registration result containing transformation and convergence info
    */
   static Result registerPointClouds(const std::vector<Eigen::Vector3f>& source_points,
                                     const std::vector<Eigen::Vector3f>& target_points,
                                     size_t num_threads = 1,
                                     float downsampling_resolution = 0.1f,
-                                    float max_correspondence_distance = 0.5f);
+                                    float max_correspondence_distance = 0.5f,
+                                    size_t max_iterations = 20);
 };
 
 }  // namespace khronos

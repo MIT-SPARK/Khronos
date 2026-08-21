@@ -83,11 +83,11 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.awcd_sinks, "awcd_sinks");
   field(config.transformation_getter, "transformation_getter");
   field(config.enable_icp_refinement, "enable_icp_refinement");
-  field(config.invert_roman_lc_transform, "invert_roman_lc_transform");
   field(config.icp_crop_radius, "icp_crop_radius");
   field(config.icp_num_threads, "icp_num_threads");
   field(config.icp_downsampling_resolution, "icp_downsampling_resolution");
   field(config.icp_max_correspondence_distance, "icp_max_correspondence_distance");
+  field(config.icp_max_iterations, "icp_max_iterations");
   field(config.icp_min_inliers, "icp_min_inliers");
   checkInRange(
       config.merge_min_semantic_cosine_sim, -1.0f, 1.0f, "merge_min_semantic_cosine_sim");
@@ -601,6 +601,14 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   // Poll the transformation getter and update current_T_prior_ if a new transform is available.
   const auto tf = transformation_getter_->getTransformation();
   if (tf.has_value()) {
+    // Loop residual: the getter reads map->odom, which traverses the pre_icp_odom->odom edge that
+    // TfIcpPublisher derives from current_T_prior_. So this delta is what the world moved since we
+    // last looked: last frame's ICP correction + any ROMAN update. It should shrink toward zero as
+    // ICP converges; a large or oscillating value means the TF chain disagrees with current_T_prior_.
+    const Eigen::Isometry3d loop_residual = current_T_prior_.inverse() * tf.value();
+    MLOG(2) << "[ActiveWindowChangeDetector] TF readback loop residual: "
+            << loop_residual.translation().norm() << " m, "
+            << Eigen::AngleAxisd(loop_residual.linear()).angle() << " rad.";
     if (config.enable_icp_refinement) {
       runIcpRefinement(data, map, tf.value());
     } else {
@@ -752,7 +760,8 @@ void ActiveWindowChangeDetector::runIcpRefinement(const FrameData& data,
                                                 target,
                                                 config.icp_num_threads,
                                                 config.icp_downsampling_resolution,
-                                                config.icp_max_correspondence_distance);
+                                                config.icp_max_correspondence_distance,
+                                                config.icp_max_iterations);
 
   if (!res.converged || res.num_inliers < config.icp_min_inliers) {
     LOG(WARNING) << "[ActiveWindowChangeDetector] ICP failed: converged=" << res.converged
