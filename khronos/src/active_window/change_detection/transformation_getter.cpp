@@ -51,7 +51,6 @@ static const auto registration =
 void declare_config(IdentityTransformationGetter::Config& config) {
   using namespace config;
   name("IdentityTransformationGetter");
-  field(config.verbosity, "verbosity");
 }
 
 IdentityTransformationGetter::IdentityTransformationGetter(const Config& config)

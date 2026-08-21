@@ -66,14 +66,14 @@ void declare_config(TFTransformationGetter::Config& config) {
 }
 
 TFTransformationGetter::TFTransformationGetter(const Config& cfg)
-    : config(config::checkValid(cfg)), tf_lookup_(std::make_unique<hydra::TFLookup>(config.tf_lookup)) {
+    : config(config::checkValid(cfg)), tf_lookup_(config.tf_lookup) {
   MLOG(1) << "[TFTransformationGetter] TF listener created (" << config.prior_frame_id << " -> "
           << getRobotFrame() << ")";
 }
 
 std::optional<Eigen::Isometry3d> TFTransformationGetter::getTransformation() const {
   std::string err;
-  const auto status = hydra::lookupTransform(tf_lookup_->buffer,
+  const auto status = hydra::lookupTransform(tf_lookup_.buffer,
                                              std::nullopt,
                                              config.prior_frame_id,
                                              getRobotFrame(),

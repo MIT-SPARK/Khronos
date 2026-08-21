@@ -42,8 +42,6 @@
 
 #include <Eigen/Geometry>
 #include <config_utilities/config_utilities.h>
-#include <hydra/common/global_info.h>
-#include <hydra/utils/logging.h>
 
 namespace khronos {
 
@@ -72,10 +70,7 @@ class TransformationGetter {
  */
 class IdentityTransformationGetter : public TransformationGetter {
  public:
-  struct Config : hydra::VerbosityConfig {
-    Config()
-        : hydra::VerbosityConfig{hydra::GlobalInfo::instance().getConfig().default_verbosity} {}
-  } const config;
+  struct Config {} const config;
 
   explicit IdentityTransformationGetter(const Config& config);
 

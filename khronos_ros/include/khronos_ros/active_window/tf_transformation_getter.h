@@ -37,7 +37,6 @@
 
 #pragma once
 
-#include <memory>
 #include <string>
 
 #include <hydra_ros/utils/tf_lookup.h>
@@ -49,7 +48,7 @@ namespace khronos {
 /**
  * @brief TransformationGetter that obtains odom_T_prior by querying TF2.
  *
- * Looks up `prior_frame_id` → `robot_frame_id` (odom frame) via hydra::TFLookup each
+ * Looks up `prior_frame_id` -> `robot_frame_id` (odom frame) via hydra::TFLookup each
  * call, computes odom_T_prior = inverse(map_T_odom), and applies a change-
  * threshold filter: returns nullopt when neither the translation change nor the
  * rotation change since the last reported transform exceeds its threshold.
@@ -72,11 +71,10 @@ class TFTransformationGetter : public TransformationGetter {
     //! Underlying TF lookup config. max_tries defaults to 1 (non-blocking): TF being
     //! unavailable is the expected steady state before relocalization fires, and the
     //! default TFLookup retry loop would otherwise stall the AWCD call() path.
-    hydra::TFLookup::Config tf_lookup = [] {
-      hydra::TFLookup::Config c;
-      c.max_tries = 1;
-      return c;
-    }();
+    struct NonBlockingTfLookupConfig : hydra::TFLookup::Config {
+      NonBlockingTfLookupConfig() { max_tries = 1; }
+    };
+    hydra::TFLookup::Config tf_lookup = NonBlockingTfLookupConfig();
   } const config;
 
   explicit TFTransformationGetter(const Config& config);
@@ -91,7 +89,7 @@ class TFTransformationGetter : public TransformationGetter {
   //! Returns robot_frame_id from config if set, otherwise GlobalInfo odom frame.
   std::string getRobotFrame() const;
 
-  std::unique_ptr<hydra::TFLookup> tf_lookup_;
+  hydra::TFLookup tf_lookup_;
 
   mutable Eigen::Isometry3d last_reported_ = Eigen::Isometry3d::Identity();
   mutable bool has_last_ = false;

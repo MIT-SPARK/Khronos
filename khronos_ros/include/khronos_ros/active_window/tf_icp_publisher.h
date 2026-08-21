@@ -55,13 +55,13 @@ namespace khronos {
 /**
  * @brief ActiveWindowCDSink that publishes the ICP refinement delta as a TF.
  *
- * Publishes pre_icp_odom → odom (StaticTF), splitting the full odom_T_map
+ * Publishes pre_icp_odom -> odom (StaticTF), splitting the full odom_T_map
  * transform (received as current_T_prior from AWCD) into:
- *   - map → pre_icp_odom: published externally by hydra_multi (ROMAN result)
- *   - pre_icp_odom → odom: published here (ICP delta on top of ROMAN)
- *
- * On startup, seeds identity so the TF chain map → odom is immediately resolvable.
- * When enable_icp_refinement=false in AWCD, current_T_prior equals the ROMAN result
+ *   - map -> pre_icp_odom: published externally by upper level pose estimation modules (ROMAN, etc.)
+ *   - pre_icp_odom -> odom: published here (ICP delta on top of estimated pose)
+ *  
+ * On startup, seeds identity so the TF chain map -> odom is immediately resolvable.
+ * When enable_icp_refinement=false in AWCD, current_T_prior equals the estimated pose
  * and the ICP delta is identity.
  */
 class TfIcpPublisher : public ActiveWindowChangeDetector::ActiveWindowCDSink {
