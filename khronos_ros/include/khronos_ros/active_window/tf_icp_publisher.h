@@ -42,10 +42,10 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/global_info.h>
+#include <hydra/utils/logging.h>
+#include <hydra_ros/utils/tf_lookup.h>
 #include <ianvs/node_handle.h>
-#include <tf2_ros/buffer.h>
 #include <tf2_ros/static_transform_broadcaster.h>
-#include <tf2_ros/transform_listener.h>
 
 #include "khronos/active_window/change_detection/active_window_change_detector.h"
 #include "khronos/active_window/data/track.h"
@@ -74,6 +74,13 @@ class TfIcpPublisher : public ActiveWindowChangeDetector::ActiveWindowCDSink {
     std::string pre_icp_odom_frame = "";
     //! Robot odometry frame (child of pre_icp_odom_frame). Empty = GlobalInfo odom frame.
     std::string odom_frame = "";
+    //! Underlying TF lookup config. max_tries defaults to 1 (non-blocking): TF being
+    //! unavailable is the expected steady state before relocalization fires, and the
+    //! default TFLookup retry loop would otherwise stall the AWCD call() path.
+    struct NonBlockingTfLookupConfig : hydra::TFLookup::Config {
+      NonBlockingTfLookupConfig() { max_tries = 1; }
+    };
+    hydra::TFLookup::Config tf_lookup = NonBlockingTfLookupConfig();
   } const config;
 
   explicit TfIcpPublisher(const Config& config, const ianvs::NodeHandle* nh = nullptr);
@@ -90,8 +97,7 @@ class TfIcpPublisher : public ActiveWindowChangeDetector::ActiveWindowCDSink {
 
   ianvs::NodeHandle nh_;
   std::unique_ptr<tf2_ros::StaticTransformBroadcaster> tf_broadcaster_;
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  hydra::TFLookup tf_lookup_;
 };
 
 void declare_config(TfIcpPublisher::Config& config);

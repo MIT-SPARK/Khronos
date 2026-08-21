@@ -42,7 +42,6 @@
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <glog/logging.h>
 #include <hydra/utils/logging.h>
-#include <tf2/exceptions.h>
 
 namespace khronos {
 namespace {
@@ -60,14 +59,14 @@ void declare_config(TfIcpPublisher::Config& config) {
   field(config.verbosity, "verbosity");
   field(config.pre_icp_odom_frame, "pre_icp_odom_frame");
   field(config.odom_frame, "odom_frame");
+  field(config.tf_lookup, "tf_lookup");
 }
 
 TfIcpPublisher::TfIcpPublisher(const Config& cfg, const ianvs::NodeHandle* nh)
     : config(config::checkValid(cfg)),
-      nh_(nh ? *nh / "tf_icp_publisher" : ianvs::NodeHandle::this_node("tf_icp_publisher")) {
+      nh_(nh ? *nh / "tf_icp_publisher" : ianvs::NodeHandle::this_node("tf_icp_publisher")),
+      tf_lookup_(config.tf_lookup) {
   tf_broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(nh_.node());
-  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(nh_.clock());
-  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
   // Seed identity so map → odom TF chain is resolvable before the first ICP result.
   broadcastTransform(Eigen::Isometry3d::Identity());
@@ -79,27 +78,31 @@ void TfIcpPublisher::call(const DynamicSceneGraph::Ptr& /*dsg*/,
                           const std::vector<ActiveWindowChangeDetector::RemovedObject>& /*removed_objects*/,
                           const std::vector<ActiveWindowChangeDetector::AddedObject>& /*newly_added_objects*/,
                           const Eigen::Isometry3d& current_T_prior) const {
-  // Look up map → pre_icp_odom (the ROMAN-only result = pre_icp_odom_T_map).
-  Eigen::Isometry3d pre_icp_odom_T_map;
-  try {
-    const auto tf = tf_buffer_->lookupTransform("map", config.pre_icp_odom_frame, tf2::TimePointZero);
-    const auto& t = tf.transform.translation;
-    const auto& r = tf.transform.rotation;
-    pre_icp_odom_T_map = Eigen::Isometry3d::Identity();
-    pre_icp_odom_T_map.translation() << t.x, t.y, t.z;
-    pre_icp_odom_T_map.linear() = Eigen::Quaterniond(r.w, r.x, r.y, r.z).toRotationMatrix();
-  } catch (const tf2::TransformException& e) {
+  // Look up map -> pre_icp_odom (the ROMAN-only result, published upstream).
+  std::string err;
+  const auto status = hydra::lookupTransform(tf_lookup_.buffer,
+                                             std::nullopt,
+                                             "map",
+                                             config.pre_icp_odom_frame,
+                                             config.tf_lookup.max_tries,
+                                             config.tf_lookup.wait_duration_s,
+                                             config.tf_lookup.verbosity,
+                                             &err);
+  if (!status) {
     MLOG(3) << "[TfIcpPublisher] TF lookup map -> " << config.pre_icp_odom_frame
-            << " failed: " << e.what() << ". Broadcasting identity.";
+            << " failed: " << err << ". Broadcasting identity.";
     broadcastTransform(Eigen::Isometry3d::Identity());
     return;
   }
+  const Eigen::Isometry3d map_T_pre_icp_odom = status.target_T_source();
 
-  // ICP delta: odom_T_pre_icp_odom = odom_T_map * map_T_pre_icp_odom
-  //   current_T_prior = odom_T_map (full ROMAN + ICP result from AWCD)
-  //   pre_icp_odom_T_map = ROMAN-only result (no ICP)
-  const Eigen::Isometry3d delta = current_T_prior * pre_icp_odom_T_map.inverse();
-  broadcastTransform(delta);
+  // Split map_T_odom = map_T_pre_icp_odom * pre_icp_odom_T_odom and solve for our half:
+  //   pre_icp_odom_T_odom = map_T_pre_icp_odom^-1 * map_T_odom
+  // current_T_prior is odom_T_map (full ROMAN + ICP result from AWCD), so map_T_odom is its
+  // inverse. With ICP disabled the two factors cancel and this is identity, as documented above.
+  const Eigen::Isometry3d pre_icp_odom_T_odom =
+      map_T_pre_icp_odom.inverse() * current_T_prior.inverse();
+  broadcastTransform(pre_icp_odom_T_odom);
 }
 
 std::string TfIcpPublisher::getOdomFrame() const {

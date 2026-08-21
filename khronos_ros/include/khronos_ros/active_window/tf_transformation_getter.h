@@ -39,6 +39,8 @@
 
 #include <string>
 
+#include <hydra/common/global_info.h>
+#include <hydra/utils/logging.h>
 #include <hydra_ros/utils/tf_lookup.h>
 
 #include "khronos/active_window/change_detection/transformation_getter.h"
