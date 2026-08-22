@@ -37,7 +37,6 @@
 
 #pragma once
 
-#include <string>
 #include <vector>
 
 #include <glog/logging.h>
@@ -107,9 +106,9 @@ using hydra::SemanticBlock;
 using hydra::SemanticLayer;
 using hydra::SemanticVoxel;
 
-using hydra::Mesh;
 using hydra::MeshBlock;
 using hydra::MeshLayer;
+using spark_dsg::Mesh;
 
 using hydra::TrackingBlock;
 using hydra::TrackingLayer;
