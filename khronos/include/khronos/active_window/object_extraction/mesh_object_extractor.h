@@ -97,7 +97,7 @@ class MeshObjectExtractor : public ObjectExtractor {
     bool visualize_classification = false;
 
     hydra::SensorMap<ObjectIntegrator>::Config projective_integrator;
-    hydra::MeshIntegratorConfig mesh_integrator;
+    hydra::MeshIntegrator::Config mesh_integrator;
   } const config;
 
   // Construction.

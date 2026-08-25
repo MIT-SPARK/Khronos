@@ -103,7 +103,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     TrackingIntegrator::Config tracking_integrator;
     config::VirtualConfig<ObjectExtractor> object_extractor;
     ObjectWorkerPool::Config extraction_worker;
-    hydra::MeshIntegratorConfig mesh_integrator;
+    hydra::MeshIntegrator::Config mesh_integrator;
     FrameDataBuffer::Config frame_data_buffer;
     std::vector<KhronosSink::Factory> khronos_sinks;
 
