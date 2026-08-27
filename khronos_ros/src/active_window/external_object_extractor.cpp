@@ -10,6 +10,7 @@
 #include <config_utilities/types/enum.h>
 #include <config_utilities/validation.h>
 #include <cv_bridge/cv_bridge.hpp>
+#include <khronos/utils/geometry_utils.h>
 #include <tf2_eigen/tf2_eigen.hpp>
 
 namespace khronos {
@@ -93,16 +94,11 @@ std::unique_ptr<KhronosObjectAttributes> makeAttributes(const FrameData& frame,
   return attrs;
 }
 
-struct ImagePoint {
-  int u;
-  int v;
-  Eigen::Vector3f pos;
-};
-
 void fillMaskPoints(const hydra::Camera& camera,
                     const cv::Mat& mask,
                     const cv::Mat& depth,
-                    std::vector<ImagePoint>& points) {
+                    Points& points,
+                    Pixels& pixels) {
   for (int r = 0; r < depth.rows; ++r) {
     for (int c = 0; c < depth.cols; ++c) {
       if (mask.at<uint8_t>(r, c) == 0) {
@@ -114,128 +110,49 @@ void fillMaskPoints(const hydra::Camera& camera,
         continue;
       }
 
-      points.push_back({c, r, camera.unprojectPixel(c, r, d)});
+      points.push_back(camera.unprojectPixel(c, r, d));
+      pixels.emplace_back(c, r);
     }
   }
 }
 
-size_t runDBSCAN(const std::vector<ImagePoint>& points,
-                 std::vector<int>& labels,
-                 float eps,
-                 size_t min_size) {
-  const auto n = static_cast<size_t>(points.size());
-
-  size_t num_clusters = 0;
-  labels = std::vector<int>(n, -1);  // -1 = unvisited, 0 = noise, >0 = cluster id
-  for (size_t i = 0; i < n; ++i) {
-    if (labels[i] != -1) {
-      continue;
-    }
-
-    std::vector<size_t> neighbors;
-    for (size_t j = 0; j < n; ++j) {
-      if ((points[i].pos - points[j].pos).norm() <= eps) {
-        neighbors.push_back(j);
-      }
-    }
-
-    if (neighbors.size() < min_size) {
-      labels[i] = 0;  // noise
-      continue;
-    }
-
-    ++num_clusters;
-    labels[i] = num_clusters;
-    for (const auto q : neighbors) {
-      if (labels[q] == 0) {
-        labels[q] = num_clusters;
-      }
-
-      if (labels[q] != -1) {
-        continue;
-      }
-
-      labels[q] = num_clusters;
-
-      std::vector<size_t> candidates;
-      for (size_t j = 0; j < n; ++j) {
-        if ((points[q].pos - points[j].pos).norm() <= eps) {
-          candidates.push_back(j);
-        }
-      }
-
-      if (candidates.size() >= min_size) {
-        neighbors.insert(neighbors.end(), candidates.begin(), candidates.end());
-      }
-    }
+// This file's own cluster-selection policy: among the DBSCAN, pick the one closest to the camera
+// by mean depth. Only clusters holding at least `ratio` of the largest cluster's point count are
+// eligible; if none qualify, every cluster is considered. Returns utils::kDbscanNoise if there are
+// no clusters.
+int getNearestCluster(const Points& points, const std::vector<int>& labels, float ratio) {
+  const auto sizes = utils::dbscanClusterSizes(labels);
+  if (sizes.empty()) {
+    return utils::kDbscanNoise;
   }
 
-  return num_clusters;
-}
-
-int getLargestCluster(const std::vector<int>& labels, size_t num_clusters) {
+  std::vector<float> total_z(sizes.size(), 0.0f);
   size_t max_count = 0;
-  int target_label = -1;
-  std::vector<size_t> counts(num_clusters + 1, 0);
   for (size_t i = 0; i < labels.size(); ++i) {
     const auto label = labels[i];
-    if (label <= 0) {
+    if (label == utils::kDbscanNoise) {
       continue;
     }
-
-    const auto new_count = counts[labels[i]] + 1;
-    counts[labels[i]] = new_count;
-    if (new_count > max_count) {
-      target_label = label;
-      max_count = new_count;
-    }
+    total_z[label] += points[i].z();
+    max_count = std::max(max_count, sizes[label]);
   }
 
-  return target_label;
-}
-
-int getNearestCluster(const std::vector<ImagePoint>& points,
-                      const std::vector<int>& labels,
-                      size_t num_clusters,
-                      float ratio) {
-  size_t max_count = 0;
-  std::vector<float> total_z(num_clusters + 1, 0.0f);
-  std::vector<size_t> counts(num_clusters + 1, 0);
-  for (size_t i = 0; i < labels.size(); ++i) {
-    const auto label = labels[i];
-    if (label <= 0) {
-      continue;
-    }
-
-    const auto new_count = counts[labels[i]] + 1;
-    counts[labels[i]] = new_count;
-    total_z[labels[i]] += points[i].pos.z();
-    if (new_count > max_count) {
-      max_count = new_count;
-    }
-  }
-
-  if (max_count == 0) {
-    return -1;
-  }
-
-  // try to pick nearest cluster with at least threshold points
-  int target_label = -1;
-  float best_z = std::numeric_limits<float>::max();
-  auto threshold = std::min<size_t>(static_cast<size_t>(ratio * max_count), 1u);
+  auto threshold = std::max<size_t>(static_cast<size_t>(ratio * max_count), 1u);
   if (max_count < threshold) {
-    threshold = 0;  // no cluster has threshold points, fall back to picking nearest
+    threshold = 0;  // no cluster meets the ratio; fall back to considering all of them
   }
 
-  for (size_t k = 1; k <= num_clusters; ++k) {
-    if (counts[k] < threshold) {
+  int target_label = utils::kDbscanNoise;
+  float best_z = std::numeric_limits<float>::max();
+  for (size_t k = 0; k < sizes.size(); ++k) {
+    if (sizes[k] < threshold) {
       continue;
     }
 
-    const auto mean_z = static_cast<float>(total_z[k] / counts[k]);
+    const auto mean_z = static_cast<float>(total_z[k] / sizes[k]);
     if (mean_z < best_z) {
       best_z = mean_z;
-      target_label = k;
+      target_label = static_cast<int>(k);
     }
   }
 
@@ -488,29 +405,26 @@ cv::Mat ExternalObjectExtractor::projectLidarPoints(const FrameData& cam_frame,
 void ExternalObjectExtractor::filterDepthByCluster(cv::Mat& depth,
                                                    const cv::Mat& mask,
                                                    const Camera& camera) const {
-  std::vector<ImagePoint> points;
-  fillMaskPoints(camera, mask, depth, points);
+  Points points;
+  Pixels pixels;
+  fillMaskPoints(camera, mask, depth, points, pixels);
   if (points.empty()) {
     return;
   }
 
-  std::vector<int> labels;
-  const auto num_clusters =
-      runDBSCAN(points, labels, config.filter_cluster_tolerance, config.min_cluster_size);
-  if (num_clusters == 0) {
-    return;
-  }
+  const auto labels = utils::dbscan(
+      points, config.filter_cluster_tolerance, static_cast<int>(config.min_cluster_size));
 
-  int target_cluster = -1;
-  if (!config.filter_prefer_near) {
-    target_cluster = getLargestCluster(labels, num_clusters);
-  } else {
-    target_cluster = getNearestCluster(points, labels, num_clusters, config.filter_quality_ratio);
+  const int target_cluster = config.filter_prefer_near
+                                 ? getNearestCluster(points, labels, config.filter_quality_ratio)
+                                 : utils::largestDbscanClusterLabel(labels);
+  if (target_cluster == utils::kDbscanNoise) {
+    return;
   }
 
   for (size_t i = 0; i < labels.size(); ++i) {
     if (labels[i] != target_cluster) {
-      depth.at<float>(points[i].v, points[i].u) = 0.0f;
+      depth.at<float>(pixels[i].v, pixels[i].u) = 0.0f;
     }
   }
 }
