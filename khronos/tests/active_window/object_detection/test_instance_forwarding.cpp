@@ -344,4 +344,47 @@ TEST(InstanceForwarding, FilteringCorrect) {
   EXPECT_EQ(cluster.semantics, expected_semantics);
 }
 
+TEST(InstanceForwarding, OutlierFilterDropsSpatialOutliers) {
+  ConfigGuard guard;
+
+  InstanceForwarding::Config config;
+  config.zero_is_unlabeled = true;
+  config.outlier_filter_enabled = true;
+  config.outlier_filter_eps = 0.5f;
+  config.outlier_filter_min_points = 3;
+  InstanceForwarding detector(config);
+
+  hydra::VolumetricMap map(hydra::VolumetricMap::Config{});
+
+  // Instance 1 is a tight 4-pixel blob at the origin plus two pixels projected far away.
+  hydra::InputData input{nullptr};
+  input.instance_image = cv::Mat::zeros(3, 4, CV_16S);
+  input.instance_image.at<InputData::InstanceType>(0, 0) = 1;
+  input.instance_image.at<InputData::InstanceType>(0, 1) = 1;
+  input.instance_image.at<InputData::InstanceType>(1, 0) = 1;
+  input.instance_image.at<InputData::InstanceType>(1, 1) = 1;
+  input.instance_image.at<InputData::InstanceType>(2, 2) = 1;  // outlier
+  input.instance_image.at<InputData::InstanceType>(2, 3) = 1;  // outlier
+
+  input.range_image = cv::Mat(3, 4, CV_32FC1, 1.0f);
+
+  input.vertex_map = cv::Mat(3, 4, CV_32FC3, cv::Scalar(0.0f, 0.0f, 0.0f));
+  input.vertex_map.at<cv::Vec3f>(2, 2) = cv::Vec3f(5.0f, 5.0f, 5.0f);
+  input.vertex_map.at<cv::Vec3f>(2, 3) = cv::Vec3f(6.0f, 6.0f, 6.0f);
+
+  FrameData data{input};
+  data.object_image = cv::Mat::zeros(3, 4, CV_32S);
+  detector.processInput(map, data);
+
+  ASSERT_EQ(data.semantic_clusters.size(), 1u);
+  const auto& cluster = data.semantic_clusters[0];
+  const Pixels expected{{0, 0}, {0, 1}, {1, 0}, {1, 1}};
+  EXPECT_EQ(cluster.pixels, expected);
+
+  // The object image must only carry the surviving (inlier) pixels.
+  EXPECT_EQ(data.object_image.at<FrameData::ObjectImageType>(0, 0), 1);
+  EXPECT_EQ(data.object_image.at<FrameData::ObjectImageType>(2, 2), 0);
+  EXPECT_EQ(data.object_image.at<FrameData::ObjectImageType>(2, 3), 0);
+}
+
 }  // namespace khronos

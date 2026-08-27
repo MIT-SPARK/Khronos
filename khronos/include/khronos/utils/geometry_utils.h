@@ -63,9 +63,27 @@ inline constexpr int kDbscanNoise = -1;
 std::vector<int> dbscan(const Points& points, float eps, int min_points);
 
 /**
+ * @brief Number of points in each cluster, indexed by 0-based cluster id. The returned vector's
+ * size equals the number of clusters found; `kDbscanNoise` points are not counted.
+ */
+std::vector<size_t> dbscanClusterSizes(const std::vector<int>& labels);
+
+/**
+ * @brief Label of the largest cluster in a dbscan() label vector, ties broken by lowest cluster
+ * id. Returns `kDbscanNoise` if no cluster is present (e.g. all points are noise).
+ */
+int largestDbscanClusterLabel(const std::vector<int>& labels);
+
+/**
+ * @brief Indices of every point carrying `label` in a dbscan() label vector, in ascending order.
+ */
+std::vector<size_t> dbscanClusterIndices(const std::vector<int>& labels, int label);
+
+/**
  * @brief Runs dbscan() and returns the indices belonging to the single largest cluster (ties
  * broken by lowest cluster id). Returns an empty vector if no cluster is found (e.g. all points
- * are noise).
+ * are noise). Convenience composition of dbscan() + largestDbscanClusterLabel() +
+ * dbscanClusterIndices().
  */
 std::vector<size_t> largestDbscanCluster(const Points& points, float eps, int min_points);
 

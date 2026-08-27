@@ -38,7 +38,6 @@
 #include "khronos/utils/geometry_utils.h"
 
 #include <deque>
-#include <unordered_map>
 
 #include <hydra/input/input_data.h>
 
@@ -101,37 +100,50 @@ std::vector<int> dbscan(const Points& points, float eps, int min_points) {
   return labels;
 }
 
-std::vector<size_t> largestDbscanCluster(const Points& points, float eps, int min_points) {
-  const auto labels = dbscan(points, eps, min_points);
-
-  std::unordered_map<int, size_t> cluster_sizes;
+std::vector<size_t> dbscanClusterSizes(const std::vector<int>& labels) {
+  std::vector<size_t> sizes;
   for (const int label : labels) {
-    if (label != kDbscanNoise) {
-      ++cluster_sizes[label];
+    if (label == kDbscanNoise) {
+      continue;
+    }
+    if (static_cast<size_t>(label) >= sizes.size()) {
+      sizes.resize(label + 1, 0);
+    }
+    ++sizes[label];
+  }
+  return sizes;
+}
+
+int largestDbscanClusterLabel(const std::vector<int>& labels) {
+  const auto sizes = dbscanClusterSizes(labels);
+  int best_label = kDbscanNoise;
+  size_t best_size = 0;
+  for (size_t id = 0; id < sizes.size(); ++id) {
+    if (sizes[id] > best_size) {
+      best_label = static_cast<int>(id);
+      best_size = sizes[id];
     }
   }
+  return best_label;
+}
 
-  if (cluster_sizes.empty()) {
-    return {};
-  }
-
-  int best_cluster_id = cluster_sizes.begin()->first;
-  size_t best_size = cluster_sizes.begin()->second;
-  for (const auto& [id, size] : cluster_sizes) {
-    if (size > best_size || (size == best_size && id < best_cluster_id)) {
-      best_cluster_id = id;
-      best_size = size;
-    }
-  }
-
+std::vector<size_t> dbscanClusterIndices(const std::vector<int>& labels, int label) {
   std::vector<size_t> indices;
-  indices.reserve(best_size);
   for (size_t i = 0; i < labels.size(); ++i) {
-    if (labels[i] == best_cluster_id) {
+    if (labels[i] == label) {
       indices.push_back(i);
     }
   }
   return indices;
+}
+
+std::vector<size_t> largestDbscanCluster(const Points& points, float eps, int min_points) {
+  const auto labels = dbscan(points, eps, min_points);
+  const int best_label = largestDbscanClusterLabel(labels);
+  if (best_label == kDbscanNoise) {
+    return {};
+  }
+  return dbscanClusterIndices(labels, best_label);
 }
 
 Point computeCentroid(const Points& points) {
