@@ -35,52 +35,39 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#pragma once
+#include "khronos/active_window/tracking/external_tracker_with_box.h"
 
-#include <hydra/common/global_info.h>
-
-#include "khronos/active_window/data/frame_data.h"
-#include "khronos/active_window/tracking/tracker.h"
+#include <config_utilities/config.h>
+#include <config_utilities/factory.h>
 
 namespace khronos {
 
-/**
- * @brief Tracker if tracking is performed externally, i.e. all input IDs are already conssitent
- * instance IDs.
- * @note This currently does not handle any dynamic tracks, only semantic ones.
- * @note
- */
-class ExternalTracker : public Tracker {
- public:
-  struct Config {
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+namespace {
+// Config is a plain alias for ExternalTracker::Config (see the header), so its declare_config
+// overload is reused as-is -- no new one needed here.
+static const auto registration =
+    config::RegistrationWithConfig<Tracker, ExternalTrackerWithBox, ExternalTrackerWithBox::Config>(
+        "ExternalTrackerWithBox");
+}  // namespace
 
-    // Number of times a track has to be observed to be considered existent.
-    int min_num_observations = 20;
-  } const config;
+ExternalTrackerWithBox::ExternalTrackerWithBox(const Config& config) : ExternalTracker(config) {}
 
-  // Construction.
-  explicit ExternalTracker(const Config& config);
-  virtual ~ExternalTracker() = default;
+void ExternalTrackerWithBox::updateTrack(const FrameData& data,
+                                         const MeasurementCluster& observation,
+                                         Track& track) const {
+  // Do everything ExternalTracker::updateTrack already does (semantics, observations,
+  // confidence)...
+  ExternalTracker::updateTrack(data, observation, track);
 
-  // Inputs.
-  void processInput(FrameData& data, Tracks& tracks) override;
-
- protected:
-  // Processing.
-  void associateTracks(const FrameData& data, Tracks& tracks);
-  void addNewTrack(const FrameData& data, const MeasurementCluster& observation, Tracks& tracks);
-  // Virtual so ExternalTrackerWithBox (external_tracker_with_box.h) can extend this with the
-  // track geometry fields (last_bounding_box, last_points) this base class leaves untouched --
-  // see that class's header comment for why that matters.
-  virtual void updateTrack(const FrameData& data,
-                           const MeasurementCluster& observation,
-                           Track& track) const;
-
- private:
-  TimeStamp processing_stamp_;
-};
-
-void declare_config(ExternalTracker::Config& config);
+  // ...then fill in the geometry fields it leaves untouched. Mirrors
+  // MaxIoUTracker::updateTrack's kPixels branch (max_iou_tracker.cpp).
+  track.last_bounding_box = observation.bounding_box;
+  track.last_points.clear();
+  track.last_points.reserve(observation.pixels.size());
+  for (const Pixel& pixel : observation.pixels) {
+    const auto& point = data.input.vertex_map.at<InputData::VertexType>(pixel.v, pixel.u);
+    track.last_points.emplace_back(point[0], point[1], point[2]);
+  }
+}
 
 }  // namespace khronos
