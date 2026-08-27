@@ -104,9 +104,25 @@ class MaxIoUTracker : public Tracker {
   // Processing.
   void setup();
   void setupTrackMeasurements(FrameData& data) const;
-  void associateTracks(const FrameData& data, Tracks& tracks);
-  void associateSemanticTracks(const FrameData& data, Tracks& tracks);
-  void associateDynamicTracks(const FrameData& data, Tracks& tracks);
+  // preassociated_{dynamic,semantic}_cluster_ids: cluster ids to treat as already claimed (e.g.
+  // by a subclass's own pre-pass, see HybridTracker) -- seeds the corresponding internal
+  // associated-objects bookkeeping instead of starting empty. Kept as two separate sets (rather
+  // than one shared set): each function's own "associated_objects.size()" bookkeeping assumes
+  // every id in it is actually a member of the cluster list that function iterates (e.g.
+  // associateDynamicTracks computes `data.dynamic_clusters.size() - associated_objects.size()`),
+  // so seeding it with ids from the *other* cluster list would silently corrupt that arithmetic
+  // (verified: an unsigned-subtraction underflow when a semantic-only id leaked into the
+  // dynamic-track seed). Defaulted so every existing solo-MaxIoUTracker call site is unaffected.
+  void associateTracks(const FrameData& data,
+                       Tracks& tracks,
+                       const std::unordered_set<int>& preassociated_dynamic_cluster_ids = {},
+                       const std::unordered_set<int>& preassociated_semantic_cluster_ids = {});
+  void associateSemanticTracks(const FrameData& data,
+                               Tracks& tracks,
+                               const std::unordered_set<int>& preassociated_cluster_ids = {});
+  void associateDynamicTracks(const FrameData& data,
+                              Tracks& tracks,
+                              const std::unordered_set<int>& preassociated_cluster_ids = {});
   void assignStaticTracksToCluster(const FrameData& data,
                                    Tracks& tracks,
                                    std::unordered_set<int>& associated_objects);
@@ -138,12 +154,18 @@ class MaxIoUTracker : public Tracker {
                               const Track& track) const;
   Point computeCentroid(const FrameData& data, const MeasurementCluster& cluster) const;
 
+ protected:
+  // Set once per frame by processInput(); protected (rather than private) so a subclass with its
+  // own processInput override (e.g. HybridTracker, which interleaves a trust pass before calling
+  // the inherited association methods rather than calling MaxIoUTracker::processInput() itself)
+  // can set it directly, matching what processInput() does.
+  TimeStamp processing_stamp_;
+
  private:
   // Members.
   const spatial_hash::Grid<GlobalIndex> grid_;
 
   // Variables.
-  TimeStamp processing_stamp_;
   int current_track_id_ = 0;  // TODO(lschmid): at some point reuse IDs.
 };
 
