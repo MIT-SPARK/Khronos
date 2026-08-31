@@ -37,50 +37,45 @@
 
 #pragma once
 
-#include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
-#include <geometry_msgs/msg/point.hpp>
-#include <geometry_msgs/msg/vector3.hpp>
-#include <khronos/common/common_types.h>
-#include <std_msgs/msg/color_rgba.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
+#include <Eigen/Dense>
 
 namespace khronos {
 
-// Conversion utils.
-geometry_msgs::msg::Vector3 setScale(const float scale);
-geometry_msgs::msg::Point setPoint(const Point& point);
-std_msgs::msg::ColorRGBA setColor(const std::vector<float>& color);
-std_msgs::msg::ColorRGBA setColor(const Color& color);
-// Overrides the color's alpha with the given value
-std_msgs::msg::ColorRGBA setColor(Color color, uint8_t alpha);
-cv::Vec3b colorToCv(const Color& color);
-Color cvToColor(const cv::Vec3b& color);
-void applyColor(const Color& color, cv::Vec3b& pixel, float alpha = 1.f);
-
-// Visualization utils.
-visualization_msgs::msg::Marker setBoundingBox(const BoundingBox& bb,
-                                               const Color& color,
-                                               const std_msgs::msg::Header& header,
-                                               const float scale = 0.03);
-
-// Filling annoying rviz markers with empty and reset markers.
-class MarkerArrayTracker {
-  MarkerArrayTracker() = default;
-  virtual ~MarkerArrayTracker() = default;
+/**
+ * @brief Utilities for ICP registration of point clouds
+ */
+class ICPRegistrationUtils {
+ public:
+  //! @brief Clone of small_gicp result structure to avoid public include
+  struct Result {
+    Eigen::Isometry3d T_target_source = Eigen::Isometry3d::Identity();
+    bool converged = false;
+    size_t iterations = 0;
+    size_t num_inliers = 0;
+    Eigen::Matrix<double, 6, 6> H;
+    Eigen::Matrix<double, 6, 1> b;
+    double error = 0.0;
+  };
 
   /**
-   * @brief Update the marker array such that only current markers are disaplyed. This adds delete
-   * markers for all ids that are not in the current marker array for all namespaces that occur in
-   * the current marker array.
+   * @brief Perform ICP registration between two point clouds
+   *
+   * @param source_points Source point cloud
+   * @param target_points Target point cloud
+   * @param num_threads Number of threads to use for registration (default: 1)
+   * @param downsampling_resolution Voxel size for downsampling (meters)
+   * @param max_correspondence_distance Maximum distance for point correspondences (meters)
+   * @param max_iterations Max optimizer iterations.
+   * @return Registration result containing transformation and convergence info
    */
-  void updateMarkerArray(visualization_msgs::msg::MarkerArray& marker);
-  visualization_msgs::msg::MarkerArray createResetMarker(std::vector<std::string> namespaces);
-
-  std::unordered_map<std::string, std::unordered_set<int>> previous_ids_;
+  static Result registerPointClouds(const std::vector<Eigen::Vector3f>& source_points,
+                                    const std::vector<Eigen::Vector3f>& target_points,
+                                    size_t num_threads = 1,
+                                    float downsampling_resolution = 0.1f,
+                                    float max_correspondence_distance = 0.5f,
+                                    size_t max_iterations = 20);
 };
 
 }  // namespace khronos

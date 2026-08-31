@@ -96,6 +96,9 @@ class MeshObjectExtractor : public ObjectExtractor {
     // for debugging.
     bool visualize_classification = false;
 
+    // Bounding box type used for extracted (persistent) static objects.
+    enum class BBoxType { kAABB, kRAABB } bbox_type = BBoxType::kAABB;
+
     hydra::SensorMap<ObjectIntegrator>::Config projective_integrator;
     hydra::MeshIntegratorConfig mesh_integrator;
   } const config;

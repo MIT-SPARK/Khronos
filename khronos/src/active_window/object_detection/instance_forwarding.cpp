@@ -148,6 +148,13 @@ void declare_config(InstanceForwarding::Config& config) {
   field(config.max_object_volume, "max_object_volume", "m");
   config.instance_filter.setOptional();
   field(config.instance_filter, "instance_filter");
+
+  {
+    NameSpace ns("outlier_filter");
+    field(config.outlier_filter_enabled, "enabled");
+    field(config.outlier_filter_eps, "eps", "m");
+    field(config.outlier_filter_min_points, "min_points");
+  }
 }
 
 InstanceForwarding::InstanceForwarding(const Config& config)
@@ -182,15 +189,15 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
   }
 
   // Filter clusters and populate object image
-  for (const auto& [id, pixels] : clusters) {
-    const auto curr_num_pixels = static_cast<int>(pixels.size());
+  for (const auto& [id, cluster_pixels] : clusters) {
+    const auto curr_num_pixels = static_cast<int>(cluster_pixels.size());
     if (curr_num_pixels < config.min_cluster_size ||
         (config.max_cluster_size > 0 && curr_num_pixels > config.max_cluster_size)) {
       continue;
     }
 
     if (filter_by_volume_) {
-      const auto bbox = BoundingBox(utils::VertexMapAdaptor(pixels, data.input.vertex_map));
+      const auto bbox = BoundingBox(utils::VertexMapAdaptor(cluster_pixels, data.input.vertex_map));
       const auto volume = bbox.volume();
       if (volume < config.min_object_volume ||
           (config.max_object_volume > 0.0 && volume > config.max_object_volume)) {
@@ -198,8 +205,34 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
       }
     }
 
-    if (instance_filter_ && !instance_filter_->valid(data, id, pixels)) {
+    if (instance_filter_ && !instance_filter_->valid(data, id, cluster_pixels)) {
       continue;
+    }
+
+    // Copy so the spatial outlier filter below can prune pixels before they are used to paint the
+    // object image, extract semantics, or form the measurement cluster.
+    Pixels pixels(cluster_pixels.begin(), cluster_pixels.end());
+
+    // Filter spatial outliers out of the cluster via DBSCAN over its 3D points, keeping only the
+    // largest density-connected cluster.
+    if (config.outlier_filter_enabled) {
+      Points points;
+      points.reserve(pixels.size());
+      for (const auto& pixel : pixels) {
+        const auto& vertex = data.input.vertex_map.at<InputData::VertexType>(pixel.v, pixel.u);
+        points.emplace_back(vertex[0], vertex[1], vertex[2]);
+      }
+      const auto inlier_indices = utils::largestDbscanCluster(
+          points, config.outlier_filter_eps, config.outlier_filter_min_points);
+      if (inlier_indices.empty()) {
+        continue;
+      }
+      Pixels filtered_pixels;
+      filtered_pixels.reserve(inlier_indices.size());
+      for (const size_t idx : inlier_indices) {
+        filtered_pixels.push_back(pixels[idx]);
+      }
+      pixels = std::move(filtered_pixels);
     }
 
     // Technically we could fill the object image during extraction and not worry about filtered
@@ -210,8 +243,8 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
 
     MeasurementCluster cluster;
     cluster.id = id;
-    cluster.pixels.insert(cluster.pixels.end(), pixels.begin(), pixels.end());
     cluster.semantics = extractSemantics(data, id, pixels);
+    cluster.pixels = std::move(pixels);
     data.semantic_clusters.emplace_back(std::move(cluster));
   }
 }

@@ -122,6 +122,11 @@ std_msgs::msg::ColorRGBA setColor(const Color& color) {
   return msg;
 }
 
+std_msgs::msg::ColorRGBA setColor(Color color, uint8_t alpha) {
+  color.a = alpha;
+  return setColor(color);
+}
+
 cv::Vec3b colorToCv(const Color& color) { return cv::Vec3b(color.r, color.g, color.b); }
 
 Color cvToColor(const cv::Vec3b& color) { return Color(color[0], color[1], color[2]); }

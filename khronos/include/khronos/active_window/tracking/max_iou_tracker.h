@@ -90,6 +90,8 @@ class MaxIoUTracker : public Tracker {
 
     // Voxel size in meters used for tracking. Only used if 'track_by' is 'voxels'.
     float voxel_size = 0.1f;
+
+    enum class BBoxType { kAABB, kRAABB } bbox_type = BBoxType::kAABB;
   } const config;
 
   // Construction.

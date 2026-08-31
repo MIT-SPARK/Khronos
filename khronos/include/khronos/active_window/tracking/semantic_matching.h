@@ -37,50 +37,51 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
 
-#include <geometry_msgs/msg/point.hpp>
-#include <geometry_msgs/msg/vector3.hpp>
-#include <khronos/common/common_types.h>
-#include <std_msgs/msg/color_rgba.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
+#include "khronos/active_window/data/measurement_clusters.h"
 
 namespace khronos {
 
-// Conversion utils.
-geometry_msgs::msg::Vector3 setScale(const float scale);
-geometry_msgs::msg::Point setPoint(const Point& point);
-std_msgs::msg::ColorRGBA setColor(const std::vector<float>& color);
-std_msgs::msg::ColorRGBA setColor(const Color& color);
-// Overrides the color's alpha with the given value
-std_msgs::msg::ColorRGBA setColor(Color color, uint8_t alpha);
-cv::Vec3b colorToCv(const Color& color);
-Color cvToColor(const cv::Vec3b& color);
-void applyColor(const Color& color, cv::Vec3b& pixel, float alpha = 1.f);
+/**
+ * @brief Result of comparing two SemanticClusterInfo for a match. Explains why a comparison
+ * failed (or succeeded) for logging/debugging.
+ */
+struct SemanticMatchResult {
+  inline operator bool() const { return status == Status::kMatch; }
 
-// Visualization utils.
-visualization_msgs::msg::Marker setBoundingBox(const BoundingBox& bb,
-                                               const Color& color,
-                                               const std_msgs::msg::Header& header,
-                                               const float scale = 0.03);
+  enum class Status {
+    kNoSemantics,
+    kMismatchedCategories,
+    kMismatchedFeatures,
+    kLowSimiliarity,
+    kMatch,
+  } const status;
 
-// Filling annoying rviz markers with empty and reset markers.
-class MarkerArrayTracker {
-  MarkerArrayTracker() = default;
-  virtual ~MarkerArrayTracker() = default;
-
-  /**
-   * @brief Update the marker array such that only current markers are disaplyed. This adds delete
-   * markers for all ids that are not in the current marker array for all namespaces that occur in
-   * the current marker array.
-   */
-  void updateMarkerArray(visualization_msgs::msg::MarkerArray& marker);
-  visualization_msgs::msg::MarkerArray createResetMarker(std::vector<std::string> namespaces);
-
-  std::unordered_map<std::string, std::unordered_set<int>> previous_ids_;
+  const std::optional<float> similiarity = std::nullopt;
+  const std::optional<int> lhs_category = std::nullopt;
+  const std::optional<int> rhs_category = std::nullopt;
 };
+
+// NOTE: intentionally a named function (not `operator<<`). A free `operator<<` declared in
+// namespace khronos would hide (via ordinary unqualified lookup, which stops at the first
+// enclosing namespace containing any `operator<<` declaration) the global config-printing
+// template `operator<<(ostream&, const ConfigT&)` for any unqualified `os << some_config` call
+// elsewhere in namespace khronos in a TU that includes this header — even though the two are
+// unrelated types. `toString` sidesteps that lookup pitfall entirely.
+std::string toString(const SemanticMatchResult& result);
+
+/**
+ * @brief Compare two optional SemanticClusterInfo for a semantic match: both present, same
+ * category_id, and (if openset features are populated) cosine similarity >= min_cosine_sim.
+ * @param lhs First semantic info to compare (may be std::nullopt).
+ * @param rhs Second semantic info to compare (may be std::nullopt).
+ * @param min_cosine_sim Minimum feature cosine similarity to accept a match when both sides
+ * carry openset features.
+ */
+SemanticMatchResult semanticsMatch(const std::optional<SemanticClusterInfo>& lhs,
+                                   const std::optional<SemanticClusterInfo>& rhs,
+                                   float min_cosine_sim);
 
 }  // namespace khronos

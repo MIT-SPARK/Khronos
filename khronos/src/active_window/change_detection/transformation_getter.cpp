@@ -35,52 +35,30 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#pragma once
-
-#include <string>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
-
-#include <geometry_msgs/msg/point.hpp>
-#include <geometry_msgs/msg/vector3.hpp>
-#include <khronos/common/common_types.h>
-#include <std_msgs/msg/color_rgba.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
+#include "khronos/active_window/change_detection/transformation_getter.h"
 
 namespace khronos {
+namespace {
 
-// Conversion utils.
-geometry_msgs::msg::Vector3 setScale(const float scale);
-geometry_msgs::msg::Point setPoint(const Point& point);
-std_msgs::msg::ColorRGBA setColor(const std::vector<float>& color);
-std_msgs::msg::ColorRGBA setColor(const Color& color);
-// Overrides the color's alpha with the given value
-std_msgs::msg::ColorRGBA setColor(Color color, uint8_t alpha);
-cv::Vec3b colorToCv(const Color& color);
-Color cvToColor(const cv::Vec3b& color);
-void applyColor(const Color& color, cv::Vec3b& pixel, float alpha = 1.f);
+static const auto registration =
+    config::RegistrationWithConfig<TransformationGetter,
+                                   IdentityTransformationGetter,
+                                   IdentityTransformationGetter::Config>(
+        "IdentityTransformationGetter");
 
-// Visualization utils.
-visualization_msgs::msg::Marker setBoundingBox(const BoundingBox& bb,
-                                               const Color& color,
-                                               const std_msgs::msg::Header& header,
-                                               const float scale = 0.03);
+}  // namespace
 
-// Filling annoying rviz markers with empty and reset markers.
-class MarkerArrayTracker {
-  MarkerArrayTracker() = default;
-  virtual ~MarkerArrayTracker() = default;
+void declare_config(IdentityTransformationGetter::Config& config) {
+  using namespace config;
+  name("IdentityTransformationGetter");
+}
 
-  /**
-   * @brief Update the marker array such that only current markers are disaplyed. This adds delete
-   * markers for all ids that are not in the current marker array for all namespaces that occur in
-   * the current marker array.
-   */
-  void updateMarkerArray(visualization_msgs::msg::MarkerArray& marker);
-  visualization_msgs::msg::MarkerArray createResetMarker(std::vector<std::string> namespaces);
+IdentityTransformationGetter::IdentityTransformationGetter(const Config& config)
+    : config(config::checkValid(config)) {}
 
-  std::unordered_map<std::string, std::unordered_set<int>> previous_ids_;
-};
+std::optional<Eigen::Isometry3d> IdentityTransformationGetter::getTransformation() const {
+  // Returns nullopt: no relocalization needed, current_T_prior stays at Identity.
+  return std::nullopt;
+}
 
 }  // namespace khronos

@@ -37,50 +37,51 @@
 
 #pragma once
 
-#include <string>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
+#include <memory>
+#include <optional>
 
-#include <geometry_msgs/msg/point.hpp>
-#include <geometry_msgs/msg/vector3.hpp>
-#include <khronos/common/common_types.h>
-#include <std_msgs/msg/color_rgba.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
+#include <Eigen/Geometry>
+#include <config_utilities/config_utilities.h>
 
 namespace khronos {
 
-// Conversion utils.
-geometry_msgs::msg::Vector3 setScale(const float scale);
-geometry_msgs::msg::Point setPoint(const Point& point);
-std_msgs::msg::ColorRGBA setColor(const std::vector<float>& color);
-std_msgs::msg::ColorRGBA setColor(const Color& color);
-// Overrides the color's alpha with the given value
-std_msgs::msg::ColorRGBA setColor(Color color, uint8_t alpha);
-cv::Vec3b colorToCv(const Color& color);
-Color cvToColor(const cv::Vec3b& color);
-void applyColor(const Color& color, cv::Vec3b& pixel, float alpha = 1.f);
-
-// Visualization utils.
-visualization_msgs::msg::Marker setBoundingBox(const BoundingBox& bb,
-                                               const Color& color,
-                                               const std_msgs::msg::Header& header,
-                                               const float scale = 0.03);
-
-// Filling annoying rviz markers with empty and reset markers.
-class MarkerArrayTracker {
-  MarkerArrayTracker() = default;
-  virtual ~MarkerArrayTracker() = default;
+/**
+ * @brief Abstract interface for obtaining the current_T_prior transform.
+ *
+ * Implementations may query TF, return identity, or use any other source.
+ * Returns std::nullopt when no valid transform is available (e.g. TF lookup
+ * failure, or change below threshold); the caller skips the update in that case.
+ */
+class TransformationGetter {
+ public:
+  using Ptr = std::unique_ptr<TransformationGetter>;
+  virtual ~TransformationGetter() = default;
 
   /**
-   * @brief Update the marker array such that only current markers are disaplyed. This adds delete
-   * markers for all ids that are not in the current marker array for all namespaces that occur in
-   * the current marker array.
+   * @brief Get the latest odom_T_prior (current_T_prior) transform.
+   * @return The transform, or nullopt if unavailable / no significant change.
    */
-  void updateMarkerArray(visualization_msgs::msg::MarkerArray& marker);
-  visualization_msgs::msg::MarkerArray createResetMarker(std::vector<std::string> namespaces);
-
-  std::unordered_map<std::string, std::unordered_set<int>> previous_ids_;
+  virtual std::optional<Eigen::Isometry3d> getTransformation() const = 0;
 };
+
+/**
+ * @brief Always returns Eigen::Isometry3d::Identity() — useful when no prior
+ * map relocalization is needed (prior and current frames are the same).
+ */
+class IdentityTransformationGetter : public TransformationGetter {
+ public:
+  struct Config {} const config;
+
+  explicit IdentityTransformationGetter(const Config& config);
+
+  /**
+   * @brief Returns nullopt — the transform remains at its default (Identity).
+   * Use this getter when no relocalization is needed (prior and current frames
+   * are the same).
+   */
+  std::optional<Eigen::Isometry3d> getTransformation() const override;
+};
+
+void declare_config(IdentityTransformationGetter::Config& config);
 
 }  // namespace khronos

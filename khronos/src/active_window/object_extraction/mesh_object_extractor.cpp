@@ -62,6 +62,7 @@ void declare_config(MeshObjectExtractor::Config& config) {
   field(config.visualize_classification, "visualize_classification");
   field(config.projective_integrator, "projective_integrator");
   field(config.mesh_integrator, "mesh_integrator");
+  enum_field(config.bbox_type, "bbox_type", std::vector<std::string>{"aabb", "raabb"});
 
   checkInRange(
       config.min_object_allocation_confidence, 0.0f, 1.0f, "min_object_allocation_confidence");
@@ -287,7 +288,10 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
   if (object->mesh.points.empty()) {
     object->bounding_box = extent;
   } else {
-    object->bounding_box = BoundingBox(object->mesh.points);
+    const BoundingBox::Type bbox_type = config.bbox_type == Config::BBoxType::kRAABB
+                                            ? BoundingBox::Type::RAABB
+                                            : BoundingBox::Type::AABB;
+    object->bounding_box = BoundingBox(object->mesh.points, bbox_type);
   }
   if (object->bounding_box.volume() > config.max_object_volume) {
     CLOG(5) << "[MeshObjectExtractor] Dropping " << getTrackName(track) << ": large volume ("

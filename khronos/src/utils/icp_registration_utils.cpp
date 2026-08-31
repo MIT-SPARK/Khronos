@@ -35,52 +35,39 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#pragma once
+#include "khronos/utils/icp_registration_utils.h"
 
-#include <string>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
-
-#include <geometry_msgs/msg/point.hpp>
-#include <geometry_msgs/msg/vector3.hpp>
-#include <khronos/common/common_types.h>
-#include <std_msgs/msg/color_rgba.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
+#include <small_gicp/registration/registration_helper.hpp>
 
 namespace khronos {
 
-// Conversion utils.
-geometry_msgs::msg::Vector3 setScale(const float scale);
-geometry_msgs::msg::Point setPoint(const Point& point);
-std_msgs::msg::ColorRGBA setColor(const std::vector<float>& color);
-std_msgs::msg::ColorRGBA setColor(const Color& color);
-// Overrides the color's alpha with the given value
-std_msgs::msg::ColorRGBA setColor(Color color, uint8_t alpha);
-cv::Vec3b colorToCv(const Color& color);
-Color cvToColor(const cv::Vec3b& color);
-void applyColor(const Color& color, cv::Vec3b& pixel, float alpha = 1.f);
+using Cloud = std::vector<Eigen::Vector3f>;
+using Result = ICPRegistrationUtils::Result;
 
-// Visualization utils.
-visualization_msgs::msg::Marker setBoundingBox(const BoundingBox& bb,
-                                               const Color& color,
-                                               const std_msgs::msg::Header& header,
-                                               const float scale = 0.03);
+Result ICPRegistrationUtils::registerPointClouds(const Cloud& p_source,
+                                                 const Cloud& p_target,
+                                                 size_t num_threads,
+                                                 float downsampling_resolution,
+                                                 float max_correspondence_distance,
+                                                 size_t max_iterations) {
+  small_gicp::RegistrationSetting setting;
+  setting.num_threads = num_threads;
+  setting.downsampling_resolution = downsampling_resolution;
+  setting.max_correspondence_distance = max_correspondence_distance;
+  setting.max_iterations = max_iterations;
 
-// Filling annoying rviz markers with empty and reset markers.
-class MarkerArrayTracker {
-  MarkerArrayTracker() = default;
-  virtual ~MarkerArrayTracker() = default;
-
-  /**
-   * @brief Update the marker array such that only current markers are disaplyed. This adds delete
-   * markers for all ids that are not in the current marker array for all namespaces that occur in
-   * the current marker array.
-   */
-  void updateMarkerArray(visualization_msgs::msg::MarkerArray& marker);
-  visualization_msgs::msg::MarkerArray createResetMarker(std::vector<std::string> namespaces);
-
-  std::unordered_map<std::string, std::unordered_set<int>> previous_ids_;
-};
+  // Note: small_gicp::align expects (target, source, initial_guess)
+  // This will return T_target_source
+  auto result = small_gicp::align(p_target, p_source, Eigen::Isometry3d::Identity(), setting);
+  return {
+      result.T_target_source,
+      result.converged,
+      result.iterations,
+      result.num_inliers,
+      result.H,
+      result.b,
+      result.error,
+  };
+}
 
 }  // namespace khronos

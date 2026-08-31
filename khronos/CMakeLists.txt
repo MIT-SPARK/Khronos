@@ -19,6 +19,7 @@ find_package(OpenCV REQUIRED COMPONENTS core imgproc)
 find_package(spark_dsg REQUIRED)
 find_package(kimera_pgmo REQUIRED)
 find_package(hydra REQUIRED)
+find_package(small_gicp REQUIRED)
 
 include(GNUInstallDirs)
 
@@ -26,8 +27,23 @@ include(GNUInstallDirs)
 # Libraries #
 #############
 
+add_library(${PROJECT_NAME}_registration
+    src/utils/icp_registration_utils.cpp
+)
+target_include_directories(${PROJECT_NAME}_registration
+    PUBLIC $<INSTALL_INTERFACE:include>
+           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+)
+target_link_libraries(${PROJECT_NAME}_registration
+    PRIVATE small_gicp::small_gicp
+)
+set_property(TARGET ${PROJECT_NAME}_registration PROPERTY POSITION_INDEPENDENT_CODE ON)
+add_library(khronos::${PROJECT_NAME}_registration ALIAS ${PROJECT_NAME}_registration)
+
 add_library(${PROJECT_NAME}
         src/active_window/active_window.cpp
+        src/active_window/change_detection/active_window_change_detector.cpp
+        src/active_window/change_detection/transformation_getter.cpp
         src/active_window/data/frame_data_buffer.cpp
         src/active_window/data/track.cpp
         src/active_window/integration/object_integrator.cpp
@@ -39,6 +55,7 @@ add_library(${PROJECT_NAME}
         src/active_window/object_extraction/object_worker_pool.cpp
         src/active_window/tracking/external_tracker.cpp
         src/active_window/tracking/max_iou_tracker.cpp
+        src/active_window/tracking/semantic_matching.cpp
         src/backend/backend.cpp
         src/backend/change_detection/background/ray_background_change_detector.cpp
         src/backend/change_detection/objects/ray_object_change_detector.cpp
@@ -75,6 +92,7 @@ ${PROJECT_NAME}
         spatial_hash::spatial_hash
         ${kimera_pgmo_LIBRARIES}
         ${hydra_LIBRARIES}
+        ${PROJECT_NAME}_registration
         PRIVATE ${tf2_eigen_LIBRARIES}
 )
 set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)

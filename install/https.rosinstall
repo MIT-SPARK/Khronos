@@ -31,6 +31,10 @@
     uri: https://github.com/MIT-SPARK/Spark-DSG.git
     version: main
 - git:
+    local-name: small_gicp
+    uri: https://github.com/koide3/small_gicp.git
+    version: master
+- git:
     local-name: spatial_hash
     uri: https://github.com/MIT-SPARK/Spatial-Hash.git
     version: main

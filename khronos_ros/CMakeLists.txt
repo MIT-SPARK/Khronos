@@ -17,6 +17,7 @@ find_package(gflags REQUIRED)
 find_package(hydra_ros REQUIRED)
 find_package(khronos REQUIRED)
 find_package(khronos_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 # ##############################################################################
 # Libraries #
@@ -30,8 +31,12 @@ add_library(
   src/experiments/experiment_manager.cpp
   src/experiments/experiment_directory.cpp
   src/khronos_pipeline.cpp
+  src/active_window/tf_transformation_getter.cpp
+  src/active_window/tf_icp_publisher.cpp
+  src/active_window/active_window_change_detector_publisher.cpp
   src/visualization/active_window_visualizer.cpp
   src/visualization/implicit_shape_plugin.cpp
+  src/visualization/active_window_change_detector_visualizer.cpp
   src/visualization/visualization_utils.cpp
   src/visualization/spatio_temporal_visualizer.cpp)
 target_include_directories(
@@ -40,7 +45,7 @@ target_include_directories(
          "$<INSTALL_INTERFACE:include>"
 )
 target_link_libraries(${PROJECT_NAME} PUBLIC khronos::khronos hydra_ros::hydra_ros PRIVATE cv_bridge::cv_bridge)
-ament_target_dependencies(${PROJECT_NAME} PUBLIC khronos_msgs)
+ament_target_dependencies(${PROJECT_NAME} PUBLIC khronos_msgs tf2_ros)
 
 # ##############################################################################
 # Executables #
@@ -70,5 +75,5 @@ install(PROGRAMS
 )
 
 ament_export_targets(${PROJECT_NAME}-targets HAS_LIBRARY_TARGET)
-ament_export_dependencies(gflags hydra_ros khronos khronos_msgs)
+ament_export_dependencies(gflags hydra_ros khronos khronos_msgs tf2_ros)
 ament_package()
