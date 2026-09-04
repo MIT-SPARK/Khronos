@@ -37,12 +37,12 @@
 
 #include "khronos_ros/active_window/tf_transformation_getter.h"
 
+#include <Eigen/Geometry>
 #include <config_utilities/config.h>
 #include <config_utilities/validation.h>
+#include <glog/logging.h>
 #include <hydra/common/global_info.h>
 #include <hydra/utils/logging.h>
-
-#include <Eigen/Geometry>
 
 namespace khronos {
 namespace {
