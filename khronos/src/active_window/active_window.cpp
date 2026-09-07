@@ -38,7 +38,6 @@
 #include "khronos/active_window/active_window.h"
 
 #include <hydra/common/global_info.h>
-#include <hydra/input/input_conversion.h>
 #include <hydra/input/sensor_utilities.h>
 #include <hydra/reconstruction/integration_masking.h>
 
@@ -144,10 +143,15 @@ void ActiveWindow::updateTrackingStatus(const FrameData& data) {
   }
 }
 
-hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& input) {
+hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Ptr& input) {
+  if (!input) {
+    return nullptr;
+  }
+
+  const auto stamp = input->timestamp_ns;
   std::lock_guard<std::mutex> lock(mutex_);
-  latest_stamp_ = input.timestamp_ns;
-  Timer timer("active_window/all", latest_stamp_);
+  latest_stamp_ = stamp;
+  Timer timer("active_window/all", stamp);
 
   // Create a data package for the given input.
   std::shared_ptr<FrameData> data = createData(input);
@@ -188,18 +192,18 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& 
           << ", object extraction threads running: " << extraction_worker_.numRunning() << ".";
   if (num_frames_processed_ % 10 == 0) {
     CLOG(3) << "[Khronos Active Window] Processed input frame " << num_frames_processed_ << " ("
-            << input.timestamp_ns << "). Queues: " << input_queue_->size() << " input,  "
+            << stamp << "). Queues: " << input_queue_->size() << " input,  "
             << output_queue_->size() << " frontend.";
   }
   ++num_frames_processed_;
 
-  Timer sink_timer("active_window/sinks", latest_stamp_);
+  Timer sink_timer("active_window/sinks", stamp);
   KhronosSink::callAll(sinks_, *data, map_, tracks_);
   sink_timer.stop();
 
   // TODO(lschmid): Double check this does what's intended. Check whether we can move mesh
   // extraction here and whether it makes sense to move launching object threads before this.
-  if (last_full_upated_ + fromSeconds(config.min_output_separation) > latest_stamp_) {
+  if (last_full_upated_ + fromSeconds(config.min_output_separation) > stamp) {
     return nullptr;
   }
 
@@ -207,7 +211,7 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputPacket& 
   CLOG(5) << "[Khronos Active Window] Extracting output data.";
   auto output = extractOutputData(*data, config.detach_object_extraction);
   output->sensor_data = std::make_shared<hydra::InputData>(data->input);
-  last_full_upated_ = latest_stamp_;
+  last_full_upated_ = stamp;
 
   // unset update flags
   for (const auto& block : map_.getTsdfLayer()) {
@@ -267,17 +271,14 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::extractOutputData(const FrameData& 
 
   auto output = std::make_shared<hydra::ActiveWindowOutput>();
   output->timestamp_ns = data.input.timestamp_ns;
-  output->world_t_body = data.input.world_T_body.translation();
-  output->world_R_body = data.input.world_T_body.rotation();
   output->setMap(map_.cloneUpdated());
 
   // NOTE(nathan) comes after cloning the map and generating the mesh to preserve updated blocks
   // that have left the temporal window. This can only happen if the active window has a temporal
   // window smaller than min_input_separation_s (or in other rarer situations where the data period
   // is larger than the temporal window)
-  tracking_integrator_.resetInactive(map_, &output->archived_mesh_indices);
-  CLOG(4) << "[Khronos Active Window] Archiving " << output->archived_mesh_indices.size()
-          << " blocks.";
+  tracking_integrator_.resetInactive(map_, &output->archived);
+  CLOG(4) << "[Khronos Active Window] Archiving " << output->archived.size() << " blocks.";
 
   extractInactiveObjects();
   if (!threaded) {
@@ -317,21 +318,20 @@ void ActiveWindow::extractInactiveObjects() {
   }
 }
 
-std::unique_ptr<FrameData> ActiveWindow::createData(const hydra::InputPacket& input) const {
+std::unique_ptr<FrameData> ActiveWindow::createData(const hydra::InputData::Ptr& input) const {
   Timer timer("active_window/create_data", latest_stamp_);
   // Compute all required other data from the inputs. Right now also allocates
   // all other data (such as the dynamic and object image), so we don't need to
   // check for this if these modules are disabled.
 
   // Normalize raw input packet into the standard format.
-  auto input_data = hydra::conversions::parseInputPacket(input, true, map_.hasSemantics());
-  if (!input_data) {
+  if (!input->finalize(true, map_.hasSemantics())) {
     LOG(ERROR) << "[Khronos Active Window] Input packet preprocessing failed. Skipping frame.";
     return nullptr;
   }
 
   // Allocate other data internally carried by Khronos.
-  std::unique_ptr<FrameData> result = std::make_unique<FrameData>(std::move(*input_data));
+  std::unique_ptr<FrameData> result = std::make_unique<FrameData>(std::move(*input));
   result->dynamic_image = cv::Mat::zeros(result->input.range_image.size(), CV_32SC1);
   result->object_image = cv::Mat::zeros(result->input.range_image.size(), CV_32SC1);
   return result;

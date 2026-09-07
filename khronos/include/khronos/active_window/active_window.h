@@ -37,12 +37,9 @@
 
 #pragma once
 
-#include <atomic>
-#include <deque>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
@@ -150,7 +147,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
 
  protected:
   // Spin the active window in a separate thread.
-  hydra::ActiveWindowOutput::Ptr spinOnce(const hydra::InputPacket& input) override;
+  hydra::ActiveWindowOutput::Ptr spinOnce(const hydra::InputData::Ptr& input) override;
 
   // Processing.
   /**
@@ -159,7 +156,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
    * @param input The input data packet.
    * @returns The Khronos data with normalized input data and allocated internal types.
    */
-  std::unique_ptr<FrameData> createData(const hydra::InputPacket& input) const;
+  std::unique_ptr<FrameData> createData(const hydra::InputData::Ptr& input) const;
 
   /**
    * @brief Update the volumetric map with the given data.
