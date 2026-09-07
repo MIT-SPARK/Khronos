@@ -105,7 +105,7 @@ class Backend : public hydra::BackendModule {
   // Spinning.
   void start() override;
   void spin();
-  void spinCallback(const hydra::BackendInput& input);
+  void spinCallback(const hydra::FrontendOutput& input);
 
   // Interaction.
   /**
@@ -126,7 +126,7 @@ class Backend : public hydra::BackendModule {
 
   size_t findClosestNode(size_t timestamp_ns);
 
-  void fixInputPoses(const hydra::BackendInput& input);
+  void fixInputPoses(const hydra::FrontendOutput& input);
 
   void runChangeDetection();
 
@@ -158,14 +158,14 @@ class Backend : public hydra::BackendModule {
   int num_frames_since_last_change_detection_ = 0;
 
   ChangeSink::List change_sinks_;
-  
+
   // Registration for factory
-  inline static const auto registration_ = config::RegistrationWithConfig<
-      hydra::BackendModule,
-      Backend,
-      Config,
-      hydra::SharedDsgInfo::Ptr,
-      hydra::SharedModuleState::Ptr>("Backend");
+  inline static const auto registration_ =
+      config::RegistrationWithConfig<hydra::BackendModule,
+                                     Backend,
+                                     Config,
+                                     hydra::SharedDsgInfo::Ptr,
+                                     hydra::SharedModuleState::Ptr>("Backend");
 };
 
 void declare_config(Backend::Config& config);

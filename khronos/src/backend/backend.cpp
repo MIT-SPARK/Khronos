@@ -55,9 +55,6 @@
 namespace khronos {
 
 using hydra::UpdateInfo;
-using spark_dsg::ObjectNodeAttributes;
-using spark_dsg::PlaceNodeAttributes;
-using spark_dsg::SemanticNodeAttributes;
 
 void declare_config(Backend::Config& config) {
   using namespace config;
@@ -122,7 +119,7 @@ void Backend::spin() {
   }
 }
 
-void Backend::spinCallback(const hydra::BackendInput& input) {
+void Backend::spinCallback(const hydra::FrontendOutput& input) {
   status_log_.emplace_back(hydra::BackendModuleStatus{});
   std::lock_guard<std::mutex> lock(mutex_);
   const uint64_t timestamp_ns = input.timestamp_ns;
@@ -300,8 +297,8 @@ void Backend::save(const hydra::DataDirectory& log_setup) {
       if (dsg) {
         // Save with timestamp as filename
         std::stringstream filename;
-        filename << "dsg_" << std::setw(5) << std::setfill('0') << i
-                 << "_" << timestamps[i] << ".json";
+        filename << "dsg_" << std::setw(5) << std::setfill('0') << i << "_" << timestamps[i]
+                 << ".json";
         dsg->save(maps_path / filename.str(), false);
       }
     }
@@ -312,7 +309,7 @@ void Backend::save(const hydra::DataDirectory& log_setup) {
   }
 }
 
-void Backend::fixInputPoses(const hydra::BackendInput& input) {
+void Backend::fixInputPoses(const hydra::FrontendOutput& input) {
   std::vector<std::pair<gtsam::Key, gtsam::Pose3>> prior_measurements;
   for (const auto& msg : input.agent_updates.pose_graphs) {
     status_log_.back().new_factors += msg.edges.size();
