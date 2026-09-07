@@ -48,7 +48,7 @@ static const auto registration =
 
 }  // namespace
 
-void declare_config(IdentityTransformationGetter::Config& config) {
+void declare_config(IdentityTransformationGetter::Config&) {
   using namespace config;
   name("IdentityTransformationGetter");
 }
