@@ -40,6 +40,8 @@
 #include <optional>
 #include <vector>
 
+#include <nlohmann/json_fwd.hpp>
+
 #include "khronos/common/common_types.h"
 
 namespace khronos {
@@ -59,6 +61,11 @@ struct SemanticClusterInfo {
   bool operator==(const SemanticClusterInfo& other) const {
     return category_id == other.category_id && feature == other.feature;
   }
+
+  //! Serialize to JSON. The feature vector is only persisted when it actually carries openset
+  //! info (size > 1); a size-1 feature is the "no features" placeholder.
+  nlohmann::json toJson() const;
+  static SemanticClusterInfo fromJson(const nlohmann::json& j);
 };
 
 //! Common data structurefor all detected measurement clusters.
@@ -73,8 +80,25 @@ struct MeasurementCluster {
   int id;
   //! Semantic information associated with the cluster
   std::optional<SemanticClusterInfo> semantics;
+
+  //! Serialize id, bounding_box, and semantics. `pixels` are re-derived by the caller from the
+  //! corresponding object/dynamic image on load and `voxels` are not persisted, so neither is
+  //! included here.
+  nlohmann::json toJson() const;
+  static MeasurementCluster fromJson(const nlohmann::json& j);
 };
 
 using MeasurementClusters = std::vector<MeasurementCluster>;
+
+/**
+ * @brief Serialize a BoundingBox to JSON manually
+ */
+nlohmann::json boundingBoxToJson(const BoundingBox& bbox);
+BoundingBox boundingBoxFromJson(const nlohmann::json& j);
+
+void to_json(nlohmann::json& j, const SemanticClusterInfo& semantics);
+void from_json(const nlohmann::json& j, SemanticClusterInfo& semantics);
+void to_json(nlohmann::json& j, const MeasurementCluster& cluster);
+void from_json(const nlohmann::json& j, MeasurementCluster& cluster);
 
 }  // namespace khronos

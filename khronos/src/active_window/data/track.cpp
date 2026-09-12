@@ -37,7 +37,104 @@
 
 #include "khronos/active_window/data/track.h"
 
+#include <fstream>
+
+#include <nlohmann/json.hpp>
+#include <spark_dsg/serialization/json_conversions.h>  // Eigen adl_serializer (Vector3f, VectorXf, ...)
+
 namespace khronos {
+namespace {
+
+using json = nlohmann::json;
+
+json toJson(const GlobalIndexSet& voxels) {
+  json arr = json::array();
+  for (const GlobalIndex& voxel : voxels) {
+    arr.push_back({voxel.x(), voxel.y(), voxel.z()});
+  }
+  return arr;
+}
+
+GlobalIndexSet globalIndexSetFromJson(const json& j) {
+  GlobalIndexSet voxels;
+  for (const auto& entry : j) {
+    voxels.insert(GlobalIndex(entry.at(0).get<int>(), entry.at(1).get<int>(), entry.at(2).get<int>()));
+  }
+  return voxels;
+}
+
+}  // namespace
+
+void to_json(json& j, const Observation& obs) {
+  j = json{{"stamp", obs.stamp},
+          {"semantic_cluster_id", obs.semantic_cluster_id},
+          {"dynamic_cluster_id", obs.dynamic_cluster_id},
+          {"sensor", obs.sensor}};
+}
+
+void from_json(const json& j, Observation& obs) {
+  obs.stamp = j.at("stamp").get<TimeStamp>();
+  obs.semantic_cluster_id = j.at("semantic_cluster_id").get<int>();
+  obs.dynamic_cluster_id = j.at("dynamic_cluster_id").get<int>();
+  // Tolerant read: older saved tracks predate the "sensor" field.
+  obs.sensor = j.value("sensor", std::string());
+}
+
+void to_json(json& j, const Track& track) {
+  j = json{{"id", track.id},
+          {"last_seen", track.last_seen},
+          {"first_seen", track.first_seen},
+          {"observations", track.observations},
+          {"last_bounding_box", boundingBoxToJson(track.last_bounding_box)},
+          {"last_voxels", toJson(track.last_voxels)},
+          {"last_points", track.last_points},
+          {"last_voxel_size", track.last_voxel_size},
+          {"last_centroid", track.last_centroid},
+          {"num_features", track.num_features},
+          {"is_dynamic", track.is_dynamic},
+          {"confidence", track.confidence}};
+
+  j["semantics"] = track.semantics ? track.semantics->toJson() : json(nullptr);
+}
+
+void from_json(const json& j, Track& track) {
+  track.id = j.at("id").get<int>();
+  track.last_seen = j.at("last_seen").get<TimeStamp>();
+  track.first_seen = j.at("first_seen").get<TimeStamp>();
+  track.observations = j.at("observations").get<Observations>();
+  track.last_bounding_box = boundingBoxFromJson(j.at("last_bounding_box"));
+  track.last_voxels = globalIndexSetFromJson(j.at("last_voxels"));
+  track.last_points = j.at("last_points").get<Points>();
+  track.last_voxel_size = j.at("last_voxel_size").get<float>();
+  track.last_centroid = j.at("last_centroid").get<Point>();
+  track.num_features = j.at("num_features").get<size_t>();
+  track.is_dynamic = j.at("is_dynamic").get<bool>();
+  track.confidence = j.at("confidence").get<float>();
+
+  if (!j.at("semantics").is_null()) {
+    track.semantics = SemanticClusterInfo::fromJson(j.at("semantics"));
+  }
+}
+
+void Track::save(const std::string& filepath) const {
+  std::ofstream file(filepath);
+  if (!file.is_open()) {
+    LOG(ERROR) << "[Track] Failed to open '" << filepath << "' for writing.";
+    return;
+  }
+  file << json(*this).dump(2);
+}
+
+Track Track::load(const std::string& filepath) {
+  std::ifstream file(filepath);
+  if (!file.is_open()) {
+    LOG(ERROR) << "[Track] Failed to open '" << filepath << "' for reading.";
+    return Track();
+  }
+  json j;
+  file >> j;
+  return j.get<Track>();
+}
 
 void Track::updateSemantics(const std::optional<SemanticClusterInfo>& other) {
   if (!other) {

@@ -38,6 +38,7 @@
 #pragma once
 
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -133,6 +134,17 @@ class MaxIoUTracker : public Tracker {
   float computeIoUPixels(const FrameData& data,
                          const MeasurementCluster& cluster,
                          const Track& track) const;
+  /**
+   * @brief Reproject a set of 3D world points into the given frame's sensor image plane.
+   * Extracted from computeIoUPixels so debugging/visualization tools (e.g. test_track_association)
+   * can obtain the same reprojected pixel set the tracker's own pixel-IoU comparison uses, without
+   * duplicating the formula.
+   * @param data The frame to reproject into (uses its sensor pose and sensor model).
+   * @param points 3D world points to reproject (e.g. a track's last_points).
+   * @return The set of image pixels the points project onto (points that fail to project, e.g.
+   * behind the camera, are omitted).
+   */
+  std::set<Pixel> reprojectPoints(const FrameData& data, const Points& points) const;
   float computeIoUBoundingBox(const FrameData& data,
                               const MeasurementCluster& cluster,
                               const Track& track) const;
