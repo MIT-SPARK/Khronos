@@ -210,7 +210,6 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
   // Extract the resulting output and push to frontend queue.
   CLOG(5) << "[Khronos Active Window] Extracting output data.";
   auto output = extractOutputData(*data, config.detach_object_extraction);
-  output->sensor_data = std::make_shared<hydra::InputData>(data->input);
   last_full_upated_ = stamp;
 
   // unset update flags
@@ -263,14 +262,16 @@ void ActiveWindow::updateMap(const SensorProcessor& processor, const FrameData& 
 
 hydra::ActiveWindowOutput::Ptr ActiveWindow::extractOutputData(const FrameData& data,
                                                                bool threaded) {
+  using hydra::ActiveWindowOutput;
+  using hydra::InputData;
+
   // Extract background mesh and objects that leaves the active window.
   Timer timer("active_window/extract_output", latest_stamp_);
 
   // Reconstruct the mesh from TSDF.
   mesh_integrator_.generateMesh(map_, true, true);
 
-  auto output = std::make_shared<hydra::ActiveWindowOutput>();
-  output->timestamp_ns = data.input.timestamp_ns;
+  auto output = std::make_shared<ActiveWindowOutput>(std::make_shared<InputData>(data.input));
   output->setMap(map_.cloneUpdated());
 
   // NOTE(nathan) comes after cloning the map and generating the mesh to preserve updated blocks
