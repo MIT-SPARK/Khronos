@@ -37,6 +37,7 @@
 
 #include "khronos/active_window/motion_detection/free_space_motion_detector.h"
 
+#include <cmath>
 #include <future>
 #include <string>
 #include <vector>
@@ -172,6 +173,10 @@ void FreeSpaceMotionDetector::setUpPointMapPart(const FrameData& data,
       }
 
       const auto& vertex = data.input.vertex_map.at<InputData::VertexType>(v, u);
+      if (!std::isfinite(vertex[0]) || !std::isfinite(vertex[1]) || !std::isfinite(vertex[2])) {
+        continue;
+      }
+
       const Point p_W(vertex[0], vertex[1], vertex[2]);
       if (p_W.z() < min_z_world_) {
         continue;
