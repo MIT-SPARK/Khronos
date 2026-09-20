@@ -49,7 +49,7 @@ struct SemanticClusterInfo {
   //! Semantic category ID of this cluster.
   int category_id = -1;
   //! Feature vector (used for open-set)
-  FeatureVector feature = FeatureVector(0, 0);
+  FeatureVector feature;
 
   explicit SemanticClusterInfo(int category_id) : category_id(category_id) {}
   explicit SemanticClusterInfo(const FeatureVector& feature) : feature(feature) {}
