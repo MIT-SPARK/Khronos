@@ -70,12 +70,9 @@ class ExternalTracker : public Tracker {
   // Processing.
   void associateTracks(const FrameData& data, Tracks& tracks);
   void addNewTrack(const FrameData& data, const MeasurementCluster& observation, Tracks& tracks);
-  // Virtual so ExternalTrackerWithBox (external_tracker_with_box.h) can extend this with the
-  // track geometry fields (last_bounding_box, last_points) this base class leaves untouched --
-  // see that class's header comment for why that matters.
-  virtual void updateTrack(const FrameData& data,
-                           const MeasurementCluster& observation,
-                           Track& track) const;
+  void updateTrack(const FrameData& data,
+                   const MeasurementCluster& observation,
+                   Track& track) const;
 
  private:
   TimeStamp processing_stamp_;
