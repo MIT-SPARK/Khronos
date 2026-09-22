@@ -43,23 +43,18 @@
 #include <config_utilities/factory.h>
 
 namespace khronos {
-
 namespace {
-// Config is a plain alias for MaxIoUTracker::Config (see the header), so its declare_config
-// overload is reused as-is -- no new one needed here.
+
 static const auto registration =
     config::RegistrationWithConfig<Tracker, HybridTracker, HybridTracker::Config>("HybridTracker");
+
 }  // namespace
 
 HybridTracker::HybridTracker(const Config& config) : MaxIoUTracker(config) {}
 
 void HybridTracker::processInput(FrameData& data, Tracks& tracks) {
-  processing_stamp_ = data.input.timestamp_ns;
-  Timer timer("tracking/all", processing_stamp_);
+  Timer timer("tracking/all", data.input.timestamp_ns);
 
-  // Compute the entities the objects are going to be tracked by (pixels, voxels, or bounding
-  // box) -- same as MaxIoUTracker::processInput, needed regardless of which clusters end up
-  // trust-resolved.
   setupTrackMeasurements(data);
 
   // Trust pass: exact BoxMOT-id match, for every track (dynamic and static alike).
@@ -80,18 +75,20 @@ void HybridTracker::trustPass(const FrameData& data,
   for (const auto& cluster : data.semantic_clusters) {
     semantic_by_id[cluster.id] = &cluster;
   }
+
   std::unordered_map<int, const MeasurementCluster*> dynamic_by_id;
   for (const auto& cluster : data.dynamic_clusters) {
     dynamic_by_id[cluster.id] = &cluster;
   }
 
-  for (Track& track : tracks) {
+  for (auto& track : tracks) {
     if (track.observations.empty()) {
       continue;
     }
 
-    const Observation& last_obs = track.observations.back();
-    const int last_id = track.is_dynamic ? last_obs.dynamic_cluster_id : last_obs.semantic_cluster_id;
+    const auto& last_obs = track.observations.back();
+    const int last_id =
+        track.is_dynamic ? last_obs.dynamic_cluster_id : last_obs.semantic_cluster_id;
     if (last_id < 0) {
       // No BoxMOT id recorded last time (shouldn't happen once a track has been updated at
       // least once, but guard defensively).
@@ -110,6 +107,7 @@ void HybridTracker::trustPass(const FrameData& data,
     } else {
       resolved_semantic_cluster_ids.insert(last_id);
     }
+
     updateTrack(data, *it->second, track, track.is_dynamic);
     if (track.is_dynamic) {
       // Mirrors MaxIoUTracker::associateDynamicTracks, which also refreshes last_centroid on

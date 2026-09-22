@@ -154,13 +154,6 @@ class MaxIoUTracker : public Tracker {
                               const Track& track) const;
   Point computeCentroid(const FrameData& data, const MeasurementCluster& cluster) const;
 
- protected:
-  // Set once per frame by processInput(); protected (rather than private) so a subclass with its
-  // own processInput override (e.g. HybridTracker, which interleaves a trust pass before calling
-  // the inherited association methods rather than calling MaxIoUTracker::processInput() itself)
-  // can set it directly, matching what processInput() does.
-  TimeStamp processing_stamp_;
-
  private:
   // Members.
   const spatial_hash::Grid<GlobalIndex> grid_;
