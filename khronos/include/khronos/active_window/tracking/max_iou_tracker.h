@@ -91,11 +91,11 @@ class MaxIoUTracker : public Tracker {
 
   // Processing.
   void setupTrackMeasurements(FrameData& data) const;
-  void preassociateTracks(const FrameData& data, Tracks& tracks);
   void associateTracks(const FrameData& data, Tracks& tracks);
   void associateSemanticTracks(const FrameData& data, Tracks& tracks);
   void associateDynamicTracks(const FrameData& data, Tracks& tracks);
   void crossAssociateTracks(const FrameData& data, Tracks& tracks);
+  void preassociateSemanticTracks(const FrameData& data, Tracks& tracks);
   void assignStaticTracksToCluster(const FrameData& data, Tracks& tracks);
   void assignClustersToStaticTrack(const FrameData& data, Tracks& tracks);
 
