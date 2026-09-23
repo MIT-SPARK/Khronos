@@ -56,6 +56,27 @@ namespace {
 static const auto registration =
     config::RegistrationWithConfig<Tracker, MaxIoUTracker, MaxIoUTracker::Config>("MaxIouTracker");
 
+std::optional<uint32_t> getSemanticId(const Track& track) {
+  if (track.observations.empty()) {
+    return std::nullopt;
+  }
+
+  // NOTE(nathan) this has the potential to be really inefficient (linear traversal of observations
+  // for every track in the worst case) when we allow dynamic tracks. we could fix this by adding a
+  // summary semantic id to the track, but we need to clean up how track representative statistics
+  // work
+
+  // get the most recent semantic ID in a track by iterating in reverse
+  for (auto iter = track.observations.rbegin(); iter != track.observations.rend(); ++iter) {
+    const auto& obs = *iter;
+    if (obs.semantic_cluster_id >= 0) {
+      return obs.semantic_cluster_id;
+    }
+  }
+
+  return std::nullopt;
+}
+
 }  // namespace
 
 void declare_config(MaxIoUTracker::Config& config) {
@@ -73,6 +94,8 @@ void declare_config(MaxIoUTracker::Config& config) {
   field(config.max_dynamic_distance, "max_dynamic_distance", "m");
   field(config.min_num_observations, "min_num_observations", "frames");
   field(config.voxel_size, "voxel_size", "m");
+  field(config.preassociate_by_id, "preassociate_by_id");
+  field(config.preassociate_to_dynamic, "preassociate_to_dynamic");
 
   checkInRange(config.min_cross_iou, 0.0f, 1.0f, "min_cross_iou");
   checkInRange(config.min_semantic_iou, 0.0f, 1.0f, "min_semantic_iou");
@@ -121,35 +144,6 @@ void MaxIoUTracker::processInput(FrameData& data, Tracks& tracks) {
   ++sequence_number_;
 }
 
-void MaxIoUTracker::preassociateSemanticTracks(const FrameData& data, Tracks& tracks) {
-  std::unordered_map<int, size_t> id_to_cluster;
-  for (size_t i = 0; i < data.semantic_clusters.size(); ++i) {
-    id_to_cluster[data.semantic_clusters[i].id] = i;
-  }
-
-  for (auto& track : tracks) {
-    if (track.observations.empty()) {
-      continue;
-    }
-
-    const auto& last_obs = track.observations.back();
-    const int last_id =
-        track.is_dynamic ? last_obs.dynamic_cluster_id : last_obs.semantic_cluster_id;
-    if (last_id < 0) {
-      continue;
-    }
-
-    const auto iter = id_to_cluster.find(last_id);
-    if (iter == id_to_cluster.end()) {
-      continue;  // track has no matching cluster
-    }
-
-    const auto& [id, cluster_idx] = *iter;
-    semantic_assigned_[cluster_idx] = true;
-    updateTrack(data, data.semantic_clusters[cluster_idx], track, track.is_dynamic);
-  }
-}
-
 void MaxIoUTracker::associateTracks(const FrameData& data, Tracks& tracks) {
   Timer timer("tracking/associate", data.input.timestamp_ns);
 
@@ -160,6 +154,9 @@ void MaxIoUTracker::associateTracks(const FrameData& data, Tracks& tracks) {
   if (config.preassociate_by_id) {
     preassociateSemanticTracks(data, tracks);
   }
+
+  // TODO(nathan) this needs to be revamped to combine a static track with a dynamic track for
+  // objects that were static but start moving when observed
 
   // Associate semantic clusters to dynamic tracks
   crossAssociateTracks(data, tracks);
@@ -224,6 +221,39 @@ void MaxIoUTracker::associateDynamicTracks(const FrameData& data, Tracks& tracks
   }
 
   MLOG(4) << "Associated " << num_assoc << " dynamic detections with " << num_new << " new tracks";
+}
+
+void MaxIoUTracker::preassociateSemanticTracks(const FrameData& data, Tracks& tracks) {
+  std::unordered_map<int, size_t> id_to_cluster;
+  for (size_t i = 0; i < data.semantic_clusters.size(); ++i) {
+    id_to_cluster[data.semantic_clusters[i].id] = i;
+  }
+
+  for (auto& track : tracks) {
+    if (track.is_dynamic && !config.preassociate_to_dynamic) {
+      // NOTE(nathan) this probably shouldn't be turned on until we think through cross-association
+      // more fully
+      continue;
+    }
+
+    const auto last_track_id = getSemanticId(track);
+    if (!last_track_id) {
+      continue;
+    }
+
+    const auto iter = id_to_cluster.find(*last_track_id);
+    if (iter == id_to_cluster.end()) {
+      continue;  // track has no matching cluster
+    }
+
+    const auto& [id, cluster_idx] = *iter;
+    if (semantic_assigned_[cluster_idx]) {
+      continue;  // we've already associated this cluster to a different track
+    }
+
+    semantic_assigned_[cluster_idx] = true;
+    updateTrack(data, data.semantic_clusters[cluster_idx], track, track.is_dynamic);
+  }
 }
 
 void MaxIoUTracker::crossAssociateTracks(const FrameData& data, Tracks& tracks) {

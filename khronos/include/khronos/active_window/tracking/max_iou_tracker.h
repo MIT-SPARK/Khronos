@@ -80,6 +80,8 @@ class MaxIoUTracker : public Tracker {
     enum class BBoxType { kAABB, kRAABB } bbox_type = BBoxType::kAABB;
     //! Preassociate measurements to track IDs with matching IDs (for external tracking)
     bool preassociate_by_id = false;
+    //! Whether or not to allow preassociation dynamic tracks
+    bool preassociate_to_dynamic = false;
   } const config;
 
   // Construction.
