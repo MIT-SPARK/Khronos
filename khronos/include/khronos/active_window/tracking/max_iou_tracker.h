@@ -37,12 +37,9 @@
 
 #pragma once
 
-#include <memory>
-#include <string>
-#include <unordered_set>
 #include <vector>
 
-#include <hydra/common/global_info.h>
+#include <hydra/utils/logging.h>
 #include <spatial_hash/grid.h>
 
 #include "khronos/active_window/data/frame_data.h"
@@ -61,36 +58,28 @@ namespace khronos {
 class MaxIoUTracker : public Tracker {
  public:
   // Config.
-  struct Config {
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
-
-    // Semantic association method
+  struct Config : hydra::VerbosityConfig {
+    Config();
+    //! Semantic association method.
     enum class SemanticAssociation {
       kAssignCluster,
       kAssignTrack
     } semantic_association = SemanticAssociation::kAssignCluster;
-
-    // Minimum IoU to consider two semantic detections a match.
+    //! Minimum IoU to consider two semantic detections a match.
     float min_semantic_iou = 0.5f;
-
-    // Minimum cosine similarity of the semantic features
+    //! Minimum cosine similarity of the semantic features.
     float min_cosine_sim = 0.0f;
-
-    // Minimum IoU to consider a semantic and a dynamic detections a match.
+    //! Minimum IoU to consider a semantic and a dynamic detections a match.
     float min_cross_iou = 0.5f;
-
-    // Allows the dynamic object to move at mostthis distance [m] between frames.
+    //! Allows the dynamic object to move at mostthis distance [m] between frames.
     float max_dynamic_distance = 1.f;
-
-    // Number of times a track has to be observed to be considered existent.
+    //! Number of times a track has to be observed to be considered existent.
     int min_num_observations = 20;
-
-    // Which representation to track between frames [pixels, voxels, bounding_box].
-    enum class TrackBy { kPixels, kVoxels, kBouningBox } track_by = TrackBy::kPixels;
-
-    // Voxel size in meters used for tracking. Only used if 'track_by' is 'voxels'.
+    //! Which representation to track between frames [pixels, voxels, bounding_box].
+    enum class TrackBy { kPixels, kVoxels, kBoundingBox } track_by = TrackBy::kPixels;
+    //! Voxel size in meters used for tracking. Only used if 'track_by' is 'voxels'.
     float voxel_size = 0.1f;
-
+    //! Type of bounding box to extract.
     enum class BBoxType { kAABB, kRAABB } bbox_type = BBoxType::kAABB;
   } const config;
 
@@ -102,47 +91,29 @@ class MaxIoUTracker : public Tracker {
   void processInput(FrameData& data, Tracks& tracks) override;
 
   // Processing.
-  void setup();
   void setupTrackMeasurements(FrameData& data) const;
-  // preassociated_{dynamic,semantic}_cluster_ids: cluster ids to treat as already claimed (e.g.
-  // by a subclass's own pre-pass, see HybridTracker) -- seeds the corresponding internal
-  // associated-objects bookkeeping instead of starting empty. Kept as two separate sets (rather
-  // than one shared set): each function's own "associated_objects.size()" bookkeeping assumes
-  // every id in it is actually a member of the cluster list that function iterates (e.g.
-  // associateDynamicTracks computes `data.dynamic_clusters.size() - associated_objects.size()`),
-  // so seeding it with ids from the *other* cluster list would silently corrupt that arithmetic
-  // (verified: an unsigned-subtraction underflow when a semantic-only id leaked into the
-  // dynamic-track seed). Defaulted so every existing solo-MaxIoUTracker call site is unaffected.
-  void associateTracks(const FrameData& data,
-                       Tracks& tracks,
-                       const std::unordered_set<int>& preassociated_dynamic_cluster_ids = {},
-                       const std::unordered_set<int>& preassociated_semantic_cluster_ids = {});
-  void associateSemanticTracks(const FrameData& data,
-                               Tracks& tracks,
-                               const std::unordered_set<int>& preassociated_cluster_ids = {});
-  void associateDynamicTracks(const FrameData& data,
-                              Tracks& tracks,
-                              const std::unordered_set<int>& preassociated_cluster_ids = {});
-  void assignStaticTracksToCluster(const FrameData& data,
-                                   Tracks& tracks,
-                                   std::unordered_set<int>& associated_objects);
-  void assignClustersToStaticTrack(const FrameData& data,
-                                   Tracks& tracks,
-                                   std::unordered_set<int>& associated_objects);
+  void associateTracks(const FrameData& data, Tracks& tracks);
+  void associateSemanticTracks(const FrameData& data, Tracks& tracks);
+  void associateDynamicTracks(const FrameData& data, Tracks& tracks);
+  void crossAssociateTracks(const FrameData& data, Tracks& tracks);
+  void assignStaticTracksToCluster(const FrameData& data, Tracks& tracks);
+  void assignClustersToStaticTrack(const FrameData& data, Tracks& tracks);
+
   Track& addNewTrack(const FrameData& data,
                      const MeasurementCluster& observation,
                      Tracks& tracks,
                      bool is_dynamic);
+
   void updateTrack(const FrameData& data,
                    const MeasurementCluster& observation,
                    Track& track,
                    bool is_observation_dynamic) const;
 
-  // Track by type specific functions.
-  // Function pointers that call the right function for the track by mode.
-  std::function<void(const FrameData&, MeasurementCluster&)> setupTrackMeasurement;
-  std::function<float(const FrameData&, const MeasurementCluster&, const Track&)> computeIoU;
   void setupTrackMeasurementVoxels(const FrameData& data, MeasurementCluster& cluster) const;
+
+  float computeIoU(const FrameData& data,
+                   const MeasurementCluster& cluster,
+                   const Track& track) const;
   float computeIoUVoxels(const FrameData& data,
                          const MeasurementCluster& cluster,
                          const Track& track) const;
@@ -152,14 +123,17 @@ class MaxIoUTracker : public Tracker {
   float computeIoUBoundingBox(const FrameData& data,
                               const MeasurementCluster& cluster,
                               const Track& track) const;
+
   Point computeCentroid(const FrameData& data, const MeasurementCluster& cluster) const;
+  Point centroidFromPixels(const FrameData& data, const MeasurementCluster& cluster) const;
+  Point centroidFromVoxels(const MeasurementCluster& cluster) const;
+
+  const spatial_hash::Grid<GlobalIndex> grid;
 
  private:
-  // Members.
-  const spatial_hash::Grid<GlobalIndex> grid_;
-
-  // Variables.
   int current_track_id_ = 0;  // TODO(lschmid): at some point reuse IDs.
+  std::vector<bool> semantic_assigned_;
+  std::vector<bool> dynamic_assigned_;
 };
 
 void declare_config(MaxIoUTracker::Config& config);
