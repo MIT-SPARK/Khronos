@@ -129,6 +129,16 @@ void ExternalTracker::updateTrack(const FrameData& data,
       processing_stamp_, observation.id, -1, data.input.getSensor().name);
   track.confidence = std::min(
       static_cast<float>(track.observations.size()) / (config.min_num_observations * 2), 1.f);
+
+  // TODO(nathan) this would be good to unify at some point
+  // populate tracking state with geometry
+  track.last_bounding_box = observation.bounding_box;
+  track.last_points.clear();
+  track.last_points.reserve(observation.pixels.size());
+  for (const Pixel& pixel : observation.pixels) {
+    const auto& point = data.input.vertex_map.at<InputData::VertexType>(pixel.v, pixel.u);
+    track.last_points.emplace_back(point[0], point[1], point[2]);
+  }
 }
 
 }  // namespace khronos
