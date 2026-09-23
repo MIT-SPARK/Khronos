@@ -37,6 +37,8 @@
 
 #pragma once
 
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "khronos/active_window/data/measurement_clusters.h"
@@ -110,6 +112,9 @@ struct Track {
 
   // Whether this object is still active.
   bool is_active = true;
+
+  //! Tracker pass the track was last updated in
+  std::optional<uint32_t> sequence_number;
 
   void updateSemantics(const std::optional<SemanticClusterInfo>& other_semantics);
 };

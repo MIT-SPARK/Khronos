@@ -50,11 +50,8 @@
 namespace khronos {
 
 /**
- * @brief Simple tracker that performs frame to frame tracking byassociating objects to
- * the highest IoU between bounding boxes if a minimum IoU is met.
+ * @brief Frame to frame tracking associating objects to highest IoU track if minimum is met.
  */
-// TODO(lschmid): Double check the tracking by pixels works as intended after the changes, might be
-// something funky there.
 class MaxIoUTracker : public Tracker {
  public:
   // Config.
@@ -81,6 +78,8 @@ class MaxIoUTracker : public Tracker {
     float voxel_size = 0.1f;
     //! Type of bounding box to extract.
     enum class BBoxType { kAABB, kRAABB } bbox_type = BBoxType::kAABB;
+    //! Preassociate measurements to track IDs with matching IDs (for external tracking)
+    bool preassociate_by_id = false;
   } const config;
 
   // Construction.
@@ -92,6 +91,7 @@ class MaxIoUTracker : public Tracker {
 
   // Processing.
   void setupTrackMeasurements(FrameData& data) const;
+  void preassociateTracks(const FrameData& data, Tracks& tracks);
   void associateTracks(const FrameData& data, Tracks& tracks);
   void associateSemanticTracks(const FrameData& data, Tracks& tracks);
   void associateDynamicTracks(const FrameData& data, Tracks& tracks);
@@ -117,6 +117,8 @@ class MaxIoUTracker : public Tracker {
   float computeIoUVoxels(const FrameData& data,
                          const MeasurementCluster& cluster,
                          const Track& track) const;
+  // TODO(lschmid): Double check the tracking by pixels works as intended after the changes, might
+  // be something funky there.
   float computeIoUPixels(const FrameData& data,
                          const MeasurementCluster& cluster,
                          const Track& track) const;
@@ -131,6 +133,7 @@ class MaxIoUTracker : public Tracker {
   const spatial_hash::Grid<GlobalIndex> grid;
 
  private:
+  uint32_t sequence_number_ = 0;
   int current_track_id_ = 0;  // TODO(lschmid): at some point reuse IDs.
   std::vector<bool> semantic_assigned_;
   std::vector<bool> dynamic_assigned_;
