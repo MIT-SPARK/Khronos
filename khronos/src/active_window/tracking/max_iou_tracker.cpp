@@ -61,7 +61,7 @@ static const auto registration =
 void declare_config(MaxIoUTracker::Config& config) {
   using namespace config;
   name("MaxIoUTracker");
-  field(config.verbosity, "verbosity");
+  base<hydra::VerbosityConfig>(config);
   enum_field(config.track_by, "track_by", {"pixels", "voxels", "bounding_box"});
   enum_field(config.semantic_association,
              "semantic_association",
@@ -80,44 +80,24 @@ void declare_config(MaxIoUTracker::Config& config) {
   check(config.voxel_size, GT, 0.f, "voxel_size");
 }
 
-MaxIoUTracker::MaxIoUTracker(const Config& config)
-    : config(config::checkValid(config)), grid_(config.voxel_size) {
-  // Define the right functionality for the track_by mode.
-  setup();
-}
+MaxIoUTracker::Config::Config()
+    : hydra::VerbosityConfig(hydra::VerbosityConfig::default_verbosity("IoU Tracker")) {}
 
-void MaxIoUTracker::setup() {
+MaxIoUTracker::MaxIoUTracker(const Config& config)
+    : config(config::checkValid(config)), grid(config.voxel_size) {}
+
+float MaxIoUTracker::computeIoU(const FrameData& data,
+                                const MeasurementCluster& cluster,
+                                const Track& track) const {
   // Define the right functionality for the track_by mode.
   switch (config.track_by) {
     case Config::TrackBy::kPixels:
-      // Pixels are always given in a cluster.
-      setupTrackMeasurement = [](const FrameData&, MeasurementCluster&) {};
-      computeIoU = std::bind(&MaxIoUTracker::computeIoUPixels,
-                             this,
-                             std::placeholders::_1,
-                             std::placeholders::_2,
-                             std::placeholders::_3);
+      return computeIoUPixels(data, cluster, track);
+    case Config::TrackBy::kVoxels:
+      return computeIoUVoxels(data, cluster, track);
+    case Config::TrackBy::kBoundingBox:
+      return computeIoUBoundingBox(data, cluster, track);
       break;
-    case Config::TrackBy::kVoxels: {
-      setupTrackMeasurement = std::bind(&MaxIoUTracker::setupTrackMeasurementVoxels,
-                                        this,
-                                        std::placeholders::_1,
-                                        std::placeholders::_2);
-      computeIoU = std::bind(&MaxIoUTracker::computeIoUVoxels,
-                             this,
-                             std::placeholders::_1,
-                             std::placeholders::_2,
-                             std::placeholders::_3);
-      break;
-    }
-    case Config::TrackBy::kBouningBox: {
-      setupTrackMeasurement = [](const FrameData&, MeasurementCluster&) {};
-      computeIoU = std::bind(&MaxIoUTracker::computeIoUBoundingBox,
-                             this,
-                             std::placeholders::_1,
-                             std::placeholders::_2,
-                             std::placeholders::_3);
-    }; break;
   }
 }
 
@@ -134,212 +114,225 @@ void MaxIoUTracker::processInput(FrameData& data, Tracks& tracks) {
   associateTracks(data, tracks);
 }
 
-void MaxIoUTracker::associateTracks(
-    const FrameData& data,
-    Tracks& tracks,
-    const std::unordered_set<int>& preassociated_dynamic_cluster_ids,
-    const std::unordered_set<int>& preassociated_semantic_cluster_ids) {
+void MaxIoUTracker::associateTracks(const FrameData& data, Tracks& tracks) {
   Timer timer("tracking/associate", data.input.timestamp_ns);
 
   const auto prev_num_tracks = tracks.size();
-  // Associate dynamic tracks first, allocating new dynamic tracks if no match is found.
-  associateDynamicTracks(data, tracks, preassociated_dynamic_cluster_ids);
+  dynamic_assigned_ = std::vector<bool>(data.dynamic_clusters.size(), false);
+  semantic_assigned_ = std::vector<bool>(data.semantic_clusters.size(), false);
 
-  // Then associate semantic tracks to all other tracks
-  associateSemanticTracks(data, tracks, preassociated_semantic_cluster_ids);
+  // Associate dynamic clusters first, allocating new dynamic tracks if no match is found.
+  associateDynamicTracks(data, tracks);
 
-  CLOG(3) << "[IoU Tracker] Previous tracks: " << prev_num_tracks
-          << " Current tracks: " << tracks.size();
+  // Associate semantic clusters to dynamic tracks
+  crossAssociateTracks(data, tracks);
+
+  // Then associate semantic clusters to all other tracks
+  associateSemanticTracks(data, tracks);
+
+  MLOG(3) << "Previous tracks: " << prev_num_tracks << " Current tracks: " << tracks.size();
 }
 
-void MaxIoUTracker::associateDynamicTracks(
-    const FrameData& data,
-    Tracks& tracks,
-    const std::unordered_set<int>& preassociated_cluster_ids) {
-  // Assign dynamic tracks to the closest dynamic clusters that moved less than the
-  // allowed maximum.
-  CLOG(4) << "[IoU Tracker] Associating " << data.dynamic_clusters.size()
-          << " dynamic detections to tracks";
-  std::unordered_set<int> associated_objects = preassociated_cluster_ids;
+// Assign dynamic tracks to closest dynamic clusters that moved less than the maximum.
+void MaxIoUTracker::associateDynamicTracks(const FrameData& data, Tracks& tracks) {
+  MLOG(4) << "Associating " << data.dynamic_clusters.size() << " dynamic detections to tracks";
+
+  size_t num_associated = 0;
   for (auto& track : tracks) {
     if (!track.is_dynamic) {
       continue;
     }
+
     if (track.last_seen == data.input.timestamp_ns) {
       // Already updated this frame (e.g. by a subclass's own pre-pass, see HybridTracker).
       continue;
     }
-    float best_distance = config.max_dynamic_distance;
-    const MeasurementCluster* best_cluster = nullptr;
-    Point best_centroid = Point::Zero();
 
-    for (const auto& cluster : data.dynamic_clusters) {
-      if (associated_objects.find(cluster.id) != associated_objects.end()) {
+    std::optional<size_t> best_cluster;
+    float best_distance = config.max_dynamic_distance;
+    Point best_centroid = Point::Zero();
+    for (size_t i = 0; i < data.dynamic_clusters.size(); ++i) {
+      const auto& cluster = data.dynamic_clusters[i];
+      if (dynamic_assigned_[i]) {
         continue;
       }
 
       // Compute the centroid distances.
-      const Point centroid = computeCentroid(data, cluster);
-      const float distance = (centroid - track.last_centroid).norm();
+      const auto centroid = computeCentroid(data, cluster);
+      const auto distance = (centroid - track.last_centroid).norm();
       if (distance < best_distance) {
-        best_cluster = &cluster;
+        best_cluster = i;
         best_distance = distance;
         best_centroid = centroid;
       }
     }
 
     // Associate object if IoU is high enough.
-    if (best_cluster != nullptr) {
-      associated_objects.insert(best_cluster->id);
-      updateTrack(data, *best_cluster, track, true);
+    if (best_cluster) {
+      ++num_associated;
+      dynamic_assigned_[*best_cluster] = true;
+      updateTrack(data, data.dynamic_clusters[*best_cluster], track, true);
       track.last_centroid = best_centroid;
     }
   }
 
   // Create new tracks for unassociated objects.
-  CLOG(4) << "[IoU Tracker] Associated " << associated_objects.size()
-          << " dynamic detections. Making "
-          << data.dynamic_clusters.size() - associated_objects.size() << " new tracks";
-  for (const auto& cluster : data.dynamic_clusters) {
-    if (associated_objects.find(cluster.id) != associated_objects.end()) {
+  size_t num_new = 0;
+  for (size_t i = 0; i < data.dynamic_clusters.size(); ++i) {
+    if (dynamic_assigned_[i]) {
       continue;
     }
 
+    ++num_new;
+    const auto& cluster = data.dynamic_clusters[i];
     auto& track = addNewTrack(data, cluster, tracks, true);
     track.last_centroid = computeCentroid(data, cluster);
   }
+
+  MLOG(4) << "Associated " << num_associated << " dynamic detections with " << num_new
+          << " new tracks";
 }
 
-void MaxIoUTracker::associateSemanticTracks(
-    const FrameData& data,
-    Tracks& tracks,
-    const std::unordered_set<int>& preassociated_cluster_ids) {
-  CLOG(4) << "[IoU Tracker] Associating " << data.semantic_clusters.size()
-          << " semantic clusters to tracks";
+void MaxIoUTracker::crossAssociateTracks(const FrameData& data, Tracks& tracks) {
+  MLOG(4) << "Cross associating " << data.semantic_clusters.size() << " semantic clusters";
 
   // First assign all semantic tracks to dynamic tracks where possible to avoid
   // allocating many semantic tracks for moving objects.
-  std::unordered_set<int> associated_objects = preassociated_cluster_ids;
-  for (Track& track : tracks) {
+  size_t num_associated = 0;
+  for (auto& track : tracks) {
     if (!track.is_dynamic) {
       continue;
     }
+
+    std::optional<size_t> best_cluster;
     float best_iou = config.min_cross_iou;
-    const MeasurementCluster* best_cluster = nullptr;
-    for (const auto& cluster : data.semantic_clusters) {
-      if (associated_objects.find(cluster.id) != associated_objects.end()) {
+    for (size_t i = 0; i < data.semantic_clusters.size(); ++i) {
+      const auto& cluster = data.semantic_clusters[i];
+      if (semantic_assigned_[i]) {
         continue;
       }
-      const float iou = computeIoU(data, cluster, track);
+
+      const auto iou = computeIoU(data, cluster, track);
       if (iou > best_iou) {
-        best_cluster = &cluster;
+        best_cluster = i;
         best_iou = iou;
       }
     }
 
     // Associate object if IoU is high enough.
-    if (best_cluster != nullptr) {
-      associated_objects.insert(best_cluster->id);
+    if (best_cluster) {
+      ++num_associated;
+      semantic_assigned_[*best_cluster] = true;
+      const auto& cluster = data.semantic_clusters[*best_cluster];
+      // TODO(nathan) sequence numbe!
       if (track.last_seen < data.input.timestamp_ns) {
         // Update the track if it has not been seen this frame.
-        updateTrack(data, *best_cluster, track, false);
+        updateTrack(data, cluster, track, false);
       } else {
         // Tracks have already been updated by the dynamic tracking.
-        track.observations.back().semantic_cluster_id = best_cluster->id;
+        track.observations.back().semantic_cluster_id = cluster.id;
         // TODO(lschmid): Do we want to merge/override the detections? Probably ok to
         // keep the dynamic ones as they will anyways be close hopefully.
       }
     }
   }
 
-  CLOG(4) << "[IoU Tracker] Associated " << associated_objects.size()
-          << " static detections to dynamic tracks";
+  MLOG(4) << "Associated " << num_associated << " static detections to dynamic tracks";
+}
 
+void MaxIoUTracker::associateSemanticTracks(const FrameData& data, Tracks& tracks) {
   switch (config.semantic_association) {
     case Config::SemanticAssociation::kAssignCluster: {
-      assignClustersToStaticTrack(data, tracks, associated_objects);
+      assignClustersToStaticTrack(data, tracks);
       break;
     }
     case Config::SemanticAssociation::kAssignTrack: {
-      assignStaticTracksToCluster(data, tracks, associated_objects);
+      assignStaticTracksToCluster(data, tracks);
       break;
     }
   }
 }
 
-void MaxIoUTracker::assignClustersToStaticTrack(const FrameData& data,
-                                                Tracks& tracks,
-                                                std::unordered_set<int>& associated_objects) {
-  // Greedily associate semantic tracks to highest IoU objects.
-  for (Track& track : tracks) {
+// Greedily associate semantic tracks to highest IoU objects.
+void MaxIoUTracker::assignClustersToStaticTrack(const FrameData& data, Tracks& tracks) {
+  size_t num_associated = 0;
+  for (auto& track : tracks) {
     if (track.is_dynamic) {
       continue;
     }
+
+    // TODO(nathan) sequence number
     if (track.last_seen == data.input.timestamp_ns) {
       // Already updated this frame (e.g. by a subclass's own pre-pass, see HybridTracker) --
       // skip so it isn't matched a second time to a different cluster.
       continue;
     }
 
+    std::optional<size_t> best_cluster;
     float best_iou = config.min_semantic_iou;
-    const MeasurementCluster* best_cluster = nullptr;
-    for (const auto& cluster : data.semantic_clusters) {
-      if (associated_objects.find(cluster.id) != associated_objects.end()) {
+    for (size_t i = 0; i < data.semantic_clusters.size(); ++i) {
+      if (semantic_assigned_[i]) {
         continue;
       }
 
+      const auto& cluster = data.semantic_clusters[i];
       const auto result = semanticsMatch(cluster.semantics, track.semantics, config.min_cosine_sim);
       if (!result) {
-        CLOG(6) << "[IoU Tracker] rejected cluster " << cluster.id << " for cluster " << track.id
-                << ": " << toString(result);
+        MLOG(6) << "Rejected cluster " << cluster.id << " for cluster " << track.id << ": "
+                << toString(result);
         continue;
       }
 
       const float iou = computeIoU(data, cluster, track);
       if (iou > best_iou) {
-        best_cluster = &cluster;
+        best_cluster = i;
         best_iou = iou;
       } else {
-        CLOG(6) << "[IoU Tracker] rejected cluster " << cluster.id << " for track " << track.id
-                << ": low IoU (" << iou << " < " << best_iou << ")";
+        MLOG(6) << "Rejected cluster " << cluster.id << " for track " << track.id << ": low IoU ("
+                << iou << " < " << best_iou << ")";
       }
     }
 
     // Associate object if IoU is high enough.
-    if (best_cluster != nullptr) {
-      associated_objects.insert(best_cluster->id);
-      updateTrack(data, *best_cluster, track, false);
+    if (best_cluster) {
+      ++num_associated;
+      semantic_assigned_[*best_cluster] = true;
+      updateTrack(data, data.semantic_clusters[*best_cluster], track, false);
     }
   }
-
-  CLOG(4) << "[IoU Tracker] Associated " << associated_objects.size()
-          << " static detections to tracks and creating "
-          << data.semantic_clusters.size() - associated_objects.size() << " new tracks";
 
   // Create new tracks for unassociated objects.
-  for (const auto& cluster : data.semantic_clusters) {
-    if (associated_objects.find(cluster.id) != associated_objects.end()) {
+  size_t num_new = 0;
+  for (size_t i = 0; i < data.semantic_clusters.size(); ++i) {
+    if (semantic_assigned_[i]) {
       continue;
     }
 
-    addNewTrack(data, cluster, tracks, false);
+    ++num_new;
+    addNewTrack(data, data.semantic_clusters[i], tracks, false);
   }
+
+  MLOG(4) << "Associated " << num_associated << " static detections to tracks and creating "
+          << num_new << " new tracks";
 }
 
-void MaxIoUTracker::assignStaticTracksToCluster(const FrameData& data,
-                                                Tracks& tracks,
-                                                std::unordered_set<int>& associated_objects) {
-  for (const auto& cluster : data.semantic_clusters) {
-    if (associated_objects.find(cluster.id) != associated_objects.end()) {
-      // skip if cluster is previously assigned to a dynamic tracks
+void MaxIoUTracker::assignStaticTracksToCluster(const FrameData& data, Tracks& tracks) {
+  size_t num_new = 0;
+  size_t num_associated = 0;
+  for (size_t i = 0; i < data.semantic_clusters.size(); ++i) {
+    if (semantic_assigned_[i]) {
+      // skip if cluster is previously associated to a dynamic tracks
       continue;
     }
 
+    const auto& cluster = data.semantic_clusters[i];
     bool assigned = false;
-    for (Track& track : tracks) {
+    for (auto& track : tracks) {
       if (track.is_dynamic) {
         continue;
       }
+
+      // TODO(nathan) fix (but also multi association)
       if (track.last_seen == data.input.timestamp_ns) {
         // Already updated this frame (e.g. by a subclass's own pre-pass, see HybridTracker) --
         // skip so it isn't matched a second time to a different cluster.
@@ -348,53 +341,55 @@ void MaxIoUTracker::assignStaticTracksToCluster(const FrameData& data,
 
       const auto result = semanticsMatch(cluster.semantics, track.semantics, config.min_cosine_sim);
       if (!result) {
-        CLOG(6) << "[IoU Tracker] rejected track " << track.id << " for cluster " << cluster.id
-                << ": " << toString(result);
+        MLOG(6) << "rejected track " << track.id << " for cluster " << cluster.id << ": "
+                << toString(result);
         continue;
       }
 
       const float iou = computeIoU(data, cluster, track);
       if (iou < config.min_semantic_iou) {
-        CLOG(6) << "[IoU Tracker] rejected track " << track.id << " for cluster " << cluster.id
-                << ": low IoU (" << iou << " < " << config.min_semantic_iou << ")";
+        MLOG(6) << "rejected track " << track.id << " for cluster " << cluster.id << ": low IoU ("
+                << iou << " < " << config.min_semantic_iou << ")";
         continue;
       }
 
-      CLOG(6) << "[IoU Tracker] accepted track " << track.id << " for cluster " << cluster.id
-              << ": IoU=" << iou
+      MLOG(6) << "accepted track " << track.id << " for cluster " << cluster.id << ": IoU=" << iou
               << ", Sim=" << result.similiarity.value_or(std::numeric_limits<float>::quiet_NaN());
 
       assigned = true;
-      associated_objects.insert(cluster.id);
+      ++num_associated;
+      semantic_assigned_[i] = true;
       updateTrack(data, cluster, track, false);
       break;
     }
 
     if (!assigned) {
+      ++num_new;
       addNewTrack(data, cluster, tracks, false);
     }
   }
 
-  CLOG(4) << "[IoU Tracker] Associated " << associated_objects.size()
-          << " static detections to tracks and creating "
-          << data.semantic_clusters.size() - associated_objects.size() << " new tracks";
+  MLOG(4) << "Associated " << num_associated << " static detections to tracks and creating "
+          << num_new << " new tracks";
 }
 
 void MaxIoUTracker::setupTrackMeasurements(FrameData& data) const {
-  const BoundingBox::Type bbox_type = config.bbox_type == Config::BBoxType::kRAABB
-                                          ? BoundingBox::Type::RAABB
-                                          : BoundingBox::Type::AABB;
+  const auto bbox_type = (config.bbox_type == Config::BBoxType::kRAABB) ? BoundingBox::Type::RAABB
+                                                                        : BoundingBox::Type::AABB;
   for (auto& cluster : data.semantic_clusters) {
-    setupTrackMeasurement(data, cluster);
-    // NOTE(lschmid): Compute the bounding boxes for all clusters for visualization and extent
-    // computation in the future.
-    cluster.bounding_box =
-        BoundingBox(utils::VertexMapAdaptor(cluster.pixels, data.input.vertex_map), bbox_type);
+    const utils::VertexMapAdaptor adaptor(cluster.pixels, data.input.vertex_map);
+    cluster.bounding_box = BoundingBox(adaptor, bbox_type);
+    if (config.track_by == Config::TrackBy::kVoxels) {
+      setupTrackMeasurementVoxels(data, cluster);
+    }
   }
+
   for (auto& cluster : data.dynamic_clusters) {
-    setupTrackMeasurement(data, cluster);
-    cluster.bounding_box =
-        BoundingBox(utils::VertexMapAdaptor(cluster.pixels, data.input.vertex_map), bbox_type);
+    const utils::VertexMapAdaptor adaptor(cluster.pixels, data.input.vertex_map);
+    cluster.bounding_box = BoundingBox(adaptor, bbox_type);
+    if (config.track_by == Config::TrackBy::kVoxels) {
+      setupTrackMeasurementVoxels(data, cluster);
+    }
   }
 }
 
@@ -403,9 +398,9 @@ void MaxIoUTracker::setupTrackMeasurementVoxels(const FrameData& data,
   // Recompute the voxels based on the used tracking voxel size.
   cluster.voxels.clear();
   cluster.voxels.reserve(cluster.pixels.size());  // Worst case size.
-  for (const Pixel& pixel : cluster.pixels) {
-    const auto& point = data.input.vertex_map.at<InputData::VertexType>(pixel.v, pixel.u);
-    cluster.voxels.insert(grid_.toIndex(Point(point[0], point[1], point[2])));
+  for (const auto& pixel : cluster.pixels) {
+    const auto point = data.input.vertex_map.at<InputData::VertexType>(pixel.v, pixel.u);
+    cluster.voxels.insert(grid.toIndex(Point(point[0], point[1], point[2])));
   }
 }
 
@@ -417,8 +412,7 @@ Track& MaxIoUTracker::addNewTrack(const FrameData& data,
   track.is_dynamic = is_dynamic;
   track.id = current_track_id_++;
   track.first_seen = data.input.timestamp_ns;
-  // note: whether or not the new track is dynamic is the same as whether or not the observation is
-  // dynamic
+  // whether or not the new track is dynamic is the same as whether the observation is dynamic
   updateTrack(data, observation, track, is_dynamic);
   return track;
 }
@@ -427,27 +421,20 @@ void MaxIoUTracker::updateTrack(const FrameData& data,
                                 const MeasurementCluster& observation,
                                 Track& track,
                                 bool is_observation_dynamic) const {
-  // Update the cluster estimate used for tracking by simply retaining the last
-  // last_measurement.
-  //
-  // last_points is populated unconditionally (not just when track_by == kPixels): downstream
-  // consumers outside the association-scoring path -- e.g.
-  // ActiveWindowChangeDetector::computeContainmentRatios, which builds an added-object's 2D
-  // footprint from Track::last_points specifically and has no last_voxels equivalent -- depend
-  // on it regardless of which representation actually drives this tracker's own IoU scoring.
-  // Cheap: same pixel-to-3D-point loop either way, just no longer gated on track_by.
+  // Update the cluster estimate used for tracking by retaining last measurement.
   track.last_points.clear();
   track.last_points.reserve(observation.pixels.size());
-  for (const Pixel& pixel : observation.pixels) {
+  for (const auto& pixel : observation.pixels) {
     const auto& point = data.input.vertex_map.at<InputData::VertexType>(pixel.v, pixel.u);
     track.last_points.emplace_back(point[0], point[1], point[2]);
   }
+
   if (config.track_by == Config::TrackBy::kVoxels) {
     track.last_voxels = observation.voxels;
     track.last_voxel_size = config.voxel_size;
   }
-  track.last_bounding_box = observation.bounding_box;
 
+  track.last_bounding_box = observation.bounding_box;
   if (!is_observation_dynamic) {
     // NOTE(nathan) we want to avoid overwriting any track semantic information with dynamic
     // observations
@@ -473,31 +460,6 @@ void MaxIoUTracker::updateTrack(const FrameData& data,
   // two so that the minimum observations yield 50% confidence.
   track.confidence += 1.0f / (config.min_num_observations * 2.0f);
   track.confidence = std::min(track.confidence, 1.0f);
-}
-
-Point MaxIoUTracker::computeCentroid(const FrameData& data,
-                                     const MeasurementCluster& cluster) const {
-  Point centroid = Point::Zero();
-  switch (config.track_by) {
-    case Config::TrackBy::kPixels: {
-      for (const Pixel& pixel : cluster.pixels) {
-        const auto& point = data.input.vertex_map.at<InputData::VertexType>(pixel.v, pixel.u);
-        centroid += Point(point[0], point[1], point[2]);
-      }
-      return centroid / cluster.pixels.size();
-    }
-
-    case Config::TrackBy::kVoxels: {
-      for (const GlobalIndex& voxel : cluster.voxels) {
-        centroid += grid_.toPoint(voxel);
-      }
-      return centroid / cluster.voxels.size();
-    }
-
-    case Config::TrackBy::kBouningBox:
-      return cluster.bounding_box.world_P_center;
-  }
-  return centroid;
 }
 
 float MaxIoUTracker::computeIoUVoxels(const FrameData& /* data */,
@@ -542,6 +504,38 @@ float MaxIoUTracker::computeIoUBoundingBox(const FrameData& /*data */,
                                            const MeasurementCluster& cluster,
                                            const Track& track) const {
   return track.last_bounding_box.computeIoU(cluster.bounding_box);
+}
+
+Point MaxIoUTracker::computeCentroid(const FrameData& data,
+                                     const MeasurementCluster& cluster) const {
+  switch (config.track_by) {
+    case Config::TrackBy::kPixels:
+      return centroidFromPixels(data, cluster);
+    case Config::TrackBy::kVoxels:
+      return centroidFromVoxels(cluster);
+    case Config::TrackBy::kBoundingBox:
+      return cluster.bounding_box.world_P_center;
+  }
+}
+
+Point MaxIoUTracker::centroidFromPixels(const FrameData& data,
+                                        const MeasurementCluster& cluster) const {
+  Point centroid = Point::Zero();
+  for (const auto& pixel : cluster.pixels) {
+    const auto point = data.input.vertex_map.at<InputData::VertexType>(pixel.v, pixel.u);
+    centroid += Point(point[0], point[1], point[2]);
+  }
+
+  return centroid / cluster.pixels.size();
+}
+
+Point MaxIoUTracker::centroidFromVoxels(const MeasurementCluster& cluster) const {
+  Point centroid = Point::Zero();
+  for (const auto& voxel : cluster.voxels) {
+    centroid += grid.toPoint(voxel);
+  }
+
+  return centroid / cluster.voxels.size();
 }
 
 }  // namespace khronos
