@@ -112,19 +112,42 @@ void MaxIoUTracker::processInput(FrameData& data, Tracks& tracks) {
   const auto prev_num_tracks = tracks.size();
   dynamic_assigned_ = std::vector<bool>(data.dynamic_clusters.size(), false);
   semantic_assigned_ = std::vector<bool>(data.semantic_clusters.size(), false);
-  if (config.preassociate_by_id) {
-    preassociateTracks(data, tracks);
-  }
 
   // Associate current objects to tracks and create new tracks for unassociated objects.
   // TODO(lschmid): Handle objects splitting or merging explicitly at some point.
   associateTracks(data, tracks);
 
   MLOG(3) << "Previous tracks: " << prev_num_tracks << " Current tracks: " << tracks.size();
+  ++sequence_number_;
 }
 
-void MaxIoUTracker::preassociateTracks(const FrameData& data, Tracks& tracks) {
-  Timer timer("tracking/preassociate", data.input.timestamp_ns);
+void MaxIoUTracker::preassociateSemanticTracks(const FrameData& data, Tracks& tracks) {
+  std::unordered_map<int, size_t> id_to_cluster;
+  for (size_t i = 0; i < data.semantic_clusters.size(); ++i) {
+    id_to_cluster[data.semantic_clusters[i].id] = i;
+  }
+
+  for (auto& track : tracks) {
+    if (track.observations.empty()) {
+      continue;
+    }
+
+    const auto& last_obs = track.observations.back();
+    const int last_id =
+        track.is_dynamic ? last_obs.dynamic_cluster_id : last_obs.semantic_cluster_id;
+    if (last_id < 0) {
+      continue;
+    }
+
+    const auto iter = id_to_cluster.find(last_id);
+    if (iter == id_to_cluster.end()) {
+      continue;  // track has no matching cluster
+    }
+
+    const auto& [id, cluster_idx] = *iter;
+    semantic_assigned_[cluster_idx] = true;
+    updateTrack(data, data.semantic_clusters[cluster_idx], track, track.is_dynamic);
+  }
 }
 
 void MaxIoUTracker::associateTracks(const FrameData& data, Tracks& tracks) {
@@ -132,6 +155,11 @@ void MaxIoUTracker::associateTracks(const FrameData& data, Tracks& tracks) {
 
   // Associate dynamic clusters first, allocating new dynamic tracks if no match is found.
   associateDynamicTracks(data, tracks);
+
+  // Optionally assign clusters to tracks by matching ID (for external tracking)
+  if (config.preassociate_by_id) {
+    preassociateSemanticTracks(data, tracks);
+  }
 
   // Associate semantic clusters to dynamic tracks
   crossAssociateTracks(data, tracks);
