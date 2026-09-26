@@ -36,6 +36,8 @@ void appendObservations(std::initializer_list<Detection> detections,
   }
 }
 
+}  // namespace
+
 class MaxIoUTrackerTest : public testing::TestWithParam<Association> {
  protected:
   MaxIoUTrackerTest() {
@@ -204,5 +206,4 @@ TEST_F(MaxIoUTrackerTest, DynamicIdPreassociation) {
   }
 }
 
-}  // namespace
 }  // namespace khronos
