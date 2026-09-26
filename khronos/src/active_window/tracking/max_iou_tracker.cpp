@@ -252,7 +252,12 @@ void MaxIoUTracker::preassociateSemanticTracks(const FrameData& data, Tracks& tr
     }
 
     semantic_assigned_[cluster_idx] = true;
-    updateTrack(data, data.semantic_clusters[cluster_idx], track, track.is_dynamic);
+    const auto& cluster = data.semantic_clusters[cluster_idx];
+    if (track.sequence_number == sequence_number_) {
+      track.observations.back().semantic_cluster_id = cluster.id;
+    } else {
+      updateTrack(data, cluster, track, false);
+    }
   }
 }
 
@@ -264,6 +269,11 @@ void MaxIoUTracker::crossAssociateTracks(const FrameData& data, Tracks& tracks) 
   size_t num_associated = 0;
   for (auto& track : tracks) {
     if (!track.is_dynamic) {
+      continue;
+    }
+
+    if (track.sequence_number == sequence_number_ &&
+        track.observations.back().semantic_cluster_id >= 0) {
       continue;
     }
 
