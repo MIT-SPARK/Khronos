@@ -127,9 +127,9 @@ class TrackingIntegrator {
    * @param tsdf_threshold Threshold to consider a TSDF voxel occupied in meters.
    */
   void updateLastOccupied(TsdfVoxel& tsdf_voxel,
-                              TrackingVoxel& tracking_voxel,
-                              const TimeStamp& time_stamp,
-                              float tsdf_threshold) const;
+                          TrackingVoxel& tracking_voxel,
+                          const TimeStamp& time_stamp,
+                          float tsdf_threshold) const;
 
   /**
    * @brief Check whether an individual tracking voxel meets the requirements to be
