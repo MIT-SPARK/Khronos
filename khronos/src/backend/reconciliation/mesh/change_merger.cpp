@@ -60,9 +60,8 @@ void ChangeMerger::merge(DynamicSceneGraph& dsg, const BackgroundChanges& change
   // Setup object surface search if required.
   Points object_points;
   if (config.remove_objects_from_background) {
-    const auto& nodes = dsg.getLayer(DsgLayers::OBJECTS).nodes();
-    for (const auto& [id, node] : nodes) {
-      const auto& attrs = node->attributes<KhronosObjectAttributes>();
+    for (const auto& node : dsg.getLayer(DsgLayers::OBJECTS).nodes()) {
+      const auto& attrs = node.attributes<KhronosObjectAttributes>();
       object_points.reserve(object_points.size() + attrs.mesh.numVertices());
       for (const auto& vertex : attrs.mesh.points) {
         object_points.emplace_back(attrs.bounding_box.pointToWorldFrame(vertex));

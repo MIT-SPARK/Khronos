@@ -114,15 +114,14 @@ void ObjectEvaluator::setGroundTruthDSG(DynamicSceneGraph::Ptr dsg) {
   gt_dsg_.num_objects_invalid = 0;
 
   // Add all valid objects to the state and set their first and last observed time.
-  const auto& nodes = gt_dsg_.dsg->getLayer(DsgLayers::OBJECTS).nodes();
-  for (const auto& [id, node] : nodes) {
+  for (const auto& node : gt_dsg_.dsg->getLayer(DsgLayers::OBJECTS).nodes()) {
     // Check if the object was marked absent for some reason.
-    auto attrs = node->tryAttributes<KhronosObjectAttributes>();
+    auto attrs = node.tryAttributes<KhronosObjectAttributes>();
     if (!attrs) {
       gt_dsg_.num_objects_invalid++;
       continue;
     }
-    gt_dsg_.objects.emplace(id, *attrs);
+    gt_dsg_.objects.emplace(node.id, *attrs);
   }
   associations_updated_ = false;
 }
@@ -137,9 +136,8 @@ void ObjectEvaluator::setEvalDSG(DynamicSceneGraph::Ptr dsg) {
   eval_dsg_.objects.clear();
   eval_dsg_.num_objects_invalid = 0;
 
-  const auto& nodes = eval_dsg_.dsg->getLayer(DsgLayers::OBJECTS).nodes();
-  for (const auto& [id, node] : nodes) {
-    auto attrs = node->tryAttributes<KhronosObjectAttributes>();
+  for (const auto& node : eval_dsg_.dsg->getLayer(DsgLayers::OBJECTS).nodes()) {
+    auto attrs = node.tryAttributes<KhronosObjectAttributes>();
     if (!attrs) {
       eval_dsg_.num_objects_invalid++;
       continue;
@@ -149,7 +147,7 @@ void ObjectEvaluator::setEvalDSG(DynamicSceneGraph::Ptr dsg) {
       continue;
     }
 
-    eval_dsg_.objects.emplace(id, *attrs);
+    eval_dsg_.objects.emplace(node.id, *attrs);
   }
   associations_updated_ = false;
 }

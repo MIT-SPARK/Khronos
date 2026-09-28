@@ -79,19 +79,19 @@ void RayObjectChangeDetector::detectChanges(const DynamicSceneGraph& dsg,
   auto& object_layer = dsg.getLayer(DsgLayers::OBJECTS);
   for (const auto& object : object_layer.nodes()) {
     // Ignore existing objects.
-    if (already_existing_objects.count(object.first)) {
+    if (already_existing_objects.count(object.id)) {
       continue;
     }
 
     // Ignore dynamic objects.
-    auto& attrs = object.second->attributes<KhronosObjectAttributes>();
+    auto& attrs = object.attributes<KhronosObjectAttributes>();
     if (!attrs.trajectory_positions.empty()) {
       continue;
     }
 
     // Setup the object change.
     ObjectChange& change = changes.emplace_back();
-    change.node_id = object.first;
+    change.node_id = object.id;
 
     // Check for merges.
     checkObjectMerge(rpgo_merges, change);
@@ -157,9 +157,8 @@ void RayObjectChangeDetector::checkObjectObservation(KhronosObjectAttributes& at
     attrs.details["cd_after_present"].insert(attrs.details["cd_after_present"].end(),
                                              after_data.present.begin(),
                                              after_data.present.end());
-    attrs.details["cd_after_absent"].insert(attrs.details["cd_after_absent"].end(),
-                                            after_data.absent.begin(),
-                                            after_data.absent.end());
+    attrs.details["cd_after_absent"].insert(
+        attrs.details["cd_after_absent"].end(), after_data.absent.begin(), after_data.absent.end());
   }
 }
 

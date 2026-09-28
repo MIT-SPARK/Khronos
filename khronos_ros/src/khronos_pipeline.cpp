@@ -87,7 +87,7 @@ void KhronosPipeline::init() {
   backend_->addSink(
       Backend::Sink::fromCallback([this](uint64_t timestamp_ns, const auto& dsg, const auto& dfg) {
         if (backend_evaluation_callback_) {
-        backend_evaluation_callback_(timestamp_ns, dsg, dfg);
+          backend_evaluation_callback_(timestamp_ns, dsg, dfg);
         }
       }));
 
@@ -99,7 +99,7 @@ void KhronosPipeline::init() {
     khronos_active_window_->addKhronosSink(ActiveWindow::KhronosSink::fromCallback(
         [this](const auto& frame_data, const auto& map, const auto& tracks) {
           if (aw_evaluation_callback_) {
-          aw_evaluation_callback_(map, frame_data, tracks);
+            aw_evaluation_callback_(map, frame_data, tracks);
           }
         }));
   } else {
@@ -145,8 +145,8 @@ bool KhronosPipeline::save(const hydra::DataDirectory& log_setup, bool save_full
     // Add all objects that are currently in the active window.
     auto aw_objects = khronos_active_window_->extractObjects();
     size_t current_object_id = 0;
-    for (const auto& [id, attrs] : dsg->getLayer(DsgLayers::OBJECTS).nodes()) {
-      current_object_id = std::max(current_object_id, NodeSymbol(id).categoryId());
+    for (const auto& node : dsg->getLayer(DsgLayers::OBJECTS).nodes()) {
+      current_object_id = std::max(current_object_id, NodeSymbol(node.id).categoryId());
     }
 
     for (auto& object : aw_objects) {

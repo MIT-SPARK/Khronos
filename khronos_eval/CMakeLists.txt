@@ -46,9 +46,9 @@ target_include_directories(
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
          "$<INSTALL_INTERFACE:include>")
 target_link_libraries(${PROJECT_NAME} PUBLIC ${PCL_LIBRARIES} ${OpenCV_LIBS})
-ament_target_dependencies(${PROJECT_NAME} PUBLIC 
-  khronos_ros 
-  rosbag2_cpp 
+ament_target_dependencies(${PROJECT_NAME} PUBLIC
+  khronos_ros
+  rosbag2_cpp
   rosbag2_storage
   tf2_geometry_msgs
   cv_bridge)

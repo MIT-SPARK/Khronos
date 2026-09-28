@@ -131,9 +131,9 @@ void TesseGroundTruthBuilder::pruneUnobservedAreas() {
   // Prune objects.
   const auto& layer = dsg_->getLayer(DsgLayers::OBJECTS);
   std::vector<NodeId> to_remove;
-  const size_t num_previous_objects = layer.nodes().size();
-  for (const auto& [id, node] : layer.nodes()) {
-    const auto& attrs = node->attributes<KhronosObjectAttributes>();
+  const size_t num_previous_objects = layer.numNodes();
+  for (const auto& node : layer.nodes()) {
+    const auto& attrs = node.attributes<KhronosObjectAttributes>();
     bool found = false;
     // Currently require only a single observation.
     for (const auto& vertex : attrs.mesh.points) {
@@ -147,7 +147,7 @@ void TesseGroundTruthBuilder::pruneUnobservedAreas() {
       }
     }
     if (!found) {
-      to_remove.push_back(id);
+      to_remove.push_back(node.id);
     }
   }
 
@@ -165,9 +165,9 @@ void TesseGroundTruthBuilder::extractTrajectory() {
   const auto& layer = observed_dsg_->getLayer(
       observed_dsg_->getLayerKey(DsgLayers::AGENTS).value().layer, config.key);
   size_t num_poses = 0;
-  for (const auto& [node_id, node] : layer.nodes()) {
+  for (const auto& node : layer.nodes()) {
     // TODO(lschmid): This does not quite end up in the right place of the DSG. Skip for now.
-    dsg_->emplaceNode(layer.id, node->id, node->attributes().clone());
+    dsg_->emplaceNode(layer.id, node.id, node.attributes().clone());
     num_poses++;
   }
   std::cout << "Wrote " << num_poses << " agent poses to DSG." << std::endl;
@@ -217,11 +217,11 @@ void TesseGroundTruthBuilder::saveOutput() const {
     points.clear();
     size_t ids_per_revolution = 15;
     const auto& layer = dsg_->getLayer(DsgLayers::OBJECTS);
-    for (const auto& [id, node] : layer.nodes()) {
-      const auto& attrs = node->attributes<KhronosObjectAttributes>();
+    for (const auto& node : layer.nodes()) {
+      const auto& attrs = node.attributes<KhronosObjectAttributes>();
       points.reserve(points.size() + attrs.mesh.numVertices());
       const auto color =
-          spark_dsg::colormaps::rainbowId(NodeSymbol(id).categoryId(), ids_per_revolution);
+          spark_dsg::colormaps::rainbowId(NodeSymbol(node.id).categoryId(), ids_per_revolution);
       for (size_t i = 0; i < attrs.mesh.numVertices(); ++i) {
         auto& new_vertex = points.emplace_back();
         const auto& vertex = attrs.mesh.pos(i);

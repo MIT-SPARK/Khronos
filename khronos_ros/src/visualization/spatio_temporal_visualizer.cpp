@@ -101,9 +101,11 @@ SpatioTemporalVisualizer::SpatioTemporalVisualizer(const Config& config, ianvs::
   reset();
 
   // Advertize that the visualizer is ready.
-  is_setup_srv_ = nh_.create_service<Setup>(
-      "is_setup",
-      std::bind(&SpatioTemporalVisualizer::isSetupCb, this, std::placeholders::_1, std::placeholders::_2));
+  is_setup_srv_ = nh_.create_service<Setup>("is_setup",
+                                            std::bind(&SpatioTemporalVisualizer::isSetupCb,
+                                                      this,
+                                                      std::placeholders::_1,
+                                                      std::placeholders::_2));
   LOG(INFO) << "SpatioTemporalVisualizer initialized.";
 
   using namespace std::chrono_literals;
@@ -258,8 +260,8 @@ void SpatioTemporalVisualizer::drawAgent() {
   past_msg.scale.y = past_scale;
   past_msg.scale.z = past_scale;
 
-  for (const auto& [node_id, node] : layer->nodes()) {
-    const auto& attrs = node->attributes<spark_dsg::AgentNodeAttributes>();
+  for (const auto& node : layer->nodes()) {
+    const auto& attrs = node.attributes<spark_dsg::AgentNodeAttributes>();
     if (static_cast<size_t>(attrs.timestamp.count()) > query_time_) {
       msg.points.emplace_back(setPoint(attrs.position.cast<float>()));
     } else {
@@ -293,8 +295,8 @@ void SpatioTemporalVisualizer::drawDynamicObjects() {
   header.frame_id = config.global_frame_name;
   size_t num_objects = 0;
   if (current_dsg_->hasLayer(DsgLayers::OBJECTS)) {
-    for (const auto& [id, node] : current_dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
-      const auto& attrs = node->attributes<KhronosObjectAttributes>();
+    for (const auto& node : current_dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
+      const auto& attrs = node.attributes<KhronosObjectAttributes>();
       if (attrs.trajectory_timestamps.empty()) {
         continue;
       }
@@ -571,17 +573,17 @@ void SpatioTemporalVisualizer::recolorObjectDsgBoundingBoxes() {
 
   MarkerArray static_objs_msg;
   // Set the node colors.
-  for (const auto& [id, node] : current_dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
-    auto& attrs = node->attributes<KhronosObjectAttributes>();
+  for (const auto& node : current_dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
+    auto& attrs = node.attributes<KhronosObjectAttributes>();
     if (!attrs.trajectory_timestamps.empty()) {
       continue;
     }
-    Color color = coloring_fn(attrs, id);
+    Color color = coloring_fn(attrs, node.id);
     std_msgs::msg::Header header;
     header.stamp = nh_.now();
     header.frame_id = config.global_frame_name;
 
-    visualizeStaticObject(header, attrs, id, color, static_objs_msg);
+    visualizeStaticObject(header, attrs, node.id, color, static_objs_msg);
     num_prev_static_objects_++;
     attrs.color = color;
   }
@@ -667,16 +669,25 @@ void SpatioTemporalVisualizer::setupRos() {
   // Advertise services.
   play_srv_ = nh_.create_service<SetBool>(
       "play",
-      std::bind(&SpatioTemporalVisualizer::playCb, this, std::placeholders::_1, std::placeholders::_2));
-  set_play_forward_srv_ = nh_.create_service<SetBool>(
-      "set_play_forward",
-      std::bind(&SpatioTemporalVisualizer::setPlayForwardCb, this, std::placeholders::_1, std::placeholders::_2));
-  set_time_mode_srv_ = nh_.create_service<SetTimeMode>(
-      "set_time_mode",
-      std::bind(&SpatioTemporalVisualizer::setTimeModeCb, this, std::placeholders::_1, std::placeholders::_2));
-  set_state_srv_ = nh_.create_service<SetState>(
-      "set_state",
-      std::bind(&SpatioTemporalVisualizer::setStateCb, this, std::placeholders::_1, std::placeholders::_2));
+      std::bind(
+          &SpatioTemporalVisualizer::playCb, this, std::placeholders::_1, std::placeholders::_2));
+  set_play_forward_srv_ =
+      nh_.create_service<SetBool>("set_play_forward",
+                                  std::bind(&SpatioTemporalVisualizer::setPlayForwardCb,
+                                            this,
+                                            std::placeholders::_1,
+                                            std::placeholders::_2));
+  set_time_mode_srv_ =
+      nh_.create_service<SetTimeMode>("set_time_mode",
+                                      std::bind(&SpatioTemporalVisualizer::setTimeModeCb,
+                                                this,
+                                                std::placeholders::_1,
+                                                std::placeholders::_2));
+  set_state_srv_ = nh_.create_service<SetState>("set_state",
+                                                std::bind(&SpatioTemporalVisualizer::setStateCb,
+                                                          this,
+                                                          std::placeholders::_1,
+                                                          std::placeholders::_2));
   state_pub_ = nh_.create_publisher<State>("state", rclcpp::QoS(1).transient_local());
   dynamic_obj_pub_ =
       nh_.create_publisher<MarkerArray>("dynamic_objects", rclcpp::QoS(100).transient_local());
