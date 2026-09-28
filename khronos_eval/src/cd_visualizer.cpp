@@ -277,15 +277,16 @@ void ChangeDetectionVisualizer::setupObject() {
 
   // Select the object.
   const auto dynamic_config = dynamic_config_.get();
-  const auto& nodes = graph_->getLayer(DsgLayers::OBJECTS).nodes();
+  const auto& layer = graph_->getLayer(DsgLayers::OBJECTS);
   NodeSymbol symbol('O', dynamic_config.object_id);
-  if (!nodes.count(symbol)) {
+  if (!layer.hasNode(symbol)) {
     LOG(WARNING) << "Object " << symbol << " does not exist.";
-    const auto& node = nodes.begin()->second.get();
-    previous_object_id_ = NodeSymbol(node->id).categoryId();
-    object_ =
-        std::make_unique<KhronosObjectAttributes>(node->attributes<KhronosObjectAttributes>());
-    return;
+    for (const auto& node : layer.nodes()) {
+      previous_object_id_ = NodeSymbol(node.id).categoryId();
+      object_ =
+          std::make_unique<KhronosObjectAttributes>(node.attributes<KhronosObjectAttributes>());
+      return;
+    }
   }
   object_ = std::make_unique<KhronosObjectAttributes>(
       graph_->getNode(symbol).attributes<KhronosObjectAttributes>());

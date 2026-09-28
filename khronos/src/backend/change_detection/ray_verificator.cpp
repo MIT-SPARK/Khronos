@@ -38,6 +38,7 @@
 #include "khronos/backend/change_detection/ray_verificator.h"
 
 #include <stdlib.h>
+
 #include <glog/logging.h>
 
 namespace khronos {
@@ -193,18 +194,17 @@ void RayVerificator::addPoseNodes() {
   }
 
   // Add all new sensor poses to the possible timestamps.
-  const auto& nodes = agents->nodes();
-  for (const auto& [node_id, node] : nodes) {
-    if (node_id < previous_node_id_) {
+  for (const auto& node : agents->nodes()) {
+    if (node.id < previous_node_id_) {
       continue;
     }
 
     // NOTE(lschmid): These should be ordered already so timestamps should be sorted by
     // construction.
-    previous_node_id_ = node_id;
-    timestamps_.emplace_back(static_cast<uint64_t>(
-        node->attributes<spark_dsg::AgentNodeAttributes>().timestamp.count()));
-    node_ids_.emplace_back(node_id);
+    previous_node_id_ = node.id;
+    timestamps_.emplace_back(
+        static_cast<uint64_t>(node.attributes<spark_dsg::AgentNodeAttributes>().timestamp.count()));
+    node_ids_.emplace_back(node.id);
   }
 }
 
@@ -220,12 +220,11 @@ BlockIndexSet RayVerificator::addVertices() {
   const auto& vertices = dsg_->mesh()->points;
   const auto& first_seen = dsg_->mesh()->first_seen_stamps;
   auto last_seen = dsg_->mesh()->stamps;
-  
+
   // Ensure all mesh arrays have consistent sizes
   if (vertices.size() != first_seen.size() || vertices.size() != last_seen.size()) {
-    LOG(WARNING) << "Mesh arrays have inconsistent sizes: vertices=" << vertices.size() 
-                 << ", first_seen=" << first_seen.size() 
-                 << ", last_seen=" << last_seen.size();
+    LOG(WARNING) << "Mesh arrays have inconsistent sizes: vertices=" << vertices.size()
+                 << ", first_seen=" << first_seen.size() << ", last_seen=" << last_seen.size();
     return observed_blocks;
   }
   if (config.active_window_duration > 0) {
@@ -248,8 +247,8 @@ BlockIndexSet RayVerificator::addVertices() {
     // Create the rays and add them to the hash.
     for (const size_t source_index : source_indices) {
       if (source_index >= timestamps_.size() || source_index >= node_ids_.size()) {
-        LOG(WARNING) << "Invalid source index: " << source_index 
-                     << " (timestamps size=" << timestamps_.size() 
+        LOG(WARNING) << "Invalid source index: " << source_index
+                     << " (timestamps size=" << timestamps_.size()
                      << ", node_ids size=" << node_ids_.size() << ")";
         continue;
       }
@@ -353,22 +352,22 @@ void RayVerificator::addObjectsToHash() {
     return;
   }
 
-  for (const auto& [id, node] : dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
+  for (const auto& node : dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
     // NOTE(lschmid): This makes the implicit assumption that objects are added in order.
-    if (id <= previous_object_index_) {
+    if (node.id <= previous_object_index_) {
       continue;
     }
-    previous_object_index_ = id;
+    previous_object_index_ = node.id;
 
     // Iterate over all vertices and add them to the hash.
-    const auto& attrs = node->attributes<KhronosObjectAttributes>();
+    const auto& attrs = node.attributes<KhronosObjectAttributes>();
     BlockIndexSet block_indices;
     for (const auto& vertex : attrs.mesh.points) {
       block_indices.insert(grid_.toIndex(vertex));
     }
 
     for (const auto& index : block_indices) {
-      objects_in_block_[index].insert(id);
+      objects_in_block_[index].insert(node.id);
     }
   }
 }

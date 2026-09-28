@@ -8,13 +8,13 @@
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <hydra/common/robot_prefix_config.h>
 #include <opencv2/opencv.hpp>
-#include <rosbag2_cpp/readers/sequential_reader.hpp>
-#include <rosbag2_storage/storage_options.hpp>
-#include <rosbag2_cpp/converter_options.hpp>
-#include <rosbag2_storage/serialized_bag_message.hpp>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <tf2/transform_datatypes.h>
 #include <rclcpp/serialization.hpp>
+#include <rosbag2_cpp/converter_options.hpp>
+#include <rosbag2_cpp/readers/sequential_reader.hpp>
+#include <rosbag2_storage/serialized_bag_message.hpp>
+#include <rosbag2_storage/storage_options.hpp>
+#include <tf2/transform_datatypes.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include "khronos/utils/khronos_attribute_utils.h"
 #include "khronos_eval/utils/io_utils.h"
@@ -49,7 +49,9 @@ void declare_config(RealDynamicObjectGroundTruthBuilder::Config& config) {
 }
 
 RealDynamicObjectGroundTruthBuilder::RealDynamicObjectGroundTruthBuilder(const Config& config)
-    : config(config::checkValid(config)), current_points_(), tfBuffer_(std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME)) {}
+    : config(config::checkValid(config)),
+      current_points_(),
+      tfBuffer_(std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME)) {}
 
 void RealDynamicObjectGroundTruthBuilder::run() {
   std::cout << "Running Real-Data ground truth dynamic objects extraction." << std::endl;
@@ -63,13 +65,15 @@ void RealDynamicObjectGroundTruthBuilder::run() {
   std::cout << "Ground truth dynamic objects extraction complete." << std::endl;
 }
 
-void RealDynamicObjectGroundTruthBuilder::mouseClickCallback(int event, int x, int y, int /* flags */) {
+void RealDynamicObjectGroundTruthBuilder::mouseClickCallback(int event,
+                                                             int x,
+                                                             int y,
+                                                             int /* flags */) {
   if (event == cv::EVENT_LBUTTONDOWN) {
     // Get depth image to read directly
     cv_bridge::CvImagePtr cv_ptr_depth;
     try {
-      cv_ptr_depth =
-          cv_bridge::toCvCopy(depth_images_.at(i_img_), "32FC1");
+      cv_ptr_depth = cv_bridge::toCvCopy(depth_images_.at(i_img_), "32FC1");
     } catch (cv_bridge::Exception& e) {
       LOG(FATAL) << "cv_bridge exception: " << e.what();
     }
@@ -78,7 +82,8 @@ void RealDynamicObjectGroundTruthBuilder::mouseClickCallback(int event, int x, i
     float depth = depth_image.at<float>(y, x);
 
     if (depth > 0.01) {  // min depth for accuracy
-      Point pixel_point = get3DPointFromDepth(rclcpp::Time(rgb_images_.at(i_img_)->header.stamp), x, y, depth);
+      Point pixel_point =
+          get3DPointFromDepth(rclcpp::Time(rgb_images_.at(i_img_)->header.stamp), x, y, depth);
       float distance = getDistance(rclcpp::Time(rgb_images_.at(i_img_)->header.stamp), pixel_point);
 
       // Save the point as a valid dynamic object component
@@ -110,10 +115,11 @@ void RealDynamicObjectGroundTruthBuilder::processRosbag() {
   CHECK_EQ(rgb_images_.size(), depth_images_.size())
       << "RGB and Depth have different number of images";
   for (size_t i = 0; i < rgb_images_.size(); i++) {
-    CHECK_EQ(rclcpp::Time(rgb_images_[i]->header.stamp).nanoseconds(), 
-           rclcpp::Time(depth_images_[i]->header.stamp).nanoseconds())
-        << "RBG Image " << i << " has header " << rclcpp::Time(rgb_images_[i]->header.stamp).nanoseconds()
-        << " while Depth Image " << i << " has header  " << rclcpp::Time(depth_images_[i]->header.stamp).nanoseconds();
+    CHECK_EQ(rclcpp::Time(rgb_images_[i]->header.stamp).nanoseconds(),
+             rclcpp::Time(depth_images_[i]->header.stamp).nanoseconds())
+        << "RBG Image " << i << " has header "
+        << rclcpp::Time(rgb_images_[i]->header.stamp).nanoseconds() << " while Depth Image " << i
+        << " has header  " << rclcpp::Time(depth_images_[i]->header.stamp).nanoseconds();
     timestamps_.push_back(TimeStamp(rclcpp::Time(rgb_images_[i]->header.stamp).nanoseconds()));
   }
   CHECK_EQ(timestamps_.size(), rgb_images_.size());
@@ -196,11 +202,11 @@ Point RealDynamicObjectGroundTruthBuilder::get3DPointFromDepth(const rclcpp::Tim
   // Transform the point to the world frame
   geometry_msgs::msg::PointStamped pointInWorldFrameMsg;
   try {
-    tf2::doTransform(pointInCameraFrameMsg, pointInWorldFrameMsg,
-                     tfBuffer_.lookupTransform("world", "left_cam",
-                                               timestamp_closest));
+    tf2::doTransform(pointInCameraFrameMsg,
+                     pointInWorldFrameMsg,
+                     tfBuffer_.lookupTransform("world", "left_cam", timestamp_closest));
   } catch (tf2::TransformException& ex) {
-    LOG(INFO) << "closest timestamp to " << timestamp.nanoseconds() << " is " 
+    LOG(INFO) << "closest timestamp to " << timestamp.nanoseconds() << " is "
               << timestamp_closest.nanoseconds();
     LOG(WARNING) << "Couldn't get transform at " << timestamp_closest.nanoseconds();
     LOG(FATAL) << ex.what();
@@ -273,7 +279,7 @@ void RealDynamicObjectGroundTruthBuilder::extractImagesFromBag(
   // converter_options.output_serialization_format = "cdr";
 
   reader.open(storage_options, converter_options);
-  
+
   // Save all matching image messages
   rclcpp::Serialization<sensor_msgs::msg::Image> serializer;
   while (reader.has_next()) {
@@ -285,11 +291,11 @@ void RealDynamicObjectGroundTruthBuilder::extractImagesFromBag(
       images->push_back(img_msg);
     }
   }
-  
+
   // Sort images by timestamp (should be given for free but not guaranteed)
   std::sort(images->begin(),
             images->end(),
-            [](const std::shared_ptr<sensor_msgs::msg::Image>& a, 
+            [](const std::shared_ptr<sensor_msgs::msg::Image>& a,
                const std::shared_ptr<sensor_msgs::msg::Image>& b) {
               return rclcpp::Time(a->header.stamp) < rclcpp::Time(b->header.stamp);
             });
@@ -301,12 +307,13 @@ void RealDynamicObjectGroundTruthBuilder::extractPosesFromDsg(const std::string&
   // Get each pose from the agent layer
   DynamicSceneGraph::Ptr eval_dsg = DynamicSceneGraph::load(dsg_file);
   const hydra::RobotPrefixConfig config;  // needed for proper indexing
-  const auto& layer = eval_dsg->getLayer(eval_dsg->getLayerKey(DsgLayers::AGENTS).value().layer, config.key);
-  for (const auto& [node_id, node] : layer.nodes()) {
+  const auto& layer =
+      eval_dsg->getLayer(eval_dsg->getLayerKey(DsgLayers::AGENTS).value().layer, config.key);
+  for (const auto& node : layer.nodes()) {
     // for (size_t i = 0; i < nodes.size(); i++) {
     // const auto& node = *nodes[i];
     // auto dynamic_node = dynamic_cast<const spark_dsg::DynamicSceneGraphNode*>(node.get());
-    const auto& attrs = node->attributes<spark_dsg::AgentNodeAttributes>();
+    const auto& attrs = node.attributes<spark_dsg::AgentNodeAttributes>();
     TimeStamp timestamp(static_cast<uint64_t>(attrs.timestamp.count()));
     const auto& position = attrs.position;
     const auto& world_R_body = attrs.world_R_body;
@@ -328,7 +335,8 @@ void RealDynamicObjectGroundTruthBuilder::extractPosesFromDsg(const std::string&
   }
 }
 
-rclcpp::Time RealDynamicObjectGroundTruthBuilder::findClosestTimestamp(const rclcpp::Time& query_time) {
+rclcpp::Time RealDynamicObjectGroundTruthBuilder::findClosestTimestamp(
+    const rclcpp::Time& query_time) {
   auto lower = transform_timestamps_.lower_bound(query_time);
   auto upper = lower;
 
