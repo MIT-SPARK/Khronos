@@ -15,11 +15,12 @@ find_package(spatial_hash REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(pose_graph_tools REQUIRED)
 find_package(GTSAM REQUIRED)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs)
 find_package(spark_dsg REQUIRED)
 find_package(kimera_pgmo REQUIRED)
 find_package(hydra REQUIRED)
 find_package(small_gicp REQUIRED)
+find_package(CLI11 REQUIRED)
 
 include(GNUInstallDirs)
 
@@ -44,7 +45,9 @@ add_library(${PROJECT_NAME}
         src/active_window/active_window.cpp
         src/active_window/change_detection/active_window_change_detector.cpp
         src/active_window/change_detection/transformation_getter.cpp
+        src/active_window/data/frame_data.cpp
         src/active_window/data/frame_data_buffer.cpp
+        src/active_window/data/measurement_clusters.cpp
         src/active_window/data/track.cpp
         src/active_window/integration/object_integrator.cpp
         src/active_window/integration/tracking_integrator.cpp
@@ -53,6 +56,7 @@ add_library(${PROJECT_NAME}
         src/active_window/object_detection/instance_forwarding.cpp
         src/active_window/object_extraction/mesh_object_extractor.cpp
         src/active_window/object_extraction/object_worker_pool.cpp
+        src/active_window/track_saver_sink.cpp
         src/active_window/tracking/external_tracker.cpp
         src/active_window/tracking/max_iou_tracker.cpp
         src/active_window/tracking/semantic_matching.cpp
@@ -103,6 +107,21 @@ if(BUILD_TESTING)
   enable_testing()
   add_subdirectory(tests)
 endif()
+###############
+# Executables #
+###############
+
+# Replays a saved track's observations through MaxIoUTracker against another loaded track (see
+# tracker_debug.md Step 2).
+add_executable(offline_track_association app/offline_track_association.cpp)
+target_link_libraries(offline_track_association PRIVATE ${PROJECT_NAME} CLI11::CLI11)
+install(TARGETS offline_track_association RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+# Replays an entire saved run through a fresh MaxIoUTracker, with active-window eviction
+# simulation, for parameter tuning (see tracker_debug.md Step 4).
+add_executable(full_run_tracker_replay app/full_run_tracker_replay.cpp)
+target_link_libraries(full_run_tracker_replay PRIVATE ${PROJECT_NAME} CLI11::CLI11)
+install(TARGETS full_run_tracker_replay RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 ##########
 # Export #
