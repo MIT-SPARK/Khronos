@@ -312,7 +312,7 @@ int main(int argc, char** argv) {
   if (track_by == "voxels") {
     tracker_config.track_by = MaxIoUTracker::Config::TrackBy::kVoxels;
   } else if (track_by == "bounding_box") {
-    tracker_config.track_by = MaxIoUTracker::Config::TrackBy::kBouningBox;
+    tracker_config.track_by = MaxIoUTracker::Config::TrackBy::kBoundingBox;
   } else {
     tracker_config.track_by = MaxIoUTracker::Config::TrackBy::kPixels;
   }
