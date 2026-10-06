@@ -75,6 +75,8 @@ std::optional<uint32_t> getSemanticId(const Track& track) {
   }
 
   return std::nullopt;
+}
+
 float computeCosineSim(const FeatureVector& lhs, const FeatureVector& rhs) {
   static const auto metric = hydra::CosineDistance();
   return metric.score(lhs, rhs);
