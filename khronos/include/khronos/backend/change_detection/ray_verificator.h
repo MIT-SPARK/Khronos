@@ -238,12 +238,11 @@ class RayVerificator {
   struct RayLookup {
     RayLookup(const DynamicSceneGraph& dsg, const Config& config)
         : vertices_(dsg.mesh()->points),
-          nodes_(
-              dsg.getLayer(dsg.getLayerKey(DsgLayers::AGENTS)->layer, config.prefix.key).nodes()) {}
+          layer_(dsg.getLayer(dsg.getLayerKey(DsgLayers::AGENTS)->layer, config.prefix.key)) {}
 
     Point getSource(const Ray& ray) const {
-      return nodes_.at(ray.source_node)
-          ->attributes<spark_dsg::NodeAttributes>()
+      return layer_.getNode(ray.source_node)
+          .attributes<spark_dsg::NodeAttributes>()
           .position.cast<float>();
     }
 
@@ -251,7 +250,7 @@ class RayVerificator {
 
    private:
     const std::vector<spark_dsg::Mesh::Pos>& vertices_;
-    const spark_dsg::SceneGraphLayer::Nodes& nodes_;
+    const spark_dsg::SceneGraphLayer& layer_;
   };
 };
 

@@ -28,8 +28,9 @@ void declare_config(GTConsolidator::Config& config) {
   check<Path::IsFile>(config.gt_changes_file, "gt_changes_file");
   check<Path::HasExtension>(config.gt_changes_file, ".csv", "gt_changes_file");
   check<Path::IsSet>(config.output_dir, "output_dir");
-  checkCondition(config.save_dsg || config.save_dsg_with_mesh,
-                 "No output will be generated. Set 'save_dsg' and/or 'save_dsg_with_mesh' to true.");
+  checkCondition(
+      config.save_dsg || config.save_dsg_with_mesh,
+      "No output will be generated. Set 'save_dsg' and/or 'save_dsg_with_mesh' to true.");
 }
 
 GTConsolidator::GTConsolidator(const Config& config) : config(config::checkValid(config)) {}
@@ -50,9 +51,9 @@ void GTConsolidator::loadData() {
     is_setup_ = true;
   }
 
-  LOG(INFO) << "Loaded " << gt_dsg_with_mesh_->getLayer(DsgLayers::OBJECTS).nodes().size()
+  LOG(INFO) << "Loaded " << gt_dsg_with_mesh_->getLayer(DsgLayers::OBJECTS).numNodes()
             << " static objects.";
-  LOG(INFO) << "Loaded " << gt_dynamic_dsg_->getLayer(DsgLayers::OBJECTS).nodes().size()
+  LOG(INFO) << "Loaded " << gt_dynamic_dsg_->getLayer(DsgLayers::OBJECTS).numNodes()
             << " dynamic objects.";
   LOG(INFO) << "Loaded " << gt_changes_.size() << " ground truth changes.";
 }
@@ -107,10 +108,9 @@ void GTConsolidator::consolidateDSG() {
   size_t num_dynamic_objects_valid = 0;
 
   // Add changes into the static DSG.
-  auto& static_nodes = gt_dsg_with_mesh_->getLayer(DsgLayers::OBJECTS).nodes();
-  for (auto& [id, node] : static_nodes) {
+  for (auto& node : gt_dsg_with_mesh_->getLayer(DsgLayers::OBJECTS).nodes()) {
     // Check if the object was marked absent for some reason.
-    auto attrs = node->tryAttributes<KhronosObjectAttributes>();
+    auto attrs = node.tryAttributes<KhronosObjectAttributes>();
     if (!attrs) {
       num_static_objects_invalid++;
       continue;
@@ -118,7 +118,7 @@ void GTConsolidator::consolidateDSG() {
     num_static_objects_valid++;
 
     // Check the changes times.
-    const auto it = gt_changes_.find(id);
+    const auto it = gt_changes_.find(node.id);
     if (it == gt_changes_.end()) {
       attrs->first_observed_ns = {0};
       attrs->last_observed_ns = {std::numeric_limits<uint64_t>::max()};
@@ -143,21 +143,21 @@ void GTConsolidator::consolidateDSG() {
   }
 
   // Add dynamic objects to the DSG.
-  auto& dynamic_nodes = gt_dynamic_dsg_->getLayer(DsgLayers::OBJECTS).nodes();
-  for (auto& [id, node] : dynamic_nodes) {
-    auto attrs = node->tryAttributes<KhronosObjectAttributes>();
+  for (const auto& node : gt_dynamic_dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
+    auto attrs = node.tryAttributes<KhronosObjectAttributes>();
     if (!attrs || attrs->trajectory_positions.empty()) {
       num_dynamic_objects_invalid++;
       continue;
     }
     num_dynamic_objects_valid++;
 
-    NodeId new_node_id = gt_dsg_with_mesh_->getLayer(DsgLayers::OBJECTS).nodes().size();
+    NodeId new_node_id = gt_dsg_with_mesh_->getLayer(DsgLayers::OBJECTS).numNodes();
     if (gt_dsg_with_mesh_->hasNode(new_node_id)) {
       LOG(FATAL) << "Node " << new_node_id
                  << " already exists in static DSG! Figure out a way to deal with this.";
     }
-    gt_dsg_with_mesh_->emplaceNode(DsgLayers::OBJECTS, new_node_id, std::make_unique<KhronosObjectAttributes>(*attrs));
+    gt_dsg_with_mesh_->emplaceNode(
+        DsgLayers::OBJECTS, new_node_id, std::make_unique<KhronosObjectAttributes>(*attrs));
   }
 
   LOG(INFO) << "Consolidated DSG.";

@@ -80,9 +80,8 @@ void DynamicObjectEvaluator::setGroundTruthDSG(DynamicSceneGraph::Ptr dsg) {
   gt_dsg_.objects.clear();
   gt_dsg_.num_objects_invalid = 0;
 
-  const auto& nodes = gt_dsg_.dsg->getLayer(DsgLayers::OBJECTS).nodes();
-  for (const auto& [id, node] : nodes) {
-    auto attrs = node->tryAttributes<KhronosObjectAttributes>();
+  for (const auto& node : gt_dsg_.dsg->getLayer(DsgLayers::OBJECTS).nodes()) {
+    auto attrs = node.tryAttributes<KhronosObjectAttributes>();
     // Check if object was marked abset for some reason
     if (!attrs) {
       gt_dsg_.num_objects_invalid++;
@@ -102,7 +101,7 @@ void DynamicObjectEvaluator::setGroundTruthDSG(DynamicSceneGraph::Ptr dsg) {
     attrs->last_observed_ns.erase(
         std::unique(attrs->last_observed_ns.begin(), attrs->last_observed_ns.end()),
         attrs->last_observed_ns.end());
-    gt_dsg_.objects.emplace(id, *attrs);
+    gt_dsg_.objects.emplace(node.id, *attrs);
   }
 }
 
@@ -115,9 +114,8 @@ void DynamicObjectEvaluator::setEvalDSG(DynamicSceneGraph::Ptr dsg) {
   eval_dsg_.objects.clear();
   eval_dsg_.num_objects_invalid = 0;
 
-  const auto& nodes = eval_dsg_.dsg->getLayer(DsgLayers::OBJECTS).nodes();
-  for (const auto& [id, node] : nodes) {
-    auto attrs = node->tryAttributes<KhronosObjectAttributes>();
+  for (const auto& node : eval_dsg_.dsg->getLayer(DsgLayers::OBJECTS).nodes()) {
+    auto attrs = node.tryAttributes<KhronosObjectAttributes>();
     // Check if object was marked abset for some reason
     if (!attrs) {
       eval_dsg_.num_objects_invalid++;
@@ -139,7 +137,7 @@ void DynamicObjectEvaluator::setEvalDSG(DynamicSceneGraph::Ptr dsg) {
       new_attrs.last_observed_ns.push_back(new_attrs.trajectory_timestamps.back());
     }
 
-    eval_dsg_.objects.emplace(id, std::move(new_attrs));
+    eval_dsg_.objects.emplace(node.id, std::move(new_attrs));
   }
 }
 

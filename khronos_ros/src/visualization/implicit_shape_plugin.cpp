@@ -111,14 +111,14 @@ void ImplicitShapePlugin::draw(const std_msgs::msg::Header& header, const SceneG
     color_adapter_->setGraph(graph, layer.id.layer);
   }
 
-  for (const auto& [node_id, node] : layer.nodes()) {
-    const auto attrs = node->tryAttributes<KhronosObjectAttributes>();
+  for (const auto& node : layer.nodes()) {
+    const auto attrs = node.tryAttributes<KhronosObjectAttributes>();
     if (!attrs || !attrs->semantic_feature.size()) {
       continue;
     }
 
-    curr_nodes.insert(node_id);
-    const auto ns = node_namespace(node_id);
+    curr_nodes.insert(node.id);
+    const auto ns = node_namespace(node.id);
     geometry_msgs::msg::TransformStamped tf;
     tf.header = header;
     tf.child_frame_id = ns;
@@ -127,9 +127,9 @@ void ImplicitShapePlugin::draw(const std_msgs::msg::Header& header, const SceneG
     tf_broadcaster_.sendTransform(tf);
 
     bool need_update = true;
-    auto iter = embedding_cache_.find(node_id);
+    auto iter = embedding_cache_.find(node.id);
     if (iter == embedding_cache_.end()) {
-      iter = embedding_cache_.emplace(node_id, attrs->semantic_feature).first;
+      iter = embedding_cache_.emplace(node.id, attrs->semantic_feature).first;
     } else {
       // const auto diff = (attrs->semantic_feature - iter->second).norm();
       // need_update = diff > config.min_embedding_diff;
@@ -150,7 +150,7 @@ void ImplicitShapePlugin::draw(const std_msgs::msg::Header& header, const SceneG
 
     spark_dsg::Color color;
     if (color_adapter_) {
-      color = color_adapter_->getColor(graph, *node);
+      color = color_adapter_->getColor(graph, node);
     }
 
     const auto num_verts = rep->vertices.size();

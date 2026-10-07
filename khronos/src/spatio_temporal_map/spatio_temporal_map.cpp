@@ -101,7 +101,7 @@ void SpatioTemporalMap::update(const DynamicSceneGraph::Ptr& dsg, TimeStamp stam
   stamps_.push_back(stamp);
   // TODO(lschmid): Consider hard copies here.
   dsgs_.push_back(dsg);
-  
+
   if (stamp < earliest_) {
     earliest_ = stamp;
   }
@@ -201,7 +201,7 @@ void SpatioTemporalMap::moveMeshForward() {
 
   const size_t target_vertices = vertex_it - src_mesh.first_seen_stamps.begin();
   const size_t current_vertices = mesh.numVertices();
-  
+
   // Only proceed if we need to add more vertices
   if (target_vertices <= current_vertices) {
     return;
@@ -210,12 +210,12 @@ void SpatioTemporalMap::moveMeshForward() {
   // Copy vertex data from source mesh
   mesh.resizeVertices(target_vertices);
   for (size_t i = current_vertices; i < target_vertices; ++i) {
-      mesh.setPos(i, src_mesh.pos(i));
-      mesh.setColor(i, src_mesh.color(i));
+    mesh.setPos(i, src_mesh.pos(i));
+    mesh.setColor(i, src_mesh.color(i));
     mesh.setFirstSeenTimestamp(i, src_mesh.firstSeenTimestamp(i));
-        mesh.setTimestamp(i, src_mesh.timestamp(i));
+    mesh.setTimestamp(i, src_mesh.timestamp(i));
   }
-  
+
   updateMeshFaces(mesh, src_mesh);
 }
 
@@ -227,17 +227,17 @@ void SpatioTemporalMap::moveAgentForward() {
     return;
   }
 
-  for (const auto& [node_id, node] : src_layer->nodes()) {
-    if (current_dsg_->hasNode(node_id)) {
+  for (const auto& node : src_layer->nodes()) {
+    if (current_dsg_->hasNode(node.id)) {
       continue;
     }
 
-    const auto& attrs = node->attributes<spark_dsg::AgentNodeAttributes>();
+    const auto& attrs = node.attributes<spark_dsg::AgentNodeAttributes>();
     if (static_cast<size_t>(attrs.timestamp.count()) > current_time_) {
       return;
     }
 
-    current_dsg_->emplaceNode(node->layer, node_id, attrs.clone());
+    current_dsg_->emplaceNode(node.layer, node.id, attrs.clone());
   }
 }
 
@@ -259,12 +259,12 @@ void SpatioTemporalMap::moveObjectsForward() {
   size_t static_objects = 0;
   size_t dynamic_objects = 0;
 
-  for (const auto& [id, node] : src_layer.nodes()) {
-    if (current_dsg_->hasNode(id)) {
+  for (const auto& node : src_layer.nodes()) {
+    if (current_dsg_->hasNode(node.id)) {
       continue;
     }
 
-    const auto& attrs = node->attributes<KhronosObjectAttributes>();
+    const auto& attrs = node.attributes<KhronosObjectAttributes>();
     uint64_t effective_time = getObjectEffectiveTime(attrs, src_mesh);
 
     // Count object types for logging
@@ -275,13 +275,13 @@ void SpatioTemporalMap::moveObjectsForward() {
     }
 
     if (effective_time <= current_time_) {
-      objects_to_add.push_back(id);
+      objects_to_add.push_back(node.id);
     }
   }
 
   for (const auto& id : objects_to_add) {
-    const auto& node = src_layer.nodes().at(id);
-    const auto& attrs = node->attributes<KhronosObjectAttributes>();
+    const auto& node = src_layer.getNode(id);
+    const auto& attrs = node.attributes<KhronosObjectAttributes>();
     auto new_attrs = attrs.clone();
     // NOTE(lschmid): Clear dynamic attrs, these will be updated separately.
     auto& new_khronos_attrs = reinterpret_cast<KhronosObjectAttributes&>(*new_attrs);
@@ -297,10 +297,10 @@ void SpatioTemporalMap::moveDynamicObjectAttributesForward() {
     return;
   }
 
-  for (const auto& [id, node] : current_dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
-    auto& attrs = node->attributes<KhronosObjectAttributes>();
+  for (const auto& node : current_dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
+    auto& attrs = node.attributes<KhronosObjectAttributes>();
     const auto& src_attrs =
-        dsgs_[current_dsg_idx_]->getNode(id).attributes<KhronosObjectAttributes>();
+        dsgs_[current_dsg_idx_]->getNode(node.id).attributes<KhronosObjectAttributes>();
     if (src_attrs.trajectory_timestamps.size() == attrs.trajectory_timestamps.size()) {
       continue;
     }
@@ -331,7 +331,7 @@ void SpatioTemporalMap::moveMeshBackward() {
 
   auto& mesh = *current_dsg_->mesh();
   const auto& src_mesh = *dsgs_[current_dsg_idx_]->mesh();
-  
+
   if (mesh.first_seen_stamps.empty()) {
     return;
   }
@@ -345,7 +345,7 @@ void SpatioTemporalMap::moveMeshBackward() {
                                           std::less<uint64_t>());
   const size_t new_vertices = vertex_it - mesh.first_seen_stamps.begin();
   mesh.resizeVertices(new_vertices);
-  
+
   updateMeshFaces(mesh, src_mesh);
 }
 
@@ -358,10 +358,10 @@ void SpatioTemporalMap::moveAgentBackward() {
 
   // Remove all nodes that are newer than the robot time.
   std::unordered_set<NodeId> nodes_to_remove;
-  for (const auto& [node_id, node] : agent_layer->nodes()) {
-    if (static_cast<size_t>(node->attributes<spark_dsg::AgentNodeAttributes>().timestamp.count()) >
+  for (const auto& node : agent_layer->nodes()) {
+    if (static_cast<size_t>(node.attributes<spark_dsg::AgentNodeAttributes>().timestamp.count()) >
         current_time_) {
-      nodes_to_remove.insert(node_id);
+      nodes_to_remove.insert(node.id);
     } else {
       // NOTE(lschmid): The agent nodes are ordered by timestamp.
       break;
@@ -387,12 +387,12 @@ void SpatioTemporalMap::moveObjectsBackward() {
 
   std::unordered_set<NodeId> nodes_to_remove;
 
-  for (auto& [id, node] : current_dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
-    const auto& attrs = node->attributes<KhronosObjectAttributes>();
+  for (auto& node : current_dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
+    const auto& attrs = node.attributes<KhronosObjectAttributes>();
     uint64_t effective_time = getObjectEffectiveTime(attrs, src_mesh);
 
     if (effective_time > current_time_) {
-      nodes_to_remove.insert(id);
+      nodes_to_remove.insert(node.id);
     }
   }
   for (const auto& node_id : nodes_to_remove) {
@@ -412,30 +412,30 @@ void SpatioTemporalMap::trimDsgToTime(TimeStamp target_time) {
   if (current_dsg_->hasMesh()) {
     auto& mesh = *current_dsg_->mesh();
     const auto& src_mesh = *dsgs_[current_dsg_idx_]->mesh();
-    
+
     if (!src_mesh.first_seen_stamps.empty()) {
       const auto vertex_it = std::upper_bound(src_mesh.first_seen_stamps.begin(),
                                               src_mesh.first_seen_stamps.end(),
                                               target_time,
                                               std::less<uint64_t>());
-      const size_t num_vertices = vertex_it - src_mesh.first_seen_stamps.begin();      
+      const size_t num_vertices = vertex_it - src_mesh.first_seen_stamps.begin();
       mesh.resizeVertices(num_vertices);
     } else {
       LOG(WARNING) << "[SpatioTemporalMap] Mesh first_seen_stamps is empty or not available! "
                       "Cannot perform time-based trimming. Keeping all vertices.";
     }
-    
+
     updateMeshFaces(mesh, src_mesh);
   }
-  
+
   const auto agent_layer = current_dsg_->findLayer(
       current_dsg_->getLayerKey(DsgLayers::AGENTS)->layer, robot_prefix_.key);
   if (agent_layer) {
     std::unordered_set<NodeId> nodes_to_remove;
-    for (const auto& [node_id, node] : agent_layer->nodes()) {
-      const auto& attrs = node->attributes<spark_dsg::AgentNodeAttributes>();
+    for (const auto& node : agent_layer->nodes()) {
+      const auto& attrs = node.attributes<spark_dsg::AgentNodeAttributes>();
       if (static_cast<size_t>(attrs.timestamp.count()) > target_time) {
-        nodes_to_remove.insert(node_id);
+        nodes_to_remove.insert(node.id);
       }
     }
     for (const auto& node_id : nodes_to_remove) {
@@ -452,16 +452,16 @@ void SpatioTemporalMap::trimDsgToTime(TimeStamp target_time) {
     size_t visible_count = 0;
     size_t total_count = 0;
 
-    for (const auto& [id, node] : objects_layer.nodes()) {
+    for (const auto& node : objects_layer.nodes()) {
       total_count++;
-      const auto& attrs = node->attributes<KhronosObjectAttributes>();
+      const auto& attrs = node.attributes<KhronosObjectAttributes>();
 
       // Get the effective time when this object should appear
       uint64_t effective_time = getObjectEffectiveTime(attrs, *mesh);
 
       // Remove object if it hasn't appeared yet
       if (effective_time > target_time) {
-        objects_to_remove.push_back(id);
+        objects_to_remove.push_back(node.id);
       } else {
         visible_count++;
       }
@@ -477,8 +477,8 @@ void SpatioTemporalMap::moveDynamicObjectAttributesBackward() {
     return;
   }
 
-  for (const auto& [id, node] : current_dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
-    auto& attrs = node->attributes<KhronosObjectAttributes>();
+  for (const auto& node : current_dsg_->getLayer(DsgLayers::OBJECTS).nodes()) {
+    auto& attrs = node.attributes<KhronosObjectAttributes>();
     if (attrs.trajectory_timestamps.empty()) {
       continue;
     }
@@ -502,7 +502,7 @@ void SpatioTemporalMap::updateTimingInfo(const DynamicSceneGraph& dsg) {
   if (!dsg.hasMesh() || dsg.mesh()->numVertices() == 0) {
     return;
   }
-  
+
   if (!dsg.mesh()->first_seen_stamps.empty()) {
     earliest_ = std::min(earliest_, dsg.mesh()->first_seen_stamps.front());
     latest_ = std::max(latest_, dsg.mesh()->first_seen_stamps.back());
@@ -513,16 +513,16 @@ void SpatioTemporalMap::finalizeMesh(Mesh& mesh) {
   if (mesh.numVertices() == 0) {
     return;
   }
-  
+
   // Sort by stamps if available
   if (!mesh.first_seen_stamps.empty() && mesh.first_seen_stamps.size() == mesh.numVertices()) {
     const auto sorted_indices = sortIndices(mesh.first_seen_stamps);
-    
+
     // Sort the mesh vertices and indices for easier addition and removal.
     const Mesh old_mesh = mesh;
     std::unordered_map<size_t, size_t> old_to_new;
     old_to_new.reserve(mesh.numVertices());
-    
+
     for (size_t i = 0; i < mesh.numVertices(); ++i) {
       mesh.setPos(i, old_mesh.pos(sorted_indices[i]));
       mesh.setColor(i, old_mesh.color(sorted_indices[i]));
@@ -621,7 +621,7 @@ std::unique_ptr<SpatioTemporalMap> SpatioTemporalMap::load(std::string filepath)
     deserializer.read(dsg_buffer);
     result->dsgs_.push_back(spark_dsg::io::binary::readGraph(dsg_buffer));
   }
-  
+
   // Fix timing info if it wasn't properly saved
   if (result->earliest_ == std::numeric_limits<TimeStamp>::max() && !result->stamps_.empty()) {
     LOG(WARNING) << "Fixing invalid earliest timestamp in loaded map";
@@ -631,7 +631,7 @@ std::unique_ptr<SpatioTemporalMap> SpatioTemporalMap::load(std::string filepath)
     LOG(WARNING) << "Fixing invalid latest timestamp in loaded map";
     result->latest_ = *std::max_element(result->stamps_.begin(), result->stamps_.end());
   }
-  
+
   return result;
 }
 
@@ -661,7 +661,7 @@ void SpatioTemporalMap::updateMeshFaces(Mesh& mesh, const Mesh& src_mesh) const 
 }
 
 uint64_t SpatioTemporalMap::getObjectEffectiveTime(const KhronosObjectAttributes& attrs,
-                                                    const Mesh& mesh) const {
+                                                   const Mesh& mesh) const {
   // If object has an explicit timestamp > 0, use it
   if (!attrs.first_observed_ns.empty() && attrs.first_observed_ns.front() > 0) {
     return attrs.first_observed_ns.front();

@@ -89,8 +89,7 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.icp_max_correspondence_distance, "icp_max_correspondence_distance");
   field(config.icp_max_iterations, "icp_max_iterations");
   field(config.icp_min_inliers, "icp_min_inliers");
-  checkInRange(
-      config.merge_min_semantic_cosine_sim, -1.0f, 1.0f, "merge_min_semantic_cosine_sim");
+  checkInRange(config.merge_min_semantic_cosine_sim, -1.0f, 1.0f, "merge_min_semantic_cosine_sim");
   check<Path::Exists>(config.prior_map_path, "prior_map_path");
 }
 
@@ -176,8 +175,10 @@ std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::compute
   return measurements;
 }
 
-std::vector<ActiveWindowChangeDetector::RemovedObject> ActiveWindowChangeDetector::updateRemovedFilter(
-    const std::unordered_map<spark_dsg::NodeId, float>& measurements, TimeStamp stamp) const {
+std::vector<ActiveWindowChangeDetector::RemovedObject>
+ActiveWindowChangeDetector::updateRemovedFilter(
+    const std::unordered_map<spark_dsg::NodeId, float>& measurements,
+    TimeStamp stamp) const {
   // Update EMA state for each object that has a measurement this frame.
   // Objects absent from measurements are left untouched (freeze-last policy).
   for (const auto& [object_id, free_ratio] : measurements) {
@@ -188,15 +189,14 @@ std::vector<ActiveWindowChangeDetector::RemovedObject> ActiveWindowChangeDetecto
       state.free_probability = free_ratio;
     } else {
       // EMA update: p = alpha * free_ratio + (1 - alpha) * p
-      state.free_probability =
-          config.removal_ema_alpha * free_ratio + (1.0 - config.removal_ema_alpha) * state.free_probability;
+      state.free_probability = config.removal_ema_alpha * free_ratio +
+                               (1.0 - config.removal_ema_alpha) * state.free_probability;
     }
     ++state.num_frames_observed;
     state.last_free_ratio = free_ratio;
 
     MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
-            << " EMA update: raw=" << free_ratio
-            << " smoothed=" << state.free_probability
+            << " EMA update: raw=" << free_ratio << " smoothed=" << state.free_probability
             << " frames=" << state.num_frames_observed;
   }
 
@@ -226,9 +226,8 @@ std::vector<ActiveWindowChangeDetector::RemovedObject> ActiveWindowChangeDetecto
     }
   }
 
-  MLOG(2) << "[ActiveWindowChangeDetector] Removed-object filter: "
-          << removed_objects.size() << " removed out of "
-          << removed_object_states_.size() << " tracked candidates";
+  MLOG(2) << "[ActiveWindowChangeDetector] Removed-object filter: " << removed_objects.size()
+          << " removed out of " << removed_object_states_.size() << " tracked candidates";
 
   return removed_objects;
 }
@@ -239,8 +238,7 @@ GlobalIndex ActiveWindowChangeDetector::to2DIndex(const Point& point, float voxe
   return idx;
 }
 
-GlobalIndexSet ActiveWindowChangeDetector::getPriorFreeFootprint2D(
-    const VolumetricMap& map) const {
+GlobalIndexSet ActiveWindowChangeDetector::getPriorFreeFootprint2D(const VolumetricMap& map) const {
   GlobalIndexSet free_footprint;
 
   if (!prior_graph_ || !prior_graph_->hasLayer(DsgLayers::MESH_PLACES)) {
@@ -256,16 +254,15 @@ GlobalIndexSet ActiveWindowChangeDetector::getPriorFreeFootprint2D(
   const float step = voxel_size * 0.5f;
 
   int num_trav_nodes = 0;
-  for (const auto& [node_id, node] : places_layer.nodes()) {
-    const auto* attrs = node->tryAttributes<spark_dsg::TravNodeAttributes>();
+  for (const auto& node : places_layer.nodes()) {
+    const auto* attrs = node.tryAttributes<spark_dsg::TravNodeAttributes>();
     if (!attrs) {
       continue;
     }
     ++num_trav_nodes;
 
     // Filter to places whose center falls inside the current active-window map.
-    const Point center_current =
-        transformPriorToCurrentFrame(attrs->position);
+    const Point center_current = transformPriorToCurrentFrame(attrs->position);
     if (!isPointInMapBounds(center_current, map)) {
       continue;
     }
@@ -289,9 +286,10 @@ GlobalIndexSet ActiveWindowChangeDetector::getPriorFreeFootprint2D(
   }
 
   if (num_trav_nodes == 0) {
-    LOG(WARNING) << "[ActiveWindowChangeDetector] MESH_PLACES layer exists but contains no "
-                    "TravNodeAttributes nodes. Prior map may have been built without traversability "
-                    "places; newly-added object detection will be a no-op.";
+    LOG(WARNING)
+        << "[ActiveWindowChangeDetector] MESH_PLACES layer exists but contains no "
+           "TravNodeAttributes nodes. Prior map may have been built without traversability "
+           "places; newly-added object detection will be a no-op.";
   }
 
   MLOG(3) << "[ActiveWindowChangeDetector] Prior free 2D footprint: " << free_footprint.size()
@@ -379,8 +377,8 @@ int ActiveWindowChangeDetector::findBestObjectMatch(
     const float iou = state.bounding_box.computeIoU(bbox);
     const float dist = (state.bounding_box.world_P_center - centroid).norm();
 
-    bool geometric_match = config.merge_bbox_iou_threshold > 0.0f &&
-                           iou >= config.merge_bbox_iou_threshold;
+    bool geometric_match =
+        config.merge_bbox_iou_threshold > 0.0f && iou >= config.merge_bbox_iou_threshold;
     if (!geometric_match && config.merge_centroid_distance_threshold > 0.0f) {
       geometric_match = dist < config.merge_centroid_distance_threshold;
     }
@@ -400,8 +398,8 @@ int ActiveWindowChangeDetector::findBestObjectMatch(
 }
 
 void ActiveWindowChangeDetector::foldTrackIntoObject(AddedObjectState& state,
-                                                      const Track& track,
-                                                      const TrackAddedState& track_state) const {
+                                                     const Track& track,
+                                                     const TrackAddedState& track_state) const {
   const bool first_member = state.member_track_ids.empty();
 
   if (first_member) {
@@ -416,8 +414,8 @@ void ActiveWindowChangeDetector::foldTrackIntoObject(AddedObjectState& state,
     const float w_obj = state.confidence;
     const float w_trk = track.confidence;
     const float total = w_obj + w_trk;
-    if (config.bbox_merge_type == Config::BboxMergeType::kUnion ||
-        !state.bounding_box.isValid() || !track.last_bounding_box.isValid() || total <= 0.0f) {
+    if (config.bbox_merge_type == Config::BboxMergeType::kUnion || !state.bounding_box.isValid() ||
+        !track.last_bounding_box.isValid() || total <= 0.0f) {
       state.bounding_box.merge(track.last_bounding_box);
     } else if (state.bounding_box.type == BoundingBox::Type::AABB &&
                track.last_bounding_box.type == BoundingBox::Type::AABB) {
@@ -428,10 +426,10 @@ void ActiveWindowChangeDetector::foldTrackIntoObject(AddedObjectState& state,
           state.bounding_box.world_P_center - state.bounding_box.dimensions * 0.5f;
       const Eigen::Vector3f obj_max =
           state.bounding_box.world_P_center + state.bounding_box.dimensions * 0.5f;
-      const Eigen::Vector3f trk_min = track.last_bounding_box.world_P_center -
-                                      track.last_bounding_box.dimensions * 0.5f;
-      const Eigen::Vector3f trk_max = track.last_bounding_box.world_P_center +
-                                      track.last_bounding_box.dimensions * 0.5f;
+      const Eigen::Vector3f trk_min =
+          track.last_bounding_box.world_P_center - track.last_bounding_box.dimensions * 0.5f;
+      const Eigen::Vector3f trk_max =
+          track.last_bounding_box.world_P_center + track.last_bounding_box.dimensions * 0.5f;
       const Eigen::Vector3f new_min = (w_obj * obj_min + w_trk * trk_min) / total;
       const Eigen::Vector3f new_max = (w_obj * obj_max + w_trk * trk_max) / total;
       state.bounding_box = BoundingBox(new_max - new_min, (new_min + new_max) * 0.5f);
@@ -441,13 +439,12 @@ void ActiveWindowChangeDetector::foldTrackIntoObject(AddedObjectState& state,
       const Eigen::Vector3f new_center = (w_obj * state.bounding_box.world_P_center +
                                           w_trk * track.last_bounding_box.world_P_center) /
                                          total;
-      const Eigen::Vector3f new_dims = (w_obj * state.bounding_box.dimensions +
-                                        w_trk * track.last_bounding_box.dimensions) /
-                                       total;
+      const Eigen::Vector3f new_dims =
+          (w_obj * state.bounding_box.dimensions + w_trk * track.last_bounding_box.dimensions) /
+          total;
       const Eigen::Matrix3f& new_rotation = w_trk > w_obj ? track.last_bounding_box.world_R_center
-                                                           : state.bounding_box.world_R_center;
-      state.bounding_box =
-          BoundingBox(state.bounding_box.type, new_dims, new_center, new_rotation);
+                                                          : state.bounding_box.world_R_center;
+      state.bounding_box = BoundingBox(state.bounding_box.type, new_dims, new_center, new_rotation);
     }
 
     state.first_seen = std::min(state.first_seen, track.first_seen);
@@ -496,16 +493,16 @@ std::vector<ActiveWindowChangeDetector::AddedObject> ActiveWindowChangeDetector:
     if (track_state.num_frames_observed == 0) {
       track_state.change_confidence = containment;
     } else {
-      track_state.change_confidence = config.added_ema_alpha * containment +
-                                      (1.0 - config.added_ema_alpha) * track_state.change_confidence;
+      track_state.change_confidence =
+          config.added_ema_alpha * containment +
+          (1.0 - config.added_ema_alpha) * track_state.change_confidence;
     }
     ++track_state.num_frames_observed;
     track_state.last_containment = containment;
     track_state.last_updated_frame = frame_index_;
 
     MLOG(4) << "[ActiveWindowChangeDetector] Track " << track_id
-            << " EMA update: raw=" << containment
-            << " smoothed=" << track_state.change_confidence
+            << " EMA update: raw=" << containment << " smoothed=" << track_state.change_confidence
             << " frames=" << track_state.num_frames_observed;
 
     const auto lookup_it = track_lookup.find(track_id);
@@ -518,8 +515,8 @@ std::vector<ActiveWindowChangeDetector::AddedObject> ActiveWindowChangeDetector:
     // for a better match first); unassociated tracks search for a match or create a new object.
     if (track_state.object_id != -1) {
       if (config.reassociate_every_frame) {
-        const int best_id = findBestObjectMatch(
-            track.last_bounding_box, track.semantics, track_state.object_id);
+        const int best_id =
+            findBestObjectMatch(track.last_bounding_box, track.semantics, track_state.object_id);
         if (best_id != -1 && best_id != track_state.object_id) {
           MLOG(3) << "[ActiveWindowChangeDetector] Track " << track_id
                   << " re-associated from object " << track_state.object_id << " to " << best_id;
@@ -556,7 +553,8 @@ std::vector<ActiveWindowChangeDetector::AddedObject> ActiveWindowChangeDetector:
       obj.first_seen = state.first_seen;
       obj.last_seen = state.last_seen;
       obj.bounding_box = state.bounding_box;
-      obj.centroid = state.bounding_box.isValid() ? state.bounding_box.world_P_center : Point::Zero();
+      obj.centroid =
+          state.bounding_box.isValid() ? state.bounding_box.world_P_center : Point::Zero();
       obj.semantics = state.semantics;
       obj.confidence = state.confidence;
       obj.change_confidence = static_cast<float>(state.change_confidence);
@@ -588,9 +586,8 @@ std::vector<ActiveWindowChangeDetector::AddedObject> ActiveWindowChangeDetector:
     }
   }
 
-  MLOG(2) << "[ActiveWindowChangeDetector] Added-object filter: "
-          << newly_added_objects.size() << " added out of "
-          << added_object_states_.size() << " tracked candidates";
+  MLOG(2) << "[ActiveWindowChangeDetector] Added-object filter: " << newly_added_objects.size()
+          << " added out of " << added_object_states_.size() << " tracked candidates";
 
   return newly_added_objects;
 }
@@ -604,7 +601,8 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
     // Loop residual: the getter reads map->odom, which traverses the pre_icp_odom->odom edge that
     // TfIcpPublisher derives from current_T_prior_. So this delta is what the world moved since we
     // last looked: last frame's ICP correction + any ROMAN update. It should shrink toward zero as
-    // ICP converges; a large or oscillating value means the TF chain disagrees with current_T_prior_.
+    // ICP converges; a large or oscillating value means the TF chain disagrees with
+    // current_T_prior_.
     const Eigen::Isometry3d loop_residual = current_T_prior_.inverse() * tf.value();
     MLOG(2) << "[ActiveWindowChangeDetector] TF readback loop residual: "
             << loop_residual.translation().norm() << " m, "
@@ -623,10 +621,12 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   const auto free_ratio_measurements = computeFreeRatios(objects_id_in_bounds, map);
 
   // 3. Update EMA filter and threshold to obtain the temporally-filtered removed set.
-  const auto removed_objects = updateRemovedFilter(free_ratio_measurements, data.input.timestamp_ns);
+  const auto removed_objects =
+      updateRemovedFilter(free_ratio_measurements, data.input.timestamp_ns);
 
   // 4. Compute per-frame containment ratios for newly-added-object detection.
-  // Known limitation: objects on tables cannot be detected this way (footprint-on-ground heuristic).
+  // Known limitation: objects on tables cannot be detected this way (footprint-on-ground
+  // heuristic).
   const auto containment_measurements = computeContainmentRatios(tracks, map);
 
   // 5. Update EMA filter, merge fragmented tracks, prune stale records, and return fused objects.
@@ -680,14 +680,14 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
 
   const auto& objects_layer = prior_graph_->getLayer(DsgLayers::OBJECTS);
 
-  for (const auto& [node_id, node] : objects_layer.nodes()) {
-    const auto& attrs = node->attributes();
+  for (const auto& node : objects_layer.nodes()) {
+    const auto& attrs = node.attributes();
     // Transform position from prior map frame to current map frame
     const Point position_in_current = transformPriorToCurrentFrame(attrs.position);
 
     if (isPointInMapBounds(position_in_current, map)) {
-      objects_in_bounds.push_back(node_id);
-      MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node_id).str()
+      objects_in_bounds.push_back(node.id);
+      MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node.id).str()
               << " is within map bounds at position (current frame): "
               << position_in_current.transpose();
     }
@@ -755,13 +755,12 @@ void ActiveWindowChangeDetector::runIcpRefinement(const FrameData& data,
   MLOG(1) << "[ActiveWindowChangeDetector] ICP: " << source.size() << " src, " << target.size()
           << " tgt pts.";
 
-  const auto res =
-      ICPRegistrationUtils::registerPointClouds(source,
-                                                target,
-                                                config.icp_num_threads,
-                                                config.icp_downsampling_resolution,
-                                                config.icp_max_correspondence_distance,
-                                                config.icp_max_iterations);
+  const auto res = ICPRegistrationUtils::registerPointClouds(source,
+                                                             target,
+                                                             config.icp_num_threads,
+                                                             config.icp_downsampling_resolution,
+                                                             config.icp_max_correspondence_distance,
+                                                             config.icp_max_iterations);
 
   if (!res.converged || res.num_inliers < config.icp_min_inliers) {
     LOG(WARNING) << "[ActiveWindowChangeDetector] ICP failed: converged=" << res.converged
