@@ -37,7 +37,11 @@
 
 #pragma once
 
+#include <optional>
+#include <string>
 #include <vector>
+
+#include <nlohmann/json_fwd.hpp>
 
 #include "khronos/active_window/data/measurement_clusters.h"
 #include "khronos/common/common_types.h"
@@ -71,6 +75,9 @@ struct Observation {
 };
 
 using Observations = std::vector<Observation>;
+
+void to_json(nlohmann::json& j, const Observation& obs);
+void from_json(const nlohmann::json& j, Observation& obs);
 
 /**
  * @brief Data structure to track objects and associations throughout the active window.
@@ -111,9 +118,28 @@ struct Track {
   // Whether this object is still active.
   bool is_active = true;
 
+  //! Tracker pass the track was last updated in
+  std::optional<uint32_t> sequence_number;
+
   void updateSemantics(const std::optional<SemanticClusterInfo>& other_semantics);
+
+  /**
+   * @brief Save track to filepath (excluding active state)
+   * @param filepath Destination path, e.g. ".../track_<id>/track.json".
+   */
+  void save(const std::string& filepath) const;
+
+  /**
+   * @brief Reconstruct a Track from a JSON file written by save().
+   * @param filepath Path to a track.json file.
+   * @return The reconstructed Track.
+   */
+  static Track load(const std::string& filepath);
 };
 
 using Tracks = std::vector<Track>;
+
+void to_json(nlohmann::json& j, const Track& track);
+void from_json(const nlohmann::json& j, Track& track);
 
 }  // namespace khronos
