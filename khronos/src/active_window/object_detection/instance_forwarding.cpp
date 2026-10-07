@@ -37,6 +37,7 @@
 
 #include "khronos/active_window/object_detection/instance_forwarding.h"
 
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -179,8 +180,11 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
         continue;
       }
 
+      // Invalid depth gives a non-finite range (and vertex). NaN fails both range comparisons, so
+      // reject it explicitly or it poisons the cluster's bounding box and the track's position.
       const auto range = data.input.range_image.at<InputData::RangeType>(v, u);
-      if (range < config.min_range || (config.max_range > 0.f && range > config.max_range)) {
+      if (!std::isfinite(range) || range < config.min_range ||
+          (config.max_range > 0.f && range > config.max_range)) {
         continue;
       }
 
