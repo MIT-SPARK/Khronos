@@ -198,6 +198,7 @@ struct Track {
    * file at the given path. `is_active` is intentionally not persisted: reconstructed tracks are
    * meant to be fed into a tracker for offline replay, where activity is re-derived, not restored.
    * @brief Save track to filepath (excluding active state)
+   * @brief Save track to filepath
    * @param filepath Destination path, e.g. ".../track_<id>/track.json".
    */
   void save(const std::string& filepath) const;
