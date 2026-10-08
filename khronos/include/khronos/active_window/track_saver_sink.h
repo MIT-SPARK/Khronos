@@ -38,6 +38,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_set>
 
 #include <hydra/common/global_info.h>
 #include <hydra/utils/logging.h>
@@ -136,6 +137,9 @@ class ActiveWindowTrackSaver : public ActiveWindow::KhronosSink {
 
   //! Whether camera_intrinsics.json has already been written for this run.
   mutable bool intrinsics_saved_ = false;
+
+  //! Tracks whose final (inactive) state has already been written to track.json.
+  mutable std::unordered_set<int> saved_inactive_;
 };
 
 void declare_config(ActiveWindowTrackSaver::Config& config);

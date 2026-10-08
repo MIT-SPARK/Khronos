@@ -85,6 +85,8 @@ void to_json(json& j, const Track& track) {
           {"last_seen", track.last_seen},
           {"first_seen", track.first_seen},
           {"observations", track.observations},
+          {"filtered_observations", track.filtered_observations},
+          {"is_active", track.is_active},
           {"last_bounding_box", boundingBoxToJson(track.last_bounding_box)},
           {"last_voxels", toJson(track.last_voxels)},
           {"last_points", track.last_points},
@@ -102,6 +104,9 @@ void from_json(const json& j, Track& track) {
   track.last_seen = j.at("last_seen").get<TimeStamp>();
   track.first_seen = j.at("first_seen").get<TimeStamp>();
   track.observations = j.at("observations").get<Observations>();
+  // Tolerant reads: older saved tracks predate these fields.
+  track.filtered_observations = j.value("filtered_observations", Observations());
+  track.is_active = j.value("is_active", true);
   track.last_bounding_box = boundingBoxFromJson(j.at("last_bounding_box"));
   track.last_voxels = globalIndexSetFromJson(j.at("last_voxels"));
   track.last_points = j.at("last_points").get<Points>();

@@ -248,6 +248,14 @@ void ActiveWindowTrackSaver::call(const FrameData& data,
   }
 
   for (const auto& track : tracks) {
+    // Re-save track.json once when a track turns inactive, so its final state (including
+    // observations pruned by the vote filter) is on disk before it is extracted and erased.
+    if (track.is_active) {
+      saved_inactive_.erase(track.id);
+    } else if (config.save_track_json && saved_inactive_.insert(track.id).second) {
+      saveTrackJson(getTrackDir(track.id), track);
+    }
+
     // Only save data for tracks observed in this exact frame; the sink only has access to the
     // current frame, so past observations cannot be backfilled here.
     if (track.observations.empty() || track.last_seen != data.input.timestamp_ns) {

@@ -89,6 +89,7 @@ void declare_config(ActiveWindow::Config& config) {
   field(config.extraction_worker, "extraction_worker");
   field(config.mesh_integrator, "mesh_integrator");
   field(config.frame_data_buffer, "frame_data_buffer");
+  field(config.vote_filter, "vote_filter");
   field(config.khronos_sinks, "khronos_sinks");
 }
 
@@ -113,7 +114,8 @@ ActiveWindow::ActiveWindow(const Config& config, const OutputQueue::Ptr& output_
       mesh_integrator_(config.mesh_integrator),
       extraction_worker_(config.extraction_worker, config.object_extractor.create()),
       sinks_(KhronosSink::instantiate(config.khronos_sinks)),
-      frame_data_buffer_(config.frame_data_buffer) {
+      frame_data_buffer_(config.frame_data_buffer),
+      vote_filter_(config.vote_filter) {
   if (!map_window_) {
     LOG(WARNING) << "[Khronos Active Window] map_window is required. Set active_window.map_window "
                     "in config (e.g. type: spatial or type: temporal).";
@@ -138,8 +140,19 @@ void ActiveWindow::addKhronosSink(const KhronosSink::Ptr& sink) {
 void ActiveWindow::updateTrackingStatus(const FrameData& data) {
   for (auto& track : tracks_) {
     const Eigen::Vector3d track_pos = track.last_bounding_box.world_P_center.cast<double>();
+    const bool was_active = track.is_active;
     track.is_active = map_window_->inBounds(
         data.input.timestamp_ns, data.input.world_T_body, track.last_seen, track_pos);
+
+    // Prune inconsistent observations once, before sinks see the track and before extraction.
+    if (was_active && !track.is_active) {
+      const auto num_filtered = vote_filter_.filter(frame_data_buffer_, track);
+      if (num_filtered) {
+        CLOG(4) << "[Khronos Active Window] Vote filter pruned " << num_filtered << " of "
+                << num_filtered + track.observations.size() << " observations of track "
+                << track.id << ".";
+      }
+    }
   }
 }
 
@@ -229,6 +242,9 @@ void ActiveWindow::finishMapping() {
     block.has_active_data = false;
   }
   for (Track& track : tracks_) {
+    if (track.is_active) {
+      vote_filter_.filter(frame_data_buffer_, track);
+    }
     track.is_active = false;
   }
   // Extract objects and wait for them to finish extraction.

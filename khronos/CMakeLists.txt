@@ -59,6 +59,7 @@ add_library(${PROJECT_NAME}
         src/active_window/track_saver_sink.cpp
         src/active_window/tracking/external_tracker.cpp
         src/active_window/tracking/max_iou_tracker.cpp
+        src/active_window/tracking/observation_vote_filter.cpp
         src/active_window/tracking/semantic_matching.cpp
         src/backend/backend.cpp
         src/backend/change_detection/background/ray_background_change_detector.cpp

@@ -96,6 +96,10 @@ struct Track {
   // cluster ID in the respective image.
   Observations observations;
 
+  // Observations pruned by the ObservationVoteFilter when the track turned inactive; excluded from
+  // object extraction but kept for debugging.
+  Observations filtered_observations;
+
   // Most recent data stored for tracking. These will be adaptively set by the tracker as needed.
   BoundingBox last_bounding_box;
   GlobalIndexSet last_voxels;
@@ -124,7 +128,7 @@ struct Track {
   void updateSemantics(const std::optional<SemanticClusterInfo>& other_semantics);
 
   /**
-   * @brief Save track to filepath (excluding active state)
+   * @brief Save track to filepath
    * @param filepath Destination path, e.g. ".../track_<id>/track.json".
    */
   void save(const std::string& filepath) const;
