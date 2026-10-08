@@ -47,6 +47,7 @@
 #include <hydra/common/global_info.h>
 #include <hydra/common/pipeline_queues.h>
 #include <hydra/utils/pgmo_mesh_traits.h>
+#include <kimera_pgmo/utils/common_functions.h>
 #include <kimera_pgmo/utils/mesh_io.h>
 
 #include "khronos/backend/change_state.h"
@@ -300,8 +301,8 @@ void Backend::save(const hydra::DataDirectory& log_setup) {
       if (dsg) {
         // Save with timestamp as filename
         std::stringstream filename;
-        filename << "dsg_" << std::setw(5) << std::setfill('0') << i
-                 << "_" << timestamps[i] << ".json";
+        filename << "dsg_" << std::setw(5) << std::setfill('0') << i << "_" << timestamps[i]
+                 << ".json";
         dsg->save(maps_path / filename.str(), false);
       }
     }
