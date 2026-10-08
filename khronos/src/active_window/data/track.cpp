@@ -120,6 +120,9 @@ void Track::absorb(Track&& other) {
   std::stable_sort(observations.begin(),
                    observations.end(),
                    [](const Observation& a, const Observation& b) { return a.stamp < b.stamp; });
+  filtered_observations.insert(filtered_observations.end(),
+                               other.filtered_observations.begin(),
+                               other.filtered_observations.end());
 
   // Both tracks observed the object at different times, so their hits add up.
   if (accumulated_voxels.empty()) {

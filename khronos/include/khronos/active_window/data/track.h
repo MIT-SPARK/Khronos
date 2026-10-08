@@ -106,6 +106,10 @@ struct Track {
   // cluster ID in the respective image.
   Observations observations;
 
+  // Observations pruned by the ObservationVoteFilter when the track turned inactive; excluded from
+  // object extraction but kept for debugging.
+  Observations filtered_observations;
+
   // Most recent data stored for tracking. These will be adaptively set by the tracker as needed.
   BoundingBox last_bounding_box;
   GlobalIndexSet last_voxels;

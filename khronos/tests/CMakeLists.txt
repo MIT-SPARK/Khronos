@@ -7,6 +7,7 @@ add_executable(
   test_${PROJECT_NAME}
   main.cpp
   active_window/tracking/test_max_iou_tracker.cpp
+  active_window/tracking/test_observation_vote_filter.cpp
   active_window/data/test_frame_data_buffer.cpp
   active_window/object_extraction/test_accumulated_object_extractor.cpp
   active_window/object_detection/test_instance_forwarding.cpp)
