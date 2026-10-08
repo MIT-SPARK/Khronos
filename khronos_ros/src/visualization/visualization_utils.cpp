@@ -48,6 +48,14 @@ visualization_msgs::msg::Marker setBoundingBox(const BoundingBox& bb,
   msg.type = visualization_msgs::msg::Marker::LINE_LIST;
   msg.scale.x = scale;
   msg.pose.orientation.w = 1.f;
+  if (bb.hasRotation()) {
+    // Corner points below are in the box frame, so the pose carries the box rotation.
+    const Eigen::Quaternionf q(bb.world_R_center);
+    msg.pose.orientation.w = q.w();
+    msg.pose.orientation.x = q.x();
+    msg.pose.orientation.y = q.y();
+    msg.pose.orientation.z = q.z();
+  }
   msg.pose.position.x = bb.world_P_center.x();
   msg.pose.position.y = bb.world_P_center.y();
   msg.pose.position.z = bb.world_P_center.z();
