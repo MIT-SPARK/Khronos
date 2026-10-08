@@ -37,6 +37,8 @@
 
 #pragma once
 
+#include <atomic>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <utility>
@@ -99,6 +101,22 @@ class MeshObjectExtractor : public ObjectExtractor {
     // Bounding box type used for extracted (persistent) static objects.
     enum class BBoxType { kAABB, kRAABB } bbox_type = BBoxType::kAABB;
 
+    // Root directory for object images (empty disables saving images). Images are written
+    // to <path>/temp/O_<track_id> and image_folder stores that path relative to the parent
+    // of the root. The image_root of the backend update functor (see
+    // hydra::utils::ObjectImageFolders) must be set to the same path so that the folders are
+    // moved to <path>/O_<node_id>, where the ../camera_calib.json reference in each meta file
+    // resolves.
+    std::filesystem::path object_image_output_path;
+
+    // Which observations to save: the one with the largest 3D bounding box, the one with the
+    // most segmented pixels, or all of them.
+    enum class ImageSelection {
+      kLargestBBox,
+      kSegmentSize,
+      kAll
+    } image_selection_criteria = ImageSelection::kLargestBBox;
+
     hydra::SensorMap<ObjectIntegrator>::Config projective_integrator;
     hydra::MeshIntegratorConfig mesh_integrator;
   } const config;
@@ -133,6 +151,13 @@ class MeshObjectExtractor : public ObjectExtractor {
   bool trackIsValid(const Track& track) const;
 
   /**
+   * @brief Save images for the extracted object and point its image folder to them.
+   */
+  void saveObjectImages(const Track& track,
+                        const std::vector<std::pair<FrameData::Ptr, int>>& frames,
+                        KhronosObjectAttributes& object) const;
+
+  /**
    * @brief Get a human readable name for the given track for printing.
    */
   static std::string getTrackName(const Track& track);
@@ -162,6 +187,8 @@ class MeshObjectExtractor : public ObjectExtractor {
 
  private:
   hydra::MeshIntegrator mesh_integrator_;
+  // Whether the camera calibration was written to the object image root.
+  mutable std::atomic<bool> calib_written_{false};
 
   inline static const auto registration_ =
       config::RegistrationWithConfig<ObjectExtractor,
