@@ -267,7 +267,7 @@ GlobalIndex ActiveWindowChangeDetector::to2DIndex(const Point& point, float voxe
 }
 
 GlobalIndexSet ActiveWindowChangeDetector::getPriorFreeFootprint2D(
-    const VolumetricMap& map) const {
+    const VolumetricMap& map, spatial_hash::IndexHashMap<float>* cell_heights) const {
   GlobalIndexSet free_footprint;
 
   if (!prior_graph_ || !prior_graph_->hasLayer(DsgLayers::MESH_PLACES)) {
@@ -310,7 +310,11 @@ GlobalIndexSet ActiveWindowChangeDetector::getPriorFreeFootprint2D(
           continue;
         }
         const Point pt_current = transformPriorToCurrentFrame(candidate_prior);
-        free_footprint.insert(to2DIndex(pt_current, voxel_size_inv));
+        const GlobalIndex cell = to2DIndex(pt_current, voxel_size_inv);
+        free_footprint.insert(cell);
+        if (cell_heights) {
+          cell_heights->emplace(cell, pt_current.z());  // First place covering the cell wins.
+        }
       }
     }
   }
@@ -339,11 +343,15 @@ GlobalIndexSet ActiveWindowChangeDetector::getTrackFootprint2D(const Track& trac
 
 std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRatios(
     const Tracks& tracks,
-    const VolumetricMap& map) const {
+    const VolumetricMap& map,
+    ChangeDetectionStatus* status) const {
   std::unordered_map<int, float> measurements;
 
   // Build the 2D free-space footprint from prior traversability places.
-  const GlobalIndexSet prior_free = getPriorFreeFootprint2D(map);
+  const bool collect_cells = status && config.collect_debug_voxels;
+  spatial_hash::IndexHashMap<float> cell_heights;
+  const GlobalIndexSet prior_free =
+      getPriorFreeFootprint2D(map, collect_cells ? &cell_heights : nullptr);
   if (prior_free.empty()) {
     return measurements;
   }
@@ -370,6 +378,32 @@ std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRat
       }
     }
     const float containment = static_cast<float>(intersection) / static_cast<float>(track2D.size());
+
+    if (status) {
+      auto& candidate = status->added_candidates.emplace_back();
+      candidate.track_id = track.id;
+      candidate.bounding_box = track.last_bounding_box.isValid()
+                                   ? track.last_bounding_box
+                                   : BoundingBox(track.last_points);
+      candidate.raw_containment = containment;
+      candidate.num_cells = track2D.size();
+      candidate.num_cells_in_free = intersection;
+      if (collect_cells) {
+        // Cells in prior free space sit at their place's height, the others at the track centroid.
+        const float centroid_z = candidate.bounding_box.world_P_center.z();
+        for (const GlobalIndex& idx : track2D) {
+          Point center = spatial_hash::centerPointFromIndex(idx, voxel_size);
+          const auto height_it = cell_heights.find(idx);
+          if (height_it != cell_heights.end()) {
+            center.z() = height_it->second;
+            candidate.in_free_cells.push_back(center);
+          } else {
+            center.z() = centroid_z;
+            candidate.out_cells.push_back(center);
+          }
+        }
+      }
+    }
 
     measurements[track.id] = containment;
     MLOG(4) << "[ActiveWindowChangeDetector] Track " << track.id
@@ -672,10 +706,26 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
 
   // 4. Compute per-frame containment ratios for newly-added-object detection.
   // Known limitation: objects on tables cannot be detected this way (footprint-on-ground heuristic).
-  const auto containment_measurements = computeContainmentRatios(tracks, map);
+  const auto containment_measurements = computeContainmentRatios(tracks, map, &status);
 
   // 5. Update EMA filter, merge fragmented tracks, prune stale records, and return fused objects.
   const auto newly_added_objects = updateAddedFilter(containment_measurements, tracks);
+
+  // Report the filter state and association of this frame's added candidates.
+  std::unordered_set<int> added_ids;
+  for (const auto& obj : newly_added_objects) {
+    added_ids.insert(obj.id);
+  }
+  for (auto& candidate : status.added_candidates) {
+    const auto state_it = track_added_states_.find(candidate.track_id);
+    if (state_it == track_added_states_.end()) {
+      continue;
+    }
+    candidate.change_confidence = state_it->second.change_confidence;
+    candidate.num_frames_observed = state_it->second.num_frames_observed;
+    candidate.object_id = state_it->second.object_id;
+    candidate.object_added = added_ids.count(candidate.object_id) > 0;
+  }
 
   MLOG(2) << "[ActiveWindowChangeDetector] Detected " << removed_objects.size()
           << " removed objects and " << newly_added_objects.size() << " newly added objects.";

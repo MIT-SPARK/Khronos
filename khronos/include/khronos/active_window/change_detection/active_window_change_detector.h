@@ -215,10 +215,37 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
    * @brief Per-frame debug status of the change detector for visualization. Separate from the
    * removed/added outputs, which only hold objects that passed the gates.
    */
+  /**
+   * @brief Debug status of one track measured for newly-added detection this frame: its footprint
+   * containment in the prior free space, its own filter state, and the object it feeds.
+   */
+  struct AddedCandidateStatus {
+    int track_id = -1;
+    //! Object the track contributes to after this frame's association (-1 if none).
+    int object_id = -1;
+    //! Whether that object passed the added gate this frame.
+    bool object_added = false;
+    //! Track bounding box in the current map frame.
+    BoundingBox bounding_box;
+    //! Raw containment this frame and the track's own filter state after the update.
+    float raw_containment = 0.0f;
+    float change_confidence = 0.0f;
+    int num_frames_observed = 0;
+    //! 2D footprint cells of the track, and how many of them lie in the prior free space.
+    int num_cells = 0;
+    int num_cells_in_free = 0;
+    //! Footprint cell centers (current map frame) inside / outside the prior free space. Cells in
+    //! free space sit at the prior place height, the others at the track centroid height. Only
+    //! filled if collect_debug_voxels.
+    std::vector<Point> in_free_cells;
+    std::vector<Point> out_cells;
+  };
+
   struct ChangeDetectionStatus {
-    //! Map voxel size [m] of the voxel indices below.
+    //! Map voxel size [m] of the voxel indices and cells below.
     float voxel_size = 0.0f;
     std::vector<RemovedCandidateStatus> removed_candidates;
+    std::vector<AddedCandidateStatus> added_candidates;
   };
 
   using ActiveWindowCDSink = hydra::OutputSink<const DynamicSceneGraph::Ptr&,
@@ -452,8 +479,10 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
    * non-empty footprint). Returns a map from track ID to raw containment ratio [0, 1].
    * Reuses getPriorFreeFootprint2D and getTrackFootprint2D.
    */
-  std::unordered_map<int, float> computeContainmentRatios(const Tracks& tracks,
-                                                          const VolumetricMap& map) const;
+  std::unordered_map<int, float> computeContainmentRatios(
+      const Tracks& tracks,
+      const VolumetricMap& map,
+      ChangeDetectionStatus* status = nullptr) const;
 
   /**
    * @brief For each track with a fresh containment measurement this frame: (1) EMA-update its
@@ -500,7 +529,9 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
 
   // Returns 2D voxel indices (z forced to 0, in current frame) covering the prior
   // traversable (MESH_PLACES / TravNodeAttributes) footprint within map bounds.
-  GlobalIndexSet getPriorFreeFootprint2D(const VolumetricMap& map) const;
+  // If cell_heights is set, it receives the height (current frame) of each footprint cell's place.
+  GlobalIndexSet getPriorFreeFootprint2D(
+      const VolumetricMap& map, spatial_hash::IndexHashMap<float>* cell_heights = nullptr) const;
 
   // Returns 2D voxel indices (z forced to 0) of a track's last_points footprint.
   GlobalIndexSet getTrackFootprint2D(const Track& track, float voxel_size) const;

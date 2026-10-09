@@ -137,6 +137,14 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
   void visualizeRemovedVoxels(const ActiveWindowChangeDetector::ChangeDetectionStatus& status,
                               const Eigen::Isometry3d& current_T_prior) const;
 
+  //! Draws a box + score label per measured track (amber, or green if its object is added).
+  void visualizeAddedStatus(const ActiveWindowChangeDetector::ChangeDetectionStatus& status,
+                            const Eigen::Isometry3d& current_T_prior) const;
+
+  //! Draws each measured track's footprint cells: green in prior free space, red outside.
+  void visualizeAddedVoxels(const ActiveWindowChangeDetector::ChangeDetectionStatus& status,
+                            const Eigen::Isometry3d& current_T_prior) const;
+
   // ROS
   ianvs::NodeHandle nh_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr object_bbox_pub_;
@@ -155,6 +163,8 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
   mutable hydra::MarkerTracker added_object_bbox_tracker_;
   mutable hydra::MarkerTracker status_tracker_;
   mutable hydra::MarkerTracker status_voxels_tracker_;
+  mutable hydra::MarkerTracker added_status_tracker_;
+  mutable hydra::MarkerTracker added_voxels_tracker_;
 
   // Time stamp caching for synchronization of multiple visualizations.
   rclcpp::Time getStamp() const { return stamp_is_set_ ? stamp_ : nh_.now(); }
