@@ -89,7 +89,8 @@ class TfIcpPublisher : public ActiveWindowChangeDetector::ActiveWindowCDSink {
   void call(const DynamicSceneGraph::Ptr& dsg,
             const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects,
             const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects,
-            const Eigen::Isometry3d& current_T_prior) const override;
+            const Eigen::Isometry3d& current_T_prior,
+            const ActiveWindowChangeDetector::ChangeDetectionStatus& status) const override;
 
  private:
   std::string getOdomFrame() const;
