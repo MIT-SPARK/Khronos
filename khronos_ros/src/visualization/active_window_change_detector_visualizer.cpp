@@ -138,9 +138,11 @@ void ActiveWindowChangeDetectorVisualizer::call(
   visualizeAddedObjects(newly_added_objects, current_T_prior);
   if (config.draw_status) {
     visualizeRemovedStatus(dsg, status);
+    visualizeAddedStatus(status, current_T_prior);
   }
   if (config.draw_status_voxels) {
     visualizeRemovedVoxels(status, current_T_prior);
+    visualizeAddedVoxels(status, current_T_prior);
   }
   stamp_is_set_ = false;
 }
@@ -258,8 +260,10 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedObjects(
 namespace {
 
 using RemovedCandidateStatus = ActiveWindowChangeDetector::RemovedCandidateStatus;
+using AddedCandidateStatus = ActiveWindowChangeDetector::AddedCandidateStatus;
 
 const Color kRemovedColor(255, 0, 0, 255);
+const Color kAddedColor(0, 255, 0, 255);
 //! Muted amber: stands out against the gray floor without being as bright as pure yellow.
 const Color kCandidateColor(230, 180, 40, 255);
 const Color kFreeColor(0, 255, 0, 255);
@@ -269,6 +273,41 @@ const Color kUnknownColor(128, 128, 128, 255);
 const uint8_t kOutOfBoundsAlpha = 80;
 
 int markerId(spark_dsg::NodeId id) { return static_cast<int>(id & 0xffffffff); }
+
+//! Pre-multiplies a marker pose by `T` (e.g. prior_T_current to draw current-frame geometry).
+void transformPose(const Eigen::Isometry3d& T, geometry_msgs::msg::Pose& pose) {
+  Eigen::Isometry3d pose_eigen = Eigen::Isometry3d::Identity();
+  pose_eigen.translation() << pose.position.x, pose.position.y, pose.position.z;
+  pose_eigen.linear() = Eigen::Quaterniond(pose.orientation.w,
+                                           pose.orientation.x,
+                                           pose.orientation.y,
+                                           pose.orientation.z)
+                            .normalized()
+                            .toRotationMatrix();
+  const Eigen::Isometry3d result = T * pose_eigen;
+  const Eigen::Quaterniond q(result.linear());
+  pose.position.x = result.translation().x();
+  pose.position.y = result.translation().y();
+  pose.position.z = result.translation().z();
+  pose.orientation.w = q.w();
+  pose.orientation.x = q.x();
+  pose.orientation.y = q.y();
+  pose.orientation.z = q.z();
+}
+
+std::string addedLabel(const AddedCandidateStatus& candidate) {
+  std::ostringstream ss;
+  ss << std::fixed << std::setprecision(2);
+  ss << "T" << candidate.track_id;
+  if (candidate.object_id >= 0) {
+    ss << "->A" << candidate.object_id;
+  }
+  ss << (candidate.object_added ? " ADDED" : "") << " p=" << candidate.change_confidence
+     << " n=" << candidate.num_frames_observed;
+  ss << "\nraw=" << candidate.raw_containment << " cells " << candidate.num_cells_in_free << "/"
+     << candidate.num_cells;
+  return ss.str();
+}
 
 std::string removedLabel(const RemovedCandidateStatus& candidate) {
   std::ostringstream ss;
@@ -405,6 +444,106 @@ void ActiveWindowChangeDetectorVisualizer::visualizeRemovedVoxels(
   MarkerArray msg;
   status_voxels_tracker_.add(new_markers, msg);
   status_voxels_tracker_.clearPrevious(header, msg);
+  if (!msg.markers.empty()) {
+    status_voxels_pub_->publish(msg);
+  }
+}
+
+void ActiveWindowChangeDetectorVisualizer::visualizeAddedStatus(
+    const ActiveWindowChangeDetector::ChangeDetectionStatus& status,
+    const Eigen::Isometry3d& current_T_prior) const {
+  if (status_pub_->get_subscription_count() == 0u) {
+    return;
+  }
+
+  std_msgs::msg::Header header;
+  header.frame_id = config.global_frame_name;
+  header.stamp = getStamp();
+
+  // Track boxes are in the current frame: build them there, then move the marker poses into the
+  // prior (map) frame.
+  const Eigen::Isometry3d prior_T_current = current_T_prior.inverse();
+
+  MarkerArray new_markers;
+  for (const auto& candidate : status.added_candidates) {
+    const auto& bbox = candidate.bounding_box;
+    if (!bbox.isValid()) {
+      continue;
+    }
+    const Color& color = candidate.object_added ? kAddedColor : kCandidateColor;
+
+    auto& box = new_markers.markers.emplace_back(
+        setBoundingBox(bbox, color, header, config.bounding_box_line_width));
+    box.ns = "added_status";
+    box.id = candidate.track_id;
+    transformPose(prior_T_current, box.pose);
+
+    auto& label = new_markers.markers.emplace_back();
+    label.header = header;
+    label.type = Marker::TEXT_VIEW_FACING;
+    label.action = Marker::ADD;
+    label.ns = "added_labels";
+    label.id = candidate.track_id;
+    label.scale.z = config.label_text_scale;
+    label.color = setColor(color);
+    label.pose.orientation.w = 1.0;
+    label.pose.position = setPoint(
+        bbox.world_P_center +
+        Point(0, 0, bbox.dimensions.z() / 2.0f + config.label_text_scale * 1.5f));
+    transformPose(prior_T_current, label.pose);
+    label.text = addedLabel(candidate);
+  }
+
+  MarkerArray msg;
+  added_status_tracker_.add(new_markers, msg);
+  added_status_tracker_.clearPrevious(header, msg);
+  if (!msg.markers.empty()) {
+    status_pub_->publish(msg);
+  }
+}
+
+void ActiveWindowChangeDetectorVisualizer::visualizeAddedVoxels(
+    const ActiveWindowChangeDetector::ChangeDetectionStatus& status,
+    const Eigen::Isometry3d& current_T_prior) const {
+  if (status_voxels_pub_->get_subscription_count() == 0u) {
+    return;
+  }
+
+  std_msgs::msg::Header header;
+  header.frame_id = config.global_frame_name;
+  header.stamp = getStamp();
+
+  const Eigen::Isometry3d prior_T_current = current_T_prior.inverse();
+  const uint8_t alpha = static_cast<uint8_t>(config.voxel_alpha * 255.0f);
+
+  MarkerArray new_markers;
+  for (const auto& candidate : status.added_candidates) {
+    auto& marker = new_markers.markers.emplace_back();
+    marker.header = header;
+    marker.type = Marker::CUBE_LIST;
+    marker.action = Marker::ADD;
+    marker.ns = "added_voxels";
+    marker.id = candidate.track_id;
+    marker.scale = setScale(status.voxel_size);
+    marker.color = setColor(kFreeColor, alpha);
+    marker.pose.orientation.w = 1.0;
+    transformPose(prior_T_current, marker.pose);
+
+    const auto add_cells = [&](const std::vector<Point>& cells, const Color& color) {
+      const auto cell_color = setColor(color, alpha);
+      for (const auto& cell : cells) {
+        marker.points.push_back(setPoint(cell));
+        marker.colors.push_back(cell_color);
+      }
+    };
+    add_cells(candidate.in_free_cells, kFreeColor);
+    add_cells(candidate.out_cells, kOccupiedColor);
+  }
+
+  // Markers without points (e.g. collect_debug_voxels off) are deleted by the tracker.
+  MarkerArray msg;
+  added_voxels_tracker_.add(new_markers, msg);
+  added_voxels_tracker_.clearPrevious(header, msg);
   if (!msg.markers.empty()) {
     status_voxels_pub_->publish(msg);
   }
