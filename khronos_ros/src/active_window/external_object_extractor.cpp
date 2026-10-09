@@ -11,6 +11,7 @@
 #include <config_utilities/validation.h>
 #include <cv_bridge/cv_bridge.hpp>
 #include <khronos/utils/geometry_utils.h>
+#include <nlohmann/json.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
 
 namespace khronos {

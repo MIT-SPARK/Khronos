@@ -5,6 +5,7 @@
 #include <config_utilities/types/enum.h>
 #include <config_utilities/validation.h>
 #include <glog/logging.h>
+#include <nlohmann/json.hpp>
 #include <spark_dsg/colormaps.h>
 #include <spark_dsg/node_attributes.h>
 #include <spark_dsg/node_symbol.h>
