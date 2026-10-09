@@ -45,6 +45,7 @@
 
 #include <hydra/common/output_sink.h>
 #include <hydra/utils/logging.h>
+#include <spatial_hash/hash.h>
 
 #include "khronos/active_window/active_window.h"
 #include "khronos/active_window/change_detection/transformation_getter.h"
@@ -205,6 +206,13 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! Guards against single-frame spikes on newly-entered objects.
     int removal_min_frames_observed = 3;
 
+    //! Minimum fraction of a prior object's occupied voxels (its mesh quantized to the map voxel
+    //! size) that must lie in allocated map blocks for the object to be a removal candidate this
+    //! frame. Objects below it get no measurement, so their EMA state is frozen. Prevents an object
+    //! straddling the active window boundary from being re-measured on a small leftover piece of
+    //! its geometry. Objects without a mesh fall back to the centroid test.
+    float removal_min_in_bounds_fraction = 0.5f;
+
     //! Raw per-frame containment ratio fed into the EMA filter for newly-added-object detection.
     //! Not the final decision threshold; that role is played by added_probability_threshold.
     float added_object_containment_threshold = 0.5f;
@@ -326,7 +334,9 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   bool isPointInMapBounds(const Point& point, const VolumetricMap& map) const;
 
   /**
-   * @brief Find all prior object nodes whose centroid is within the current volumetric map bounds.
+   * @brief Find all prior object nodes that are within the current volumetric map bounds: at
+   * least removal_min_in_bounds_fraction of their occupied voxels lie in allocated blocks. Objects
+   * without a mesh fall back to testing their centroid.
    * @param map The current volumetric map.
    * @return Vector of node IDs for objects within map bounds.
    */
@@ -418,6 +428,12 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
                            const Track& track,
                            const TrackAddedState& track_state) const;
 
+  /**
+   * @brief Build (once per map voxel size) each prior object's occupied voxels from its mesh, and
+   * re-bin them into current-frame map blocks whenever current_T_prior_ changed.
+   */
+  void updatePriorObjectGeometry(const VolumetricMap& map) const;
+
   // Returns 2D voxel indices (z forced to 0, in current frame) covering the prior
   // traversable (MESH_PLACES / TravNodeAttributes) footprint within map bounds.
   GlobalIndexSet getPriorFreeFootprint2D(const VolumetricMap& map) const;
@@ -435,6 +451,23 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   //! Transform from prior map frame to current map frame.
   //! current_point = current_T_prior_ * prior_point
   mutable Eigen::Isometry3d current_T_prior_ = Eigen::Isometry3d::Identity();
+
+  //! Occupied geometry of a prior object, used for the in-bounds test.
+  struct PriorObjectGeometry {
+    //! Unique occupied voxel centers in the prior map frame (mesh vertices quantized).
+    std::vector<Eigen::Vector3d> voxel_centers;
+    //! Number of occupied voxels per current-frame map block, for the current current_T_prior_.
+    spatial_hash::IndexHashMap<int> block_counts;
+  };
+
+  //! Per-object occupied geometry, keyed by prior DSG NodeId. Only objects with a mesh.
+  mutable std::unordered_map<spark_dsg::NodeId, PriorObjectGeometry> prior_object_geometry_;
+
+  //! Voxel size prior_object_geometry_ was built with (0 = not built yet).
+  mutable float prior_geometry_voxel_size_ = 0.0f;
+
+  //! Whether block_counts must be recomputed because current_T_prior_ changed.
+  mutable bool prior_geometry_blocks_dirty_ = true;
 
   //! Per-object EMA filter state for removed-object detection. Keyed by prior DSG NodeId.
   //! Populated lazily on first observation; never erased (freeze-last for unobserved objects).

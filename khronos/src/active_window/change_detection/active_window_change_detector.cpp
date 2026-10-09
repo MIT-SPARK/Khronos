@@ -66,6 +66,7 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.removal_ema_alpha, "removal_ema_alpha");
   field(config.removal_probability_threshold, "removal_probability_threshold");
   field(config.removal_min_frames_observed, "removal_min_frames_observed");
+  field(config.removal_min_in_bounds_fraction, "removal_min_in_bounds_fraction");
   field(config.added_object_containment_threshold, "added_object_containment_threshold");
   field(config.added_ema_alpha, "added_ema_alpha");
   field(config.added_probability_threshold, "added_probability_threshold");
@@ -89,6 +90,8 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.icp_max_correspondence_distance, "icp_max_correspondence_distance");
   field(config.icp_max_iterations, "icp_max_iterations");
   field(config.icp_min_inliers, "icp_min_inliers");
+  checkInRange(
+      config.removal_min_in_bounds_fraction, 0.0f, 1.0f, "removal_min_in_bounds_fraction");
   checkInRange(
       config.merge_min_semantic_cosine_sim, -1.0f, 1.0f, "merge_min_semantic_cosine_sim");
   check<Path::Exists>(config.prior_map_path, "prior_map_path");
@@ -678,6 +681,10 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
     return objects_in_bounds;
   }
 
+  // TODO(multy): maybe as step 0 if compute free ratio also use this. 
+  updatePriorObjectGeometry(map);
+
+  const auto& tsdf_layer = map.getTsdfLayer();
   const auto& objects_layer = prior_graph_->getLayer(DsgLayers::OBJECTS);
 
   for (const auto& [node_id, node] : objects_layer.nodes()) {
@@ -685,12 +692,41 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
     // Transform position from prior map frame to current map frame
     const Point position_in_current = transformPriorToCurrentFrame(attrs.position);
 
-    if (isPointInMapBounds(position_in_current, map)) {
-      objects_in_bounds.push_back(node_id);
-      MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node_id).str()
-              << " is within map bounds at position (current frame): "
-              << position_in_current.transpose();
+    // If no geometric information, just use the bbox centroid
+    const auto geometry_it = prior_object_geometry_.find(node_id);
+    if (geometry_it == prior_object_geometry_.end()) {
+      // No mesh: fall back to the centroid test.
+      if (isPointInMapBounds(position_in_current, map)) {
+        objects_in_bounds.push_back(node_id);
+        MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node_id).str()
+                << " (no mesh) is within map bounds at position (current frame): "
+                << position_in_current.transpose();
+      }
+      continue;
     }
+
+    // Count the object's occupied voxels that lie in allocated blocks.
+    const auto& geometry = geometry_it->second;
+    int num_in_bounds = 0;
+    for (const auto& [block_index, count] : geometry.block_counts) {
+      if (tsdf_layer.hasBlock(block_index)) {
+        num_in_bounds += count;
+      }
+    }
+    if (num_in_bounds == 0) {
+      continue;
+    }
+
+    const float in_bounds_fraction =
+        static_cast<float>(num_in_bounds) / geometry.voxel_centers.size();
+    const bool in_bounds = in_bounds_fraction >= config.removal_min_in_bounds_fraction;
+    if (in_bounds) {
+      objects_in_bounds.push_back(node_id);
+    }
+    MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node_id).str()
+            << (in_bounds ? " is" : " is not") << " within map bounds (" << num_in_bounds << "/"
+            << geometry.voxel_centers.size() << " voxels = " << in_bounds_fraction
+            << ") at position (current frame): " << position_in_current.transpose();
   }
 
   MLOG(4) << "[ActiveWindowChangeDetector] Found " << objects_in_bounds.size()
@@ -702,10 +738,60 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
 void ActiveWindowChangeDetector::setCurrentToPriorTransform(
     const Eigen::Isometry3d& current_T_prior) const {
   current_T_prior_ = current_T_prior;
+  prior_geometry_blocks_dirty_ = true;
   MLOG(1) << "[ActiveWindowChangeDetector] Updated current_T_prior transform:\n"
           << "  Translation: " << current_T_prior_.translation().transpose() << "\n"
           << "  Rotation (quaternion wxyz): "
           << Eigen::Quaterniond(current_T_prior_.rotation()).coeffs().transpose();
+}
+
+void ActiveWindowChangeDetector::updatePriorObjectGeometry(const VolumetricMap& map) const {
+  if (!prior_graph_ || !prior_graph_->hasLayer(DsgLayers::OBJECTS)) {
+    return;
+  }
+
+  // Quantize each object's mesh to unique occupied voxels in the prior frame. Done once, since the
+  // prior map and the map voxel size don't change.
+  const float voxel_size = map.config.voxel_size;
+  if (voxel_size != prior_geometry_voxel_size_) {
+    prior_object_geometry_.clear();
+    const float voxel_size_inv = 1.0f / voxel_size;
+    for (const auto& [node_id, node] : prior_graph_->getLayer(DsgLayers::OBJECTS).nodes()) {
+      const auto* attrs = node->tryAttributes<KhronosObjectAttributes>();
+      if (!attrs || attrs->mesh.numVertices() == 0) {
+        continue;
+      }
+
+      GlobalIndexSet voxels;
+      for (size_t i = 0; i < attrs->mesh.numVertices(); ++i) {
+        const Point vertex_prior = attrs->bounding_box.pointToWorldFrame(attrs->mesh.pos(i));
+        voxels.insert(spatial_hash::indexFromPoint<GlobalIndex>(vertex_prior, voxel_size_inv));
+      }
+
+      auto& geometry = prior_object_geometry_[node_id];
+      geometry.voxel_centers.reserve(voxels.size());
+      for (const auto& voxel : voxels) {
+        geometry.voxel_centers.push_back(
+            spatial_hash::centerPointFromIndex(voxel, voxel_size).cast<double>());
+      }
+    }
+    prior_geometry_voxel_size_ = voxel_size;
+    prior_geometry_blocks_dirty_ = true;
+  }
+
+  if (!prior_geometry_blocks_dirty_) {
+    return;
+  }
+
+  // Re-bin the occupied voxels into current-frame map blocks for the new current_T_prior_.
+  const auto& tsdf_layer = map.getTsdfLayer();
+  for (auto& [node_id, geometry] : prior_object_geometry_) {
+    geometry.block_counts.clear();
+    for (const auto& center : geometry.voxel_centers) {
+      ++geometry.block_counts[tsdf_layer.getBlockIndex(transformPriorToCurrentFrame(center))];
+    }
+  }
+  prior_geometry_blocks_dirty_ = false;
 }
 
 Point ActiveWindowChangeDetector::transformPriorToCurrentFrame(
