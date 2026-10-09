@@ -87,6 +87,24 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
 
     //! Minimum time between visualization redraws (seconds). 0 = draw every frame.
     double min_draw_period_s = 0.0;
+
+    //! Whether to draw the prior scene graph (renderer) and the prior mesh (mesh plugin).
+    bool draw_graph = true;
+    bool draw_mesh = true;
+
+    //! Whether to draw the per-candidate change detection status (bounding boxes + score labels)
+    //! on "change_detection/status".
+    bool draw_status = true;
+
+    //! Whether to draw the per-candidate voxels on "change_detection/voxels". Needs the detector's
+    //! collect_debug_voxels.
+    bool draw_status_voxels = true;
+
+    //! Height in meters of the status text labels.
+    float label_text_scale = 0.3f;
+
+    //! Alpha of the status voxels.
+    float voxel_alpha = 0.6f;
   } const config;
 
   explicit ActiveWindowChangeDetectorVisualizer(const Config& config,
@@ -97,7 +115,8 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
   void call(const DynamicSceneGraph::Ptr& dsg,
             const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects,
             const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects,
-            const Eigen::Isometry3d& current_T_prior) const override;
+            const Eigen::Isometry3d& current_T_prior,
+            const ActiveWindowChangeDetector::ChangeDetectionStatus& status) const override;
 
  private:
   void drawPriorGraph(const DynamicSceneGraph::Ptr& dsg) const;
@@ -110,9 +129,19 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
       const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects,
       const Eigen::Isometry3d& current_T_prior) const;
 
+  //! Draws a box + score label per removal candidate (amber, or red if removed).
+  void visualizeRemovedStatus(const DynamicSceneGraph::Ptr& dsg,
+                              const ActiveWindowChangeDetector::ChangeDetectionStatus& status) const;
+
+  //! Draws each removal candidate's voxels: green free, red occupied, gray unobserved.
+  void visualizeRemovedVoxels(const ActiveWindowChangeDetector::ChangeDetectionStatus& status,
+                              const Eigen::Isometry3d& current_T_prior) const;
+
   // ROS
   ianvs::NodeHandle nh_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr object_bbox_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr status_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr status_voxels_pub_;
   // Renderer and plugins
   std::shared_ptr<hydra::SceneGraphRenderer> renderer_;
   std::shared_ptr<hydra::MeshPlugin> mesh_plugin_;
@@ -124,6 +153,8 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
   mutable std::optional<rclcpp::Time> last_draw_time_;
   mutable hydra::MarkerTracker object_bbox_tracker_;
   mutable hydra::MarkerTracker added_object_bbox_tracker_;
+  mutable hydra::MarkerTracker status_tracker_;
+  mutable hydra::MarkerTracker status_voxels_tracker_;
 
   // Time stamp caching for synchronization of multiple visualizations.
   rclcpp::Time getStamp() const { return stamp_is_set_ ? stamp_ : nh_.now(); }

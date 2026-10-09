@@ -77,7 +77,8 @@ TfIcpPublisher::TfIcpPublisher(const Config& cfg, const ianvs::NodeHandle* nh)
 void TfIcpPublisher::call(const DynamicSceneGraph::Ptr& /*dsg*/,
                           const std::vector<ActiveWindowChangeDetector::RemovedObject>& /*removed_objects*/,
                           const std::vector<ActiveWindowChangeDetector::AddedObject>& /*newly_added_objects*/,
-                          const Eigen::Isometry3d& current_T_prior) const {
+                          const Eigen::Isometry3d& current_T_prior,
+                          const ActiveWindowChangeDetector::ChangeDetectionStatus& /*status*/) const {
   // Look up map -> pre_icp_odom (the ROMAN-only result, published upstream).
   std::string err;
   const auto status = hydra::lookupTransform(tf_lookup_.buffer,

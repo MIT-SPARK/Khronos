@@ -83,7 +83,8 @@ void ActiveWindowChangeDetectorPublisher::call(
     const DynamicSceneGraph::Ptr& /* dsg */,
     const std::vector<RemovedObject>& removed_objects,
     const std::vector<AddedObject>& newly_added_objects,
-    const Eigen::Isometry3d& current_T_prior) const {
+    const Eigen::Isometry3d& current_T_prior,
+    const ActiveWindowChangeDetector::ChangeDetectionStatus& /* status */) const {
   // Gate publishing on set-membership change: only publish if the set of removed and/or added
   // object ids differs from the last message actually published (not just from last frame's
   // detector output), so an unchanged scene does not keep re-publishing every frame.

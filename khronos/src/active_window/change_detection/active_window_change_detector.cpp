@@ -39,6 +39,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <unordered_set>
 
 #include <config_utilities/types/enum.h>
 #include <config_utilities/types/path.h>
@@ -67,6 +68,10 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.removal_probability_threshold, "removal_probability_threshold");
   field(config.removal_min_frames_observed, "removal_min_frames_observed");
   field(config.removal_min_in_bounds_fraction, "removal_min_in_bounds_fraction");
+  enum_field(config.removal_score_weighting,
+             "removal_score_weighting",
+             std::vector<std::string>{"vertices", "voxels"});
+  field(config.collect_debug_voxels, "collect_debug_voxels");
   field(config.added_object_containment_threshold, "added_object_containment_threshold");
   field(config.added_ema_alpha, "added_ema_alpha");
   field(config.added_probability_threshold, "added_probability_threshold");
@@ -118,58 +123,77 @@ void ActiveWindowChangeDetector::addKhronosSink(const ActiveWindowCDSink::Ptr& s
 
 std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::computeFreeRatios(
     const std::vector<spark_dsg::NodeId>& objects_id_in_bounds,
-    const VolumetricMap& map) const {
+    const VolumetricMap& map,
+    ChangeDetectionStatus* status) const {
   std::unordered_map<spark_dsg::NodeId, float> measurements;
 
+  std::unordered_map<spark_dsg::NodeId, RemovedCandidateStatus*> candidates;
+  if (status) {
+    for (auto& candidate : status->removed_candidates) {
+      candidates[candidate.id] = &candidate;
+    }
+  }
+
+  const auto& tracking_layer = *map.getTrackingLayer();
+  const bool weight_by_vertices =
+      config.removal_score_weighting == Config::RemovalScoreWeighting::kVertices;
+
   for (const auto object_id : objects_id_in_bounds) {
-    const auto& object_node = prior_graph_->getNode(object_id);
-
-    const auto* khronos_attrs = object_node.tryAttributes<KhronosObjectAttributes>();
-    if (!khronos_attrs) {
+    // prior_object_geometry_ holds exactly the objects with KhronosObjectAttributes and a mesh.
+    const auto geometry_it = prior_object_geometry_.find(object_id);
+    if (geometry_it == prior_object_geometry_.end()) {
       MLOG(5) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
-              << " does not have KhronosObjectAttributes, skipping";
+              << " has no KhronosObjectAttributes or an empty mesh, skipping";
       continue;
     }
 
-    const auto& mesh = khronos_attrs->mesh;
-    const auto& bbox = khronos_attrs->bounding_box;
+    const auto candidate_it = candidates.find(object_id);
+    RemovedCandidateStatus* candidate =
+        candidate_it == candidates.end() ? nullptr : candidate_it->second;
+    const bool collect_voxels = candidate && config.collect_debug_voxels;
 
-    if (mesh.numVertices() == 0) {
-      MLOG(5) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
-              << " has empty mesh, skipping";
-      continue;
-    }
-
-    int num_vertices_in_free_space = 0;
-    int num_vertices_in_bound_and_known = 0;
-
-    for (size_t i = 0; i < mesh.numVertices(); ++i) {
-      // Transform: local → prior_world → current_world
-      const Eigen::Vector3f vertex_local = mesh.pos(i);
-      const Eigen::Vector3f vertex_prior_world = bbox.pointToWorldFrame(vertex_local);
-      const Point vertex_current = transformPriorToCurrentFrame(vertex_prior_world.cast<double>());
-
-      if (!isPointKnown(vertex_current, map)) {
-        continue;  // Skip unknown points — no valid measurement at this vertex.
+    int num_free = 0;
+    int num_known = 0;
+    for (const auto& voxel : geometry_it->second.voxels) {
+      // Same voxel a lookup of each of its vertices (prior -> current frame) returns.
+      const auto* tracking_voxel = tracking_layer.getVoxelPtr(voxel.index);
+      const bool known = tracking_voxel && tracking_voxel->last_observed != 0u;
+      const bool free = known && tracking_voxel->ever_free;
+      if (collect_voxels) {
+        auto& voxels = !known ? candidate->unknown_voxels
+                       : free ? candidate->free_voxels
+                              : candidate->occupied_voxels;
+        voxels.push_back(voxel.index);
+      }
+      if (!known) {
+        continue;  // Skip unknown voxels — no valid measurement there.
       }
 
-      ++num_vertices_in_bound_and_known;
-
-      if (isPriorPointFree(vertex_current, map)) {
-        ++num_vertices_in_free_space;
+      const int weight = weight_by_vertices ? voxel.num_vertices : 1;
+      num_known += weight;
+      if (free) {
+        num_free += weight;
       }
     }
 
-    // Guard division: if no known vertices observed this frame, there is no valid measurement.
+    if (candidate) {
+      candidate->num_known = num_known;
+      candidate->num_free = num_free;
+    }
+
+    // Guard division: if no known samples observed this frame, there is no valid measurement.
     // Skip to avoid feeding NaN/garbage into the EMA filter.
-    if (num_vertices_in_bound_and_known == 0) {
+    if (num_known == 0) {
       MLOG(5) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
               << " has no known vertices this frame, skipping measurement";
       continue;
     }
 
-    const float free_ratio = static_cast<float>(num_vertices_in_free_space) /
-                             static_cast<float>(num_vertices_in_bound_and_known);
+    const float free_ratio = static_cast<float>(num_free) / static_cast<float>(num_known);
+    if (candidate) {
+      candidate->measured = true;
+      candidate->raw_ratio = free_ratio;
+    }
 
     measurements[object_id] = free_ratio;
     MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
@@ -306,6 +330,7 @@ GlobalIndexSet ActiveWindowChangeDetector::getTrackFootprint2D(const Track& trac
                                                                float voxel_size) const {
   GlobalIndexSet footprint;
   const float voxel_size_inv = 1.0f / voxel_size;
+  // TODO(multy): more idea if the points are accumulative
   for (const Point& pt : track.last_points) {
     footprint.insert(to2DIndex(pt, voxel_size_inv));
   }
@@ -336,6 +361,7 @@ std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRat
       continue;
     }
 
+    // TODO(multy): what if some of the track points are outside the prior map bounds? Should we skip those points or count them as unknown? For now, we will just count the points that are in the prior map bounds and known.
     // Containment ratio: fraction of the track's 2D footprint that falls in prior free space.
     int intersection = 0;
     for (const GlobalIndex& idx : track2D) {
@@ -620,13 +646,29 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   }
 
   // 1. Find all object nodes in the prior graph within current volumetric map bounds.
-  const auto objects_id_in_bounds = findPriorObjectsInMapBounds(map);
+  ChangeDetectionStatus status;
+  status.voxel_size = map.config.voxel_size;
+  const auto objects_id_in_bounds = findPriorObjectsInMapBounds(map, &status);
 
   // 2. Compute per-frame free ratios for objects with valid measurements.
-  const auto free_ratio_measurements = computeFreeRatios(objects_id_in_bounds, map);
+  const auto free_ratio_measurements = computeFreeRatios(objects_id_in_bounds, map, &status);
 
   // 3. Update EMA filter and threshold to obtain the temporally-filtered removed set.
   const auto removed_objects = updateRemovedFilter(free_ratio_measurements, data.input.timestamp_ns);
+
+  // Report the filter state of this frame's removal candidates.
+  std::unordered_set<spark_dsg::NodeId> removed_ids;
+  for (const auto& obj : removed_objects) {
+    removed_ids.insert(obj.id);
+  }
+  for (auto& candidate : status.removed_candidates) {
+    const auto state_it = removed_object_states_.find(candidate.id);
+    if (state_it != removed_object_states_.end()) {
+      candidate.free_probability = state_it->second.free_probability;
+      candidate.num_frames_observed = state_it->second.num_frames_observed;
+    }
+    candidate.removed = removed_ids.count(candidate.id) > 0;
+  }
 
   // 4. Compute per-frame containment ratios for newly-added-object detection.
   // Known limitation: objects on tables cannot be detected this way (footprint-on-ground heuristic).
@@ -640,7 +682,7 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
 
   // Call all sinks with removed objects, newly-added objects, and the prior-to-current transform.
   ActiveWindowCDSink::callAll(
-      sinks_, prior_graph_, removed_objects, newly_added_objects, current_T_prior_);
+      sinks_, prior_graph_, removed_objects, newly_added_objects, current_T_prior_, status);
 }
 
 void ActiveWindowChangeDetector::loadPriorMap() {
@@ -673,7 +715,7 @@ bool ActiveWindowChangeDetector::isPointKnown(const Point& point_in_map,
 }
 
 std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMapBounds(
-    const VolumetricMap& map) const {
+    const VolumetricMap& map, ChangeDetectionStatus* status) const {
   std::vector<spark_dsg::NodeId> objects_in_bounds;
 
   if (!prior_graph_ || !prior_graph_->hasLayer(DsgLayers::OBJECTS)) {
@@ -698,6 +740,11 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
       // No mesh: fall back to the centroid test.
       if (isPointInMapBounds(position_in_current, map)) {
         objects_in_bounds.push_back(node_id);
+        if (status) {
+          auto& candidate = status->removed_candidates.emplace_back();
+          candidate.id = node_id;
+          candidate.in_bounds = true;
+        }
         MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node_id).str()
                 << " (no mesh) is within map bounds at position (current frame): "
                 << position_in_current.transpose();
@@ -718,14 +765,22 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
     }
 
     const float in_bounds_fraction =
-        static_cast<float>(num_in_bounds) / geometry.voxel_centers.size();
+        static_cast<float>(num_in_bounds) / geometry.voxels.size();
     const bool in_bounds = in_bounds_fraction >= config.removal_min_in_bounds_fraction;
     if (in_bounds) {
       objects_in_bounds.push_back(node_id);
     }
+    if (status) {
+      auto& candidate = status->removed_candidates.emplace_back();
+      candidate.id = node_id;
+      candidate.has_geometry = true;
+      candidate.num_voxels = geometry.voxels.size();
+      candidate.num_voxels_in_bounds = num_in_bounds;
+      candidate.in_bounds = in_bounds;
+    }
     MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node_id).str()
             << (in_bounds ? " is" : " is not") << " within map bounds (" << num_in_bounds << "/"
-            << geometry.voxel_centers.size() << " voxels = " << in_bounds_fraction
+            << geometry.voxels.size() << " voxels = " << in_bounds_fraction
             << ") at position (current frame): " << position_in_current.transpose();
   }
 
@@ -750,29 +805,22 @@ void ActiveWindowChangeDetector::updatePriorObjectGeometry(const VolumetricMap& 
     return;
   }
 
-  // Quantize each object's mesh to unique occupied voxels in the prior frame. Done once, since the
-  // prior map and the map voxel size don't change.
+  // Cache each object's mesh vertices in the prior frame. Done once, since the prior map and the
+  // map voxel size don't change.
   const float voxel_size = map.config.voxel_size;
   if (voxel_size != prior_geometry_voxel_size_) {
     prior_object_geometry_.clear();
-    const float voxel_size_inv = 1.0f / voxel_size;
     for (const auto& [node_id, node] : prior_graph_->getLayer(DsgLayers::OBJECTS).nodes()) {
       const auto* attrs = node->tryAttributes<KhronosObjectAttributes>();
       if (!attrs || attrs->mesh.numVertices() == 0) {
         continue;
       }
 
-      GlobalIndexSet voxels;
+      auto& geometry = prior_object_geometry_[node_id];
+      geometry.vertices.reserve(attrs->mesh.numVertices());
       for (size_t i = 0; i < attrs->mesh.numVertices(); ++i) {
         const Point vertex_prior = attrs->bounding_box.pointToWorldFrame(attrs->mesh.pos(i));
-        voxels.insert(spatial_hash::indexFromPoint<GlobalIndex>(vertex_prior, voxel_size_inv));
-      }
-
-      auto& geometry = prior_object_geometry_[node_id];
-      geometry.voxel_centers.reserve(voxels.size());
-      for (const auto& voxel : voxels) {
-        geometry.voxel_centers.push_back(
-            spatial_hash::centerPointFromIndex(voxel, voxel_size).cast<double>());
+        geometry.vertices.push_back(vertex_prior.cast<double>());
       }
     }
     prior_geometry_voxel_size_ = voxel_size;
@@ -783,12 +831,26 @@ void ActiveWindowChangeDetector::updatePriorObjectGeometry(const VolumetricMap& 
     return;
   }
 
-  // Re-bin the occupied voxels into current-frame map blocks for the new current_T_prior_.
+  // Re-quantize the vertices into current-frame map voxels and blocks for the new
+  // current_T_prior_. Quantizing in the current frame (not the prior frame) keeps every vertex in
+  // exactly the voxel a point lookup of it returns.
+  const auto& tracking_layer = *map.getTrackingLayer();
   const auto& tsdf_layer = map.getTsdfLayer();
   for (auto& [node_id, geometry] : prior_object_geometry_) {
+    spatial_hash::IndexHashMap<int> vertex_counts;
+    for (const auto& vertex : geometry.vertices) {
+      // Same index VoxelLayer::getVoxelPtr(point) computes for the vertex.
+      ++vertex_counts[spatial_hash::indexFromPoint<GlobalIndex>(
+          transformPriorToCurrentFrame(vertex), tracking_layer.voxel_size_inv)];
+    }
+
+    geometry.voxels.clear();
+    geometry.voxels.reserve(vertex_counts.size());
     geometry.block_counts.clear();
-    for (const auto& center : geometry.voxel_centers) {
-      ++geometry.block_counts[tsdf_layer.getBlockIndex(transformPriorToCurrentFrame(center))];
+    for (const auto& [index, count] : vertex_counts) {
+      geometry.voxels.push_back({index, count});
+      ++geometry.block_counts[spatial_hash::blockIndexFromGlobalIndex(
+          index, tsdf_layer.voxels_per_side)];
     }
   }
   prior_geometry_blocks_dirty_ = false;
