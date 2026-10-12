@@ -65,6 +65,23 @@ GlobalIndexSet globalIndexSetFromJson(const json& j) {
   return voxels;
 }
 
+json toJson(const TrackVoxels& voxels) {
+  json arr = json::array();
+  for (const auto& [index, voxel] : voxels) {
+    arr.push_back({index.x(), index.y(), index.z(), voxel.hits, voxel.last_seen});
+  }
+  return arr;
+}
+
+TrackVoxels trackVoxelsFromJson(const json& j) {
+  TrackVoxels voxels;
+  for (const auto& entry : j) {
+    const GlobalIndex index(entry.at(0).get<int>(), entry.at(1).get<int>(), entry.at(2).get<int>());
+    voxels[index] = TrackVoxel{entry.at(3).get<int>(), entry.at(4).get<TimeStamp>()};
+  }
+  return voxels;
+}
+
 }  // namespace
 
 void to_json(json& j, const Observation& obs) {
@@ -94,6 +111,10 @@ void to_json(json& j, const Track& track) {
           {"last_points", track.last_points},
           {"last_voxel_size", track.last_voxel_size},
           {"last_centroid", track.last_centroid},
+          {"accumulated_voxels", toJson(track.accumulated_voxels)},
+          {"accumulated_voxel_size", track.accumulated_voxel_size},
+          {"accumulated_min_hits", track.accumulated_min_hits},
+          {"accumulated_bounding_box", boundingBoxToJson(track.accumulated_bounding_box)},
           {"num_features", track.num_features},
           {"is_dynamic", track.is_dynamic},
           {"confidence", track.confidence}};
@@ -114,6 +135,12 @@ void from_json(const json& j, Track& track) {
   track.last_points = j.at("last_points").get<Points>();
   track.last_voxel_size = j.at("last_voxel_size").get<float>();
   track.last_centroid = j.at("last_centroid").get<Point>();
+  if (j.contains("accumulated_voxels")) {
+    track.accumulated_voxels = trackVoxelsFromJson(j.at("accumulated_voxels"));
+    track.accumulated_voxel_size = j.at("accumulated_voxel_size").get<float>();
+    track.accumulated_min_hits = j.at("accumulated_min_hits").get<int>();
+    track.accumulated_bounding_box = boundingBoxFromJson(j.at("accumulated_bounding_box"));
+  }
   track.num_features = j.at("num_features").get<size_t>();
   track.is_dynamic = j.at("is_dynamic").get<bool>();
   track.confidence = j.at("confidence").get<float>();
