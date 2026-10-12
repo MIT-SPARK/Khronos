@@ -41,6 +41,8 @@
 #include <string>
 #include <vector>
 
+#include <spatial_hash/hash.h>
+
 #include "khronos/active_window/data/measurement_clusters.h"
 #include "khronos/common/common_types.h"
 
@@ -75,6 +77,18 @@ struct Observation {
 using Observations = std::vector<Observation>;
 
 /**
+ * @brief Accumulated evidence of a single voxel of a track.
+ */
+struct TrackVoxel {
+  //! Number of observations whose points fell into this voxel (at most one hit per observation).
+  int hits = 0;
+  //! Timestamp of the latest observation that hit this voxel.
+  TimeStamp last_seen = 0;
+};
+
+using TrackVoxels = spatial_hash::IndexHashMap<TrackVoxel>;
+
+/**
  * @brief Data structure to track objects and associations throughout the active window.
  */
 struct Track {
@@ -100,6 +114,16 @@ struct Track {
   // Centroid of the observation, used for dynamic tracking.
   Point last_centroid;
 
+  // Geometry accumulated over all static observations, at accumulated_voxel_size. Unlike the last_*
+  // fields these are never overwritten. Empty if the tracker does not accumulate.
+  TrackVoxels accumulated_voxels;
+  float accumulated_voxel_size = 0.0f;
+  // Hits an accumulated voxel needs to be confirmed, i.e. counted in the bounding box.
+  int accumulated_min_hits = 1;
+  // AABB over the confirmed accumulated voxels (see accumulateVoxels). Invalid until the first
+  // voxel is confirmed.
+  BoundingBox accumulated_bounding_box;
+
   //! Semantic information associated with the track
   std::optional<SemanticClusterInfo> semantics;
   size_t num_features = 0;
@@ -117,6 +141,26 @@ struct Track {
   std::optional<uint32_t> sequence_number;
 
   void updateSemantics(const std::optional<SemanticClusterInfo>& other_semantics);
+
+  /**
+   * @brief Add one observation's voxels to the accumulated geometry. Each voxel gets one hit, and
+   * the accumulated bounding box grows by each voxel the moment its hits reach min_hits. Since hits
+   * only grow, the bounding box is exactly the AABB of all voxels with hits >= min_hits.
+   * @param voxels Unique voxels of the observation, at voxel_size.
+   * @param voxel_size Voxel size of the accumulated voxels. Must be the same for every call.
+   * @param stamp Timestamp of the observation.
+   * @param min_hits Hits a voxel needs to be confirmed (counted in the bounding box). Must be the
+   * same for every call.
+   */
+  void accumulateVoxels(const GlobalIndexSet& voxels,
+                        float voxel_size,
+                        TimeStamp stamp,
+                        int min_hits);
+
+  /**
+   * @brief Accumulated voxels with at least accumulated_min_hits hits (what the bounding box covers).
+   */
+  GlobalIndexSet confirmedVoxels() const;
 };
 
 using Tracks = std::vector<Track>;

@@ -82,6 +82,12 @@ class MaxIoUTracker : public Tracker {
     bool preassociate_by_id = false;
     //! Whether or not to allow preassociation dynamic tracks
     bool preassociate_to_dynamic = false;
+    //! Accumulate the voxels (at voxel_size) of all static observations of a track into
+    //! Track::accumulated_voxels and Track::accumulated_bounding_box. Association is unaffected.
+    bool accumulate_voxels = true;
+    //! Observations a voxel needs to be counted in Track::accumulated_bounding_box. Filters out
+    //! single-frame artifacts such as depth smear.
+    int min_voxel_hits = 2;
   } const config;
 
   // Construction.

@@ -96,11 +96,14 @@ void declare_config(MaxIoUTracker::Config& config) {
   field(config.voxel_size, "voxel_size", "m");
   field(config.preassociate_by_id, "preassociate_by_id");
   field(config.preassociate_to_dynamic, "preassociate_to_dynamic");
+  field(config.accumulate_voxels, "accumulate_voxels");
+  field(config.min_voxel_hits, "min_voxel_hits");
 
   checkInRange(config.min_cross_iou, 0.0f, 1.0f, "min_cross_iou");
   checkInRange(config.min_semantic_iou, 0.0f, 1.0f, "min_semantic_iou");
   checkInRange(config.min_cosine_sim, -1.0f, 1.0f, "min_cosine_sim");
   check(config.voxel_size, GT, 0.f, "voxel_size");
+  check(config.min_voxel_hits, GE, 1, "min_voxel_hits");
 }
 
 MaxIoUTracker::Config::Config()
@@ -494,6 +497,16 @@ void MaxIoUTracker::updateTrack(const FrameData& data,
   if (config.track_by == Config::TrackBy::kVoxels) {
     track.last_voxels = observation.voxels;
     track.last_voxel_size = config.voxel_size;
+  }
+
+  // Accumulate the geometry of static observations; dynamic objects move between observations.
+  if (config.accumulate_voxels && !is_observation_dynamic && !track.is_dynamic) {
+    GlobalIndexSet voxels;
+    voxels.reserve(track.last_points.size());
+    for (const auto& point : track.last_points) {
+      voxels.insert(grid.toIndex(point));
+    }
+    track.accumulateVoxels(voxels, config.voxel_size, data.input.timestamp_ns, config.min_voxel_hits);
   }
 
   track.last_bounding_box = observation.bounding_box;

@@ -83,6 +83,9 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.merge_centroid_distance_threshold, "merge_centroid_distance_threshold", "m");
   field(config.merge_min_semantic_cosine_sim, "merge_min_semantic_cosine_sim");
   field(config.reassociate_every_frame, "reassociate_every_frame");
+  enum_field(config.added_track_geometry,
+             "added_track_geometry",
+             std::vector<std::string>{"last", "accumulated"});
   enum_field(config.bbox_merge_type,
              "bbox_merge_type",
              std::vector<std::string>{"union", "weighted_average"});
@@ -354,11 +357,30 @@ GlobalIndexSet ActiveWindowChangeDetector::getTrackFootprint2D(const Track& trac
                                                                float voxel_size) const {
   GlobalIndexSet footprint;
   const float voxel_size_inv = 1.0f / voxel_size;
-  // TODO(multy): more idea if the points are accumulative
+  if (config.added_track_geometry == Config::AddedTrackGeometry::kAccumulated) {
+    // Confirmed accumulated voxels, re-quantized from the tracker's voxel size to the map's.
+    for (const GlobalIndex& index : track.confirmedVoxels()) {
+      const Point center = spatial_hash::centerPointFromIndex(index, track.accumulated_voxel_size);
+      footprint.insert(to2DIndex(center, voxel_size_inv));
+    }
+    if (!footprint.empty()) {
+      return footprint;
+    }
+    // Nothing confirmed yet: fall back to the latest observation.
+  }
+
   for (const Point& pt : track.last_points) {
     footprint.insert(to2DIndex(pt, voxel_size_inv));
   }
   return footprint;
+}
+
+const BoundingBox& ActiveWindowChangeDetector::getTrackBoundingBox(const Track& track) const {
+  if (config.added_track_geometry == Config::AddedTrackGeometry::kAccumulated &&
+      track.accumulated_bounding_box.isValid()) {
+    return track.accumulated_bounding_box;
+  }
+  return track.last_bounding_box;
 }
 
 std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRatios(
@@ -402,9 +424,8 @@ std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRat
     if (status) {
       auto& candidate = status->added_candidates.emplace_back();
       candidate.track_id = track.id;
-      candidate.bounding_box = track.last_bounding_box.isValid()
-                                   ? track.last_bounding_box
-                                   : BoundingBox(track.last_points);
+      const BoundingBox& track_bbox = getTrackBoundingBox(track);
+      candidate.bounding_box = track_bbox.isValid() ? track_bbox : BoundingBox(track.last_points);
       candidate.raw_containment = containment;
       candidate.num_cells = track2D.size();
       candidate.num_cells_in_free = intersection;
@@ -486,10 +507,11 @@ void ActiveWindowChangeDetector::foldTrackIntoObject(AddedObjectState& state,
                                                      const Track& track,
                                                      const TrackAddedState& track_state) const {
   const bool first_member = state.member_track_ids.empty();
+  const BoundingBox& track_bbox = getTrackBoundingBox(track);
 
   if (first_member) {
     // Nothing to blend with yet -- initialize the object directly from this track.
-    state.bounding_box = track.last_bounding_box;
+    state.bounding_box = track_bbox;
     state.first_seen = track.first_seen;
     state.last_seen = track.last_seen;
     state.semantics = track.semantics;
@@ -499,11 +521,11 @@ void ActiveWindowChangeDetector::foldTrackIntoObject(AddedObjectState& state,
     const float w_obj = state.confidence;
     const float w_trk = track.confidence;
     const float total = w_obj + w_trk;
-    if (config.bbox_merge_type == Config::BboxMergeType::kUnion || !state.bounding_box.isValid() ||
-        !track.last_bounding_box.isValid() || total <= 0.0f) {
-      state.bounding_box.merge(track.last_bounding_box);
+    if (config.bbox_merge_type == Config::BboxMergeType::kUnion ||
+        !state.bounding_box.isValid() || !track_bbox.isValid() || total <= 0.0f) {
+      state.bounding_box.merge(track_bbox);
     } else if (state.bounding_box.type == BoundingBox::Type::AABB &&
-               track.last_bounding_box.type == BoundingBox::Type::AABB) {
+               track_bbox.type == BoundingBox::Type::AABB) {
       // AABB: average the min/max corner points component-wise, then re-derive center/dims.
       // (minCorner()/maxCorner() are protected on BoundingBox, so derive them from
       // world_P_center +/- dimensions/2, valid since AABB has no rotation.)
@@ -511,10 +533,10 @@ void ActiveWindowChangeDetector::foldTrackIntoObject(AddedObjectState& state,
           state.bounding_box.world_P_center - state.bounding_box.dimensions * 0.5f;
       const Eigen::Vector3f obj_max =
           state.bounding_box.world_P_center + state.bounding_box.dimensions * 0.5f;
-      const Eigen::Vector3f trk_min =
-          track.last_bounding_box.world_P_center - track.last_bounding_box.dimensions * 0.5f;
-      const Eigen::Vector3f trk_max =
-          track.last_bounding_box.world_P_center + track.last_bounding_box.dimensions * 0.5f;
+      const Eigen::Vector3f trk_min = track_bbox.world_P_center -
+                                      track_bbox.dimensions * 0.5f;
+      const Eigen::Vector3f trk_max = track_bbox.world_P_center +
+                                      track_bbox.dimensions * 0.5f;
       const Eigen::Vector3f new_min = (w_obj * obj_min + w_trk * trk_min) / total;
       const Eigen::Vector3f new_max = (w_obj * obj_max + w_trk * trk_max) / total;
       state.bounding_box = BoundingBox(new_max - new_min, (new_min + new_max) * 0.5f);
@@ -522,14 +544,15 @@ void ActiveWindowChangeDetector::foldTrackIntoObject(AddedObjectState& state,
       // OBB/RAABB: average centroid and extent directly. Orientation is inherited from whichever
       // side has the larger weight (proper rotation averaging, e.g. SLERP, is not implemented).
       const Eigen::Vector3f new_center = (w_obj * state.bounding_box.world_P_center +
-                                          w_trk * track.last_bounding_box.world_P_center) /
+                                          w_trk * track_bbox.world_P_center) /
                                          total;
-      const Eigen::Vector3f new_dims =
-          (w_obj * state.bounding_box.dimensions + w_trk * track.last_bounding_box.dimensions) /
-          total;
-      const Eigen::Matrix3f& new_rotation = w_trk > w_obj ? track.last_bounding_box.world_R_center
-                                                          : state.bounding_box.world_R_center;
-      state.bounding_box = BoundingBox(state.bounding_box.type, new_dims, new_center, new_rotation);
+      const Eigen::Vector3f new_dims = (w_obj * state.bounding_box.dimensions +
+                                        w_trk * track_bbox.dimensions) /
+                                       total;
+      const Eigen::Matrix3f& new_rotation = w_trk > w_obj ? track_bbox.world_R_center
+                                                           : state.bounding_box.world_R_center;
+      state.bounding_box =
+          BoundingBox(state.bounding_box.type, new_dims, new_center, new_rotation);
     }
 
     state.first_seen = std::min(state.first_seen, track.first_seen);
@@ -600,8 +623,8 @@ std::vector<ActiveWindowChangeDetector::AddedObject> ActiveWindowChangeDetector:
     // for a better match first); unassociated tracks search for a match or create a new object.
     if (track_state.object_id != -1) {
       if (config.reassociate_every_frame) {
-        const int best_id =
-            findBestObjectMatch(track.last_bounding_box, track.semantics, track_state.object_id);
+        const int best_id = findBestObjectMatch(
+            getTrackBoundingBox(track), track.semantics, track_state.object_id);
         if (best_id != -1 && best_id != track_state.object_id) {
           MLOG(3) << "[ActiveWindowChangeDetector] Track " << track_id
                   << " re-associated from object " << track_state.object_id << " to " << best_id;
@@ -610,7 +633,7 @@ std::vector<ActiveWindowChangeDetector::AddedObject> ActiveWindowChangeDetector:
       }
       foldTrackIntoObject(added_object_states_[track_state.object_id], track, track_state);
     } else {
-      const int best_id = findBestObjectMatch(track.last_bounding_box, track.semantics);
+      const int best_id = findBestObjectMatch(getTrackBoundingBox(track), track.semantics);
       const int object_id = best_id != -1 ? best_id : next_object_id_++;
       MLOG(4) << "[ActiveWindowChangeDetector] Track " << track_id
               << (best_id != -1 ? " associated to existing object " : " created new object ")
