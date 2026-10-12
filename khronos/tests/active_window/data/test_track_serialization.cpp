@@ -44,6 +44,9 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <fstream>
+
+#include <nlohmann/json.hpp>
 
 #include "khronos/active_window/data/track.h"
 
@@ -72,6 +75,9 @@ Track makeSampleTrack() {
 
   track.last_bounding_box =
       spark_dsg::BoundingBox(Eigen::Vector3f(2.0f, 3.0f, 1.0f), Eigen::Vector3f(0.5f, 0.5f, 0.5f));
+
+  track.accumulateVoxels({GlobalIndex(1, 2, 3), GlobalIndex(0, 0, 0)}, 0.1f, 1000, 2);
+  track.accumulateVoxels({GlobalIndex(1, 2, 3)}, 0.1f, 1033, 2);
 
   FeatureVector feature(4);
   feature << 0.1f, 0.2f, 0.3f, 0.4f;
@@ -119,10 +125,49 @@ TEST(TrackSerialization, RoundTripPreservesAllFields) {
   EXPECT_LT((original.last_centroid - reloaded.last_centroid).norm(), 1e-5f);
   EXPECT_EQ(original.last_bounding_box, reloaded.last_bounding_box);
 
+  ASSERT_EQ(original.accumulated_voxels.size(), reloaded.accumulated_voxels.size());
+  for (const auto& [index, voxel] : original.accumulated_voxels) {
+    const auto it = reloaded.accumulated_voxels.find(index);
+    ASSERT_NE(it, reloaded.accumulated_voxels.end());
+    EXPECT_EQ(voxel.hits, it->second.hits);
+    EXPECT_EQ(voxel.last_seen, it->second.last_seen);
+  }
+  EXPECT_FLOAT_EQ(original.accumulated_voxel_size, reloaded.accumulated_voxel_size);
+  EXPECT_EQ(original.accumulated_min_hits, reloaded.accumulated_min_hits);
+  EXPECT_EQ(original.accumulated_bounding_box, reloaded.accumulated_bounding_box);
+
   ASSERT_EQ(original.semantics.has_value(), reloaded.semantics.has_value());
   ASSERT_TRUE(reloaded.semantics.has_value());
   EXPECT_EQ(original.semantics->category_id, reloaded.semantics->category_id);
   EXPECT_LT((original.semantics->feature - reloaded.semantics->feature).norm(), 1e-5f);
+}
+
+TEST(TrackSerialization, LoadsTracksWithoutAccumulatedVoxels) {
+  const auto tmp_path = std::filesystem::temp_directory_path() / "khronos_track_legacy_test.json";
+
+  // Tracks saved before accumulation existed have no accumulated_* fields.
+  Track original = makeSampleTrack();
+  original.accumulated_voxels.clear();
+  original.save(tmp_path.string());
+  nlohmann::json j;
+  {
+    std::ifstream file(tmp_path);
+    file >> j;
+  }
+  j.erase("accumulated_voxels");
+  j.erase("accumulated_voxel_size");
+  j.erase("accumulated_min_hits");
+  j.erase("accumulated_bounding_box");
+  {
+    std::ofstream file(tmp_path);
+    file << j.dump();
+  }
+
+  const Track reloaded = Track::load(tmp_path.string());
+  std::filesystem::remove(tmp_path);
+  EXPECT_EQ(reloaded.id, original.id);
+  EXPECT_TRUE(reloaded.accumulated_voxels.empty());
+  EXPECT_FALSE(reloaded.accumulated_bounding_box.isValid());
 }
 
 }  // namespace khronos
