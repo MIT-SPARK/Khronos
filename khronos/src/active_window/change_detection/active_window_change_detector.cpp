@@ -68,6 +68,7 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.removal_probability_threshold, "removal_probability_threshold");
   field(config.removal_min_frames_observed, "removal_min_frames_observed");
   field(config.removal_min_in_bounds_fraction, "removal_min_in_bounds_fraction");
+  field(config.removal_min_observed_fraction, "removal_min_observed_fraction");
   enum_field(config.removal_score_weighting,
              "removal_score_weighting",
              std::vector<std::string>{"vertices", "voxels"});
@@ -97,6 +98,8 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.icp_min_inliers, "icp_min_inliers");
   checkInRange(
       config.removal_min_in_bounds_fraction, 0.0f, 1.0f, "removal_min_in_bounds_fraction");
+  checkInRange(
+      config.removal_min_observed_fraction, 0.0f, 1.0f, "removal_min_observed_fraction");
   checkInRange(
       config.merge_min_semantic_cosine_sim, -1.0f, 1.0f, "merge_min_semantic_cosine_sim");
   check<Path::Exists>(config.prior_map_path, "prior_map_path");
@@ -151,9 +154,11 @@ std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::compute
     RemovedCandidateStatus* candidate =
         candidate_it == candidates.end() ? nullptr : candidate_it->second;
     const bool collect_voxels = candidate && config.collect_debug_voxels;
-
+    
+    // TODO (multy): need to clean this once we settled on the full voxel representation
     int num_free = 0;
     int num_known = 0;
+    int num_voxels_observed = 0;
     for (const auto& voxel : geometry_it->second.voxels) {
       // Same voxel a lookup of each of its vertices (prior -> current frame) returns.
       const auto* tracking_voxel = tracking_layer.getVoxelPtr(voxel.index);
@@ -169,6 +174,7 @@ std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::compute
         continue;  // Skip unknown voxels — no valid measurement there.
       }
 
+      ++num_voxels_observed;
       const int weight = weight_by_vertices ? voxel.num_vertices : 1;
       num_known += weight;
       if (free) {
@@ -176,9 +182,23 @@ std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::compute
       }
     }
 
+    const auto num_voxels = geometry_it->second.voxels.size();
+    const float observed_fraction = static_cast<float>(num_voxels_observed) / num_voxels;
+    const bool observed = observed_fraction >= config.removal_min_observed_fraction;
     if (candidate) {
       candidate->num_known = num_known;
       candidate->num_free = num_free;
+      candidate->num_voxels_observed = num_voxels_observed;
+      candidate->observed = observed;
+    }
+
+    // Too little of the object has been observed for its free ratio to be meaningful.
+    if (!observed) {
+      MLOG(5) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+              << " observed fraction " << observed_fraction << " ("
+              << num_voxels_observed << "/" << num_voxels << " voxels) below "
+              << config.removal_min_observed_fraction << ", skipping measurement";
+      continue;
     }
 
     // Guard division: if no known samples observed this frame, there is no valid measurement.

@@ -269,7 +269,7 @@ const Color kCandidateColor(230, 180, 40, 255);
 const Color kFreeColor(0, 255, 0, 255);
 const Color kOccupiedColor(255, 0, 0, 255);
 const Color kUnknownColor(128, 128, 128, 255);
-//! Alpha of candidates that failed the in-bounds gate.
+//! Alpha of candidates that failed the in-bounds or observed gate.
 const uint8_t kOutOfBoundsAlpha = 80;
 
 int markerId(spark_dsg::NodeId id) { return static_cast<int>(id & 0xffffffff); }
@@ -327,6 +327,15 @@ std::string removedLabel(const RemovedCandidateStatus& candidate) {
      << in_bounds_fraction << ")";
   if (!candidate.in_bounds) {
     ss << " out of bounds";
+    return ss.str();
+  }
+
+  const float observed_fraction =
+      static_cast<float>(candidate.num_voxels_observed) / candidate.num_voxels;
+  ss << "\nobs " << candidate.num_voxels_observed << "/" << candidate.num_voxels << " ("
+     << observed_fraction << ")";
+  if (!candidate.observed) {
+    ss << " too little observed";
   } else if (!candidate.measured) {
     ss << " no known samples";
   } else {
@@ -359,7 +368,7 @@ void ActiveWindowChangeDetectorVisualizer::visualizeRemovedStatus(
     const auto& bbox = attrs->bounding_box;
 
     Color color = candidate.removed ? kRemovedColor : kCandidateColor;
-    if (!candidate.in_bounds) {
+    if (!candidate.in_bounds || (candidate.has_geometry && !candidate.observed)) {
       color.a = kOutOfBoundsAlpha;
     }
 

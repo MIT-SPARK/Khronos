@@ -193,7 +193,12 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     int num_voxels_in_bounds = 0;
     //! Whether the object passed the in-bounds gate (removal_min_in_bounds_fraction).
     bool in_bounds = false;
-    //! Whether the object got a measurement this frame (in bounds with >= 1 known sample).
+    //! Object voxels observed in the tracking layer (last_observed != 0), counted per voxel.
+    //! Only computed for in-bounds objects.
+    int num_voxels_observed = 0;
+    //! Whether the object passed the observed gate (removal_min_observed_fraction).
+    bool observed = false;
+    //! Whether the object got a measurement this frame (passed both gates, >= 1 known sample).
     bool measured = false;
     //! Known and free samples this frame, in units of removal_score_weighting.
     int num_known = 0;
@@ -284,6 +289,13 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! straddling the active window boundary from being re-measured on a small leftover piece of
     //! its geometry. Objects without a mesh fall back to the centroid test.
     float removal_min_in_bounds_fraction = 0.5f;
+
+    //! Minimum fraction of a prior object's occupied voxels that must have been observed in the
+    //! tracking layer (last_observed != 0) for the object to get a measurement this frame. Counted
+    //! per voxel regardless of removal_score_weighting. Keeps free ratios computed from a small,
+    //! partial view out of the filter. Can't pass unless the in-bounds gate passes at the same
+    //! fraction, so keep removal_min_in_bounds_fraction <= this as a cheap pre-filter.
+    float removal_min_observed_fraction = 0.5f;
 
     //! How samples of an object's mesh are counted in the removal free ratio. Both count the
     //! object's occupied map voxels: kVertices weights each voxel by its number of mesh vertices
