@@ -74,6 +74,7 @@ void declare_config(ActiveWindowVisualizer::Config& config) {
   field(config.dynamic_point_scale, "dynamic_point_scale", "m");
   field(config.id_color_revolutions, "id_color_revolutions");
   field(config.bounding_box_line_width, "bounding_box_line_width");
+  field(config.track_label_scale, "track_label_scale", "m");
   field(config.sensor_displays, "sensor_displays");
   field(config.marker_opacity, "marker_opacity");
   field(config.num_slices, "num_slices");
@@ -274,9 +275,27 @@ void ActiveWindowVisualizer::visualizeTrackAccumulated(const Tracks& tracks) con
     const auto color = colormaps::quality(track.confidence);
 
     if (draw_bbox && track.accumulated_bounding_box.isValid()) {
-      auto& marker = new_bboxes.markers.emplace_back(setBoundingBox(
-          track.accumulated_bounding_box, color, header, config.bounding_box_line_width));
+      const auto& bbox = track.accumulated_bounding_box;
+      auto& marker = new_bboxes.markers.emplace_back(
+          setBoundingBox(bbox, color, header, config.bounding_box_line_width));
+      marker.ns = "boxes";
       marker.id = track.id;
+
+      // Track id just above the box.
+      auto& label = new_bboxes.markers.emplace_back();
+      label.header = header;
+      label.ns = "labels";
+      label.id = track.id;
+      label.action = Marker::ADD;
+      label.type = Marker::TEXT_VIEW_FACING;
+      label.text = "T" + std::to_string(track.id);
+      label.scale.z = config.track_label_scale;
+      label.color = setColor(color);
+      label.pose.orientation.w = 1.0;
+      label.pose.position.x = bbox.world_P_center.x();
+      label.pose.position.y = bbox.world_P_center.y();
+      label.pose.position.z =
+          bbox.world_P_center.z() + 0.5 * bbox.dimensions.z() + config.track_label_scale;
     }
 
     if (draw_voxels) {
