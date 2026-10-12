@@ -98,6 +98,9 @@ class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
     // Width in meters of lines indicating bounding boxes.
     float bounding_box_line_width = 0.03f;
 
+    // Height in meters of the track id labels drawn above the accumulated bounding boxes.
+    float track_label_scale = 0.2f;
+
     // Map of configs for display sensor information.
     hydra::SensorMap<SensorDisplay>::Config sensor_displays;
 

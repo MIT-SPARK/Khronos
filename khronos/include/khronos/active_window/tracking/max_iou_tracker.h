@@ -88,6 +88,18 @@ class MaxIoUTracker : public Tracker {
     //! Observations a voxel needs to be counted in Track::accumulated_bounding_box. Filters out
     //! single-frame artifacts such as depth smear.
     int min_voxel_hits = 2;
+    //! Merge fragment tracks of the same object after association (requires accumulate_voxels).
+    //! Two static, active tracks merge if their semantics match, their centers are within
+    //! merge_distance_factor times the larger track radius, and at least
+    //! merge_containment_threshold of the smaller track's confirmed voxels lie in the other's. The
+    //! older track keeps its id and absorbs the other (see Track::absorb).
+    bool merge_tracks = false;
+    //! Minimum fraction of the smaller track's confirmed voxels inside the larger track's.
+    float merge_containment_threshold = 0.5f;
+    //! Max center distance as a multiple of the larger track radius (half bbox diagonal).
+    float merge_distance_factor = 2.0f;
+    //! Minimum cosine similarity of the semantic features of two tracks to merge.
+    float merge_min_cosine_sim = 0.0f;
   } const config;
 
   // Construction.
@@ -106,6 +118,18 @@ class MaxIoUTracker : public Tracker {
   void preassociateSemanticTracks(const FrameData& data, Tracks& tracks);
   void assignStaticTracksToCluster(const FrameData& data, Tracks& tracks);
   void assignClustersToStaticTrack(const FrameData& data, Tracks& tracks);
+
+  /**
+   * @brief Merge fragment tracks of the same object (see Config::merge_tracks). Each track updated
+   * in this pass is checked against all other tracks; absorbed tracks are erased from tracks.
+   */
+  void mergeTracks(Tracks& tracks) const;
+
+  /**
+   * @brief Fraction of the confirmed accumulated voxels of the track with fewer of them that are
+   * also confirmed voxels of the other track. 0 if either has no confirmed voxels.
+   */
+  static float computeContainment(const Track& a, const Track& b);
 
   Track& addNewTrack(const FrameData& data,
                      const MeasurementCluster& observation,

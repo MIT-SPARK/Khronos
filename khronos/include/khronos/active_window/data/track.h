@@ -38,6 +38,7 @@
 #pragma once
 
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -124,6 +125,12 @@ struct Track {
   // voxel is confirmed.
   BoundingBox accumulated_bounding_box;
 
+  // Ids of all tracks merged into this one (see absorb), transitively.
+  std::set<int> absorbed_track_ids;
+  // Upstream instance ids (semantic_cluster_id, e.g. BoxMOT ids) the merged tracks were last
+  // observed with (this track's included), so later detections with those ids can still associate.
+  std::set<int> absorbed_instance_ids;
+
   //! Semantic information associated with the track
   std::optional<SemanticClusterInfo> semantics;
   size_t num_features = 0;
@@ -161,6 +168,25 @@ struct Track {
    * @brief Accumulated voxels with at least accumulated_min_hits hits (what the bounding box covers).
    */
   GlobalIndexSet confirmedVoxels() const;
+
+  /**
+   * @brief Recompute accumulated_bounding_box from the confirmed accumulated voxels.
+   */
+  void recomputeAccumulatedBoundingBox();
+
+  /**
+   * @brief Merge another track of the same object into this one. This track keeps its id; the
+   * other track's id and upstream instance id are recorded in absorbed_track_ids and
+   * absorbed_instance_ids. Observations and accumulated voxels are combined (hits summed), and the
+   * latest-observation fields (last_*) are taken from whichever track was seen last.
+   * @param other The track to absorb. Left in a valid but unspecified state.
+   */
+  void absorb(Track&& other);
+
+  /**
+   * @brief Upstream instance id (semantic_cluster_id) of the most recent observation that has one.
+   */
+  std::optional<int> latestInstanceId() const;
 };
 
 using Tracks = std::vector<Track>;
