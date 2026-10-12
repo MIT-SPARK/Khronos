@@ -140,6 +140,9 @@ class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
   void visualizeObjectBoundingBoxes(const FrameData& data) const;
   void visualizeTrackBoundingBoxes(const Tracks& tracks) const;
   void visualizeTrackVoxels(const Tracks& tracks) const;
+  //! Accumulated voxels (confirmed in the track color, unconfirmed in transparent gray) and the
+  //! accumulated bounding box of each track.
+  void visualizeTrackAccumulated(const Tracks& tracks) const;
   void visualizeTrackPixels(const Tracks& tracks) const;
   void visualizeTrackingImage(const Tracks& tracks, const FrameData& data) const;
 
@@ -157,6 +160,8 @@ class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr object_bb_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr track_bbox_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr track_voxels_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr track_accumulated_bbox_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr track_accumulated_voxels_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr track_pixels_pub_;
 
   // Sensor-dependent config.
@@ -168,6 +173,8 @@ class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
   mutable hydra::MarkerTracker object_bbs_tracker_;
   mutable hydra::MarkerTracker bbox_tracks_tracker_;
   mutable hydra::MarkerTracker voxel_tracks_tracker_;
+  mutable hydra::MarkerTracker accumulated_bbox_tracker_;
+  mutable hydra::MarkerTracker accumulated_voxels_tracker_;
   mutable hydra::MarkerTracker pixel_tracks_tracker_;
 
   // Time stamp caching for synchronization of multiple visualizations.

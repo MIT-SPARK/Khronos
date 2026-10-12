@@ -359,6 +359,14 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
       kWeightedAverage  //! Blend object's current box with the track's, weighted by confidence.
     } bbox_merge_type = BboxMergeType::kUnion;
 
+    //! Which track geometry the added-object path uses for the 2D footprint and the bounding box
+    //! (association, folding, status). kAccumulated uses the track's confirmed accumulated voxels
+    //! and accumulated bounding box, falling back to the last observation while they are empty.
+    enum class AddedTrackGeometry {
+      kLast,        //! Track::last_points / last_bounding_box (latest observation only).
+      kAccumulated  //! Track::confirmedVoxels() / accumulated_bounding_box.
+    } added_track_geometry = AddedTrackGeometry::kLast;
+
     //! Sinks for the change detector output.
     std::vector<ActiveWindowCDSink::Factory> awcd_sinks;
 
@@ -545,8 +553,11 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   GlobalIndexSet getPriorFreeFootprint2D(
       const VolumetricMap& map, spatial_hash::IndexHashMap<float>* cell_heights = nullptr) const;
 
-  // Returns 2D voxel indices (z forced to 0) of a track's last_points footprint.
+  // Returns 2D voxel indices (z forced to 0) of a track's footprint, per added_track_geometry.
   GlobalIndexSet getTrackFootprint2D(const Track& track, float voxel_size) const;
+
+  // Returns the track's bounding box per added_track_geometry.
+  const BoundingBox& getTrackBoundingBox(const Track& track) const;
 
   // Convert a 3-D point to a 2D voxel GlobalIndex (z component set to 0).
   static GlobalIndex to2DIndex(const Point& point, float voxel_size_inv);

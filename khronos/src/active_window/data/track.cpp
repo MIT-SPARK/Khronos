@@ -41,6 +41,7 @@
 
 #include <nlohmann/json.hpp>
 #include <spark_dsg/serialization/json_conversions.h>  // Eigen adl_serializer (Vector3f, VectorXf, ...)
+#include <spatial_hash/grid.h>
 
 namespace khronos {
 namespace {
@@ -139,6 +140,35 @@ Track Track::load(const std::string& filepath) {
   json j;
   file >> j;
   return j.get<Track>();
+}
+
+void Track::accumulateVoxels(const GlobalIndexSet& voxels,
+                             float voxel_size,
+                             TimeStamp stamp,
+                             int min_hits) {
+  accumulated_voxel_size = voxel_size;
+  accumulated_min_hits = min_hits;
+  const Eigen::Vector3f voxel_dims = Eigen::Vector3f::Constant(voxel_size);
+  for (const GlobalIndex& index : voxels) {
+    auto& voxel = accumulated_voxels[index];
+    ++voxel.hits;
+    voxel.last_seen = stamp;
+    if (voxel.hits == min_hits) {
+      // The voxel just got confirmed: grow the bounding box by its cube.
+      accumulated_bounding_box.merge(
+          BoundingBox(voxel_dims, spatial_hash::centerPointFromIndex(index, voxel_size)));
+    }
+  }
+}
+
+GlobalIndexSet Track::confirmedVoxels() const {
+  GlobalIndexSet confirmed;
+  for (const auto& [index, voxel] : accumulated_voxels) {
+    if (voxel.hits >= accumulated_min_hits) {
+      confirmed.insert(index);
+    }
+  }
+  return confirmed;
 }
 
 void Track::updateSemantics(const std::optional<SemanticClusterInfo>& other) {
