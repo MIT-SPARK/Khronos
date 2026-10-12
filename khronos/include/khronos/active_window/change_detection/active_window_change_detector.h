@@ -142,6 +142,20 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     int last_updated_frame = 0;
     //! Object this track currently contributes to, or -1 if not yet associated to any object.
     int object_id = -1;
+
+    // With added_object_source: tracks the track itself is the object, and the fields below hold
+    // its latest snapshot. They are refreshed every frame the track is measured, and kept (and
+    // reported) after the track is gone once it was added.
+    BoundingBox bounding_box;
+    std::optional<SemanticClusterInfo> semantics;
+    TimeStamp first_seen = 0;
+    TimeStamp last_seen = 0;
+    //! Track::confidence (tracking quality).
+    float confidence = 0.0f;
+    //! Latched true once the track passes the added gate; prevents pruning.
+    bool ever_added = false;
+    //! The track id and the ids of all tracks it absorbed (Track::absorbed_track_ids).
+    std::set<int> member_track_ids;
   };
 
   /**
@@ -332,6 +346,15 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! (no fusion of fragmented tracks at all).
     bool enable_added_object_merging = true;
 
+    //! Where added objects come from. kObjects: tracks are associated and folded into the
+    //! detector's own objects (updateAddedFilter, enable_added_object_merging and the merge_*
+    //! settings below). kTracks: each track is an object, keyed by its id (updateAddedTrackFilter);
+    //! meant for trackers that merge fragment tracks themselves (MaxIoUTracker merge_tracks).
+    enum class AddedObjectSource {
+      kObjects,
+      kTracks
+    } added_object_source = AddedObjectSource::kObjects;
+
     //! 3D bounding box IoU above which an unassociated track is considered a match for an
     //! existing object (geometric criterion, OR'd with merge_centroid_distance_threshold). <= 0
     //! disables this criterion (geometric match then relies solely on centroid distance).
@@ -515,6 +538,18 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
    */
   std::vector<AddedObject> updateAddedFilter(const std::unordered_map<int, float>& measurements,
                                              const Tracks& tracks) const;
+
+  /**
+   * @brief Added-object filter for added_object_source: tracks, where each track is an object.
+   * Takes over the state of tracks absorbed by other tracks (Track::absorbed_track_ids),
+   * EMA-updates and snapshots each measured track, then gates, latches and prunes per track.
+   * Reported AddedObject ids are track ids.
+   */
+  std::vector<AddedObject> updateAddedTrackFilter(
+      const std::unordered_map<int, float>& measurements, const Tracks& tracks) const;
+
+  //! EMA-update a track's change confidence with this frame's containment measurement.
+  void updateTrackChangeConfidence(TrackAddedState& state, float containment) const;
 
   /**
    * @brief Search added_object_states_ for the best match for a candidate track/object footprint
