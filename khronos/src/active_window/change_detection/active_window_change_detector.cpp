@@ -79,6 +79,9 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.added_min_frames_observed, "added_min_frames_observed");
   field(config.added_prune_after_frames, "added_prune_after_frames");
   field(config.enable_added_object_merging, "enable_added_object_merging");
+  enum_field(config.added_object_source,
+             "added_object_source",
+             std::vector<std::string>{"objects", "tracks"});
   field(config.merge_bbox_iou_threshold, "merge_bbox_iou_threshold");
   field(config.merge_centroid_distance_threshold, "merge_centroid_distance_threshold", "m");
   field(config.merge_min_semantic_cosine_sim, "merge_min_semantic_cosine_sim");
@@ -583,6 +586,122 @@ void ActiveWindowChangeDetector::foldTrackIntoObject(AddedObjectState& state,
   state.last_updated_frame = frame_index_;
 }
 
+void ActiveWindowChangeDetector::updateTrackChangeConfidence(TrackAddedState& state,
+                                                             float containment) const {
+  if (state.num_frames_observed == 0) {
+    state.change_confidence = containment;
+  } else {
+    state.change_confidence = config.added_ema_alpha * containment +
+                              (1.0 - config.added_ema_alpha) * state.change_confidence;
+  }
+  ++state.num_frames_observed;
+  state.last_containment = containment;
+  state.last_updated_frame = frame_index_;
+}
+
+std::vector<ActiveWindowChangeDetector::AddedObject>
+ActiveWindowChangeDetector::updateAddedTrackFilter(
+    const std::unordered_map<int, float>& measurements, const Tracks& tracks) const {
+  ++frame_index_;
+
+  // 1. Take over the state of tracks absorbed by other tracks, so an absorbed track that was
+  // already added is not latched as a duplicate of its survivor.
+  for (const Track& track : tracks) {
+    for (const int absorbed_id : track.absorbed_track_ids) {
+      const auto absorbed_it = track_added_states_.find(absorbed_id);
+      if (absorbed_it == track_added_states_.end()) {
+        continue;
+      }
+      const TrackAddedState absorbed = std::move(absorbed_it->second);
+      track_added_states_.erase(absorbed_it);
+
+      auto& state = track_added_states_[track.id];
+      state.change_confidence = state.num_frames_observed == 0
+                                    ? absorbed.change_confidence
+                                    : std::max(state.change_confidence, absorbed.change_confidence);
+      state.num_frames_observed = std::max(state.num_frames_observed, absorbed.num_frames_observed);
+      state.ever_added = state.ever_added || absorbed.ever_added;
+      state.last_updated_frame = std::max(state.last_updated_frame, absorbed.last_updated_frame);
+      MLOG(3) << "[ActiveWindowChangeDetector] Track " << track.id << " took over absorbed track "
+              << absorbed_id;
+    }
+  }
+
+  // 2. EMA-update and snapshot each measured track.
+  std::unordered_map<int, const Track*> track_lookup;
+  track_lookup.reserve(tracks.size());
+  for (const Track& t : tracks) {
+    track_lookup[t.id] = &t;
+  }
+
+  for (const auto& [track_id, containment] : measurements) {
+    const auto lookup_it = track_lookup.find(track_id);
+    if (lookup_it == track_lookup.end()) {
+      continue;  // Should not happen (measurement implies the track is in `tracks`); guard anyway.
+    }
+    const Track& track = *lookup_it->second;
+
+    auto& state = track_added_states_[track_id];
+    updateTrackChangeConfidence(state, containment);
+    state.bounding_box = getTrackBoundingBox(track);
+    state.semantics = track.semantics;
+    state.first_seen = track.first_seen;
+    state.last_seen = track.last_seen;
+    state.confidence = track.confidence;
+    state.member_track_ids = track.absorbed_track_ids;
+    state.member_track_ids.insert(track_id);
+
+    MLOG(4) << "[ActiveWindowChangeDetector] Track " << track_id
+            << " EMA update: raw=" << containment
+            << " smoothed=" << state.change_confidence
+            << " frames=" << state.num_frames_observed;
+  }
+
+  // 3. Gate, latch & prune.
+  std::vector<AddedObject> newly_added_objects;
+  for (auto it = track_added_states_.begin(); it != track_added_states_.end();) {
+    const int track_id = it->first;
+    auto& state = it->second;
+
+    const bool above_prob = state.change_confidence >= config.added_probability_threshold;
+    const bool enough_frames = state.num_frames_observed >= config.added_min_frames_observed;
+    if (above_prob && enough_frames) {
+      state.ever_added = true;
+
+      AddedObject obj;
+      obj.id = track_id;
+      obj.member_track_ids = state.member_track_ids;
+      obj.first_seen = state.first_seen;
+      obj.last_seen = state.last_seen;
+      obj.bounding_box = state.bounding_box;
+      obj.centroid = state.bounding_box.isValid() ? state.bounding_box.world_P_center : Point::Zero();
+      obj.semantics = state.semantics;
+      obj.confidence = state.confidence;
+      obj.change_confidence = static_cast<float>(state.change_confidence);
+      obj.num_frames_observed = state.num_frames_observed;
+      newly_added_objects.push_back(std::move(obj));
+
+      MLOG(3) << "[ActiveWindowChangeDetector] Track " << track_id
+              << " ADDED (confidence=" << state.confidence
+              << ", change_confidence=" << state.change_confidence
+              << ", frames=" << state.num_frames_observed
+              << ", members=" << state.member_track_ids.size() << ")";
+      ++it;
+    } else if (!state.ever_added &&
+               (frame_index_ - state.last_updated_frame) > config.added_prune_after_frames) {
+      MLOG(4) << "[ActiveWindowChangeDetector] Pruning stale non-added track " << track_id;
+      it = track_added_states_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  MLOG(2) << "[ActiveWindowChangeDetector] Added-track filter: " << newly_added_objects.size()
+          << " added out of " << track_added_states_.size() << " tracked candidates";
+
+  return newly_added_objects;
+}
+
 std::vector<ActiveWindowChangeDetector::AddedObject> ActiveWindowChangeDetector::updateAddedFilter(
     const std::unordered_map<int, float>& measurements,
     const Tracks& tracks) const {
@@ -598,17 +717,7 @@ std::vector<ActiveWindowChangeDetector::AddedObject> ActiveWindowChangeDetector:
   for (const auto& [track_id, containment] : measurements) {
     // 1. Per-track EMA update, independent of any object association.
     auto& track_state = track_added_states_[track_id];
-    if (track_state.num_frames_observed == 0) {
-      track_state.change_confidence = containment;
-    } else {
-      track_state.change_confidence =
-          config.added_ema_alpha * containment +
-          (1.0 - config.added_ema_alpha) * track_state.change_confidence;
-    }
-    ++track_state.num_frames_observed;
-    track_state.last_containment = containment;
-    track_state.last_updated_frame = frame_index_;
-
+    updateTrackChangeConfidence(track_state, containment);
     MLOG(4) << "[ActiveWindowChangeDetector] Track " << track_id
             << " EMA update: raw=" << containment << " smoothed=" << track_state.change_confidence
             << " frames=" << track_state.num_frames_observed;
@@ -753,7 +862,10 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   const auto containment_measurements = computeContainmentRatios(tracks, map, &status);
 
   // 5. Update EMA filter, merge fragmented tracks, prune stale records, and return fused objects.
-  const auto newly_added_objects = updateAddedFilter(containment_measurements, tracks);
+  const bool objects_are_tracks = config.added_object_source == Config::AddedObjectSource::kTracks;
+  const auto newly_added_objects = objects_are_tracks
+                                       ? updateAddedTrackFilter(containment_measurements, tracks)
+                                       : updateAddedFilter(containment_measurements, tracks);
 
   // Report the filter state and association of this frame's added candidates.
   std::unordered_set<int> added_ids;
@@ -767,7 +879,7 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
     }
     candidate.change_confidence = state_it->second.change_confidence;
     candidate.num_frames_observed = state_it->second.num_frames_observed;
-    candidate.object_id = state_it->second.object_id;
+    candidate.object_id = objects_are_tracks ? candidate.track_id : state_it->second.object_id;
     candidate.object_added = added_ids.count(candidate.object_id) > 0;
   }
 
