@@ -750,13 +750,13 @@ void ActiveWindowChangeDetector::updatePriorObjectGeometry(const VolumetricMap& 
   const float voxel_size = map.config.voxel_size;
   if (voxel_size != prior_geometry_voxel_size_) {
     prior_object_geometry_.clear();
-    for (const auto& [node_id, node] : prior_graph_->getLayer(DsgLayers::OBJECTS).nodes()) {
-      const auto* attrs = node->tryAttributes<KhronosObjectAttributes>();
+    for (const auto& node : prior_graph_->getLayer(DsgLayers::OBJECTS).nodes()) {
+      const auto* attrs = node.tryAttributes<KhronosObjectAttributes>();
       if (!attrs || attrs->mesh.numVertices() == 0) {
         continue;
       }
 
-      auto& geometry = prior_object_geometry_[node_id];
+      auto& geometry = prior_object_geometry_[node.id];
       geometry.vertices.reserve(attrs->mesh.numVertices());
       for (size_t i = 0; i < attrs->mesh.numVertices(); ++i) {
         const Point vertex_prior = attrs->bounding_box.pointToWorldFrame(attrs->mesh.pos(i));
