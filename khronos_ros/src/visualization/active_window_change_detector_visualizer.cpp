@@ -298,11 +298,8 @@ void transformPose(const Eigen::Isometry3d& T, geometry_msgs::msg::Pose& pose) {
 std::string addedLabel(const AddedCandidateStatus& candidate) {
   std::ostringstream ss;
   ss << std::fixed << std::setprecision(2);
-  ss << "T" << candidate.track_id;
-  if (candidate.object_id >= 0) {
-    ss << "->A" << candidate.object_id;
-  }
-  ss << (candidate.object_added ? " ADDED" : "") << " p=" << candidate.change_confidence
+  ss << "T" << candidate.track_id << (candidate.added ? " ADDED" : "")
+     << " p=" << candidate.change_confidence
      << " n=" << candidate.num_frames_observed;
   ss << "\nraw=" << candidate.raw_containment << " cells " << candidate.num_cells_in_free << "/"
      << candidate.num_cells;
@@ -479,7 +476,7 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedStatus(
     if (!bbox.isValid()) {
       continue;
     }
-    const Color& color = candidate.object_added ? kAddedColor : kCandidateColor;
+    const Color& color = candidate.added ? kAddedColor : kCandidateColor;
 
     auto& box = new_markers.markers.emplace_back(
         setBoundingBox(bbox, color, header, config.bounding_box_line_width));
