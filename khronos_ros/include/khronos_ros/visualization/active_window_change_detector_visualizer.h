@@ -137,7 +137,7 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
   void visualizeRemovedVoxels(const ActiveWindowChangeDetector::ChangeDetectionStatus& status,
                               const Eigen::Isometry3d& current_T_prior) const;
 
-  //! Draws a box + score label per measured track (amber, or green if its object is added).
+  //! Draws a box + score label per measured track (amber, or green if the track is added).
   void visualizeAddedStatus(const ActiveWindowChangeDetector::ChangeDetectionStatus& status,
                             const Eigen::Isometry3d& current_T_prior) const;
 
