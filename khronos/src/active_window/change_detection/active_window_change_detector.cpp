@@ -675,17 +675,17 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
     const Point position_in_current = transformPriorToCurrentFrame(attrs.position);
 
     // If no geometric information, just use the bbox centroid
-    const auto geometry_it = prior_object_geometry_.find(node_id);
+    const auto geometry_it = prior_object_geometry_.find(node.id);
     if (geometry_it == prior_object_geometry_.end()) {
       // No mesh: fall back to the centroid test.
       if (isPointInMapBounds(position_in_current, map)) {
-        objects_in_bounds.push_back(node_id);
+        objects_in_bounds.push_back(node.id);
         if (status) {
           auto& candidate = status->removed_candidates.emplace_back();
-          candidate.id = node_id;
+          candidate.id = node.id;
           candidate.in_bounds = true;
         }
-        MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node_id).str()
+        MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node.id).str()
                 << " (no mesh) is within map bounds at position (current frame): "
                 << position_in_current.transpose();
       }
@@ -708,17 +708,17 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
         static_cast<float>(num_in_bounds) / geometry.voxels.size();
     const bool in_bounds = in_bounds_fraction >= config.removal_min_in_bounds_fraction;
     if (in_bounds) {
-      objects_in_bounds.push_back(node_id);
+      objects_in_bounds.push_back(node.id);
     }
     if (status) {
       auto& candidate = status->removed_candidates.emplace_back();
-      candidate.id = node_id;
+      candidate.id = node.id;
       candidate.has_geometry = true;
       candidate.num_voxels = geometry.voxels.size();
       candidate.num_voxels_in_bounds = num_in_bounds;
       candidate.in_bounds = in_bounds;
     }
-    MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node_id).str()
+    MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node.id).str()
             << (in_bounds ? " is" : " is not") << " within map bounds (" << num_in_bounds << "/"
             << geometry.voxels.size() << " voxels = " << in_bounds_fraction
             << ") at position (current frame): " << position_in_current.transpose();
