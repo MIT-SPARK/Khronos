@@ -42,8 +42,8 @@
 #include <string>
 #include <vector>
 
-#include <spatial_hash/hash.h>
 #include <nlohmann/json_fwd.hpp>
+#include <spatial_hash/hash.h>
 
 #include "khronos/active_window/data/measurement_clusters.h"
 #include "khronos/common/common_types.h"
@@ -77,9 +77,6 @@ struct Observation {
 };
 
 using Observations = std::vector<Observation>;
-
-void to_json(nlohmann::json& j, const Observation& obs);
-void from_json(const nlohmann::json& j, Observation& obs);
 
 /**
  * @brief Accumulated evidence of a single voxel of a track.
@@ -189,11 +186,6 @@ struct Track {
   std::optional<int> latestInstanceId() const;
 
   /**
-   * @brief Save track to filepath
-   * @brief Serialize this track (all fields consumed by trackers, e.g. MaxIoUTracker) to a JSON
-   * file at the given path. `is_active` is intentionally not persisted: reconstructed tracks are
-   * meant to be fed into a tracker for offline replay, where activity is re-derived, not restored.
-   * @brief Save track to filepath (excluding active state)
    * @brief Save track to filepath
    * @param filepath Destination path, e.g. ".../track_<id>/track.json".
    */
