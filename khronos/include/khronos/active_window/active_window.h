@@ -107,6 +107,9 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     //! Minimum confidence before object is forwarded to graph builder
     float min_object_confidence = 0.5f;
 
+    //! Give active-track nodes the accumulated bounding box (once valid) instead of the last one.
+    bool live_accumulated_bounding_box = false;
+
     // override layer defaults of Hydra
     Config() : hydra::ActiveWindowModule::Config(false, true) {}
   } const config;

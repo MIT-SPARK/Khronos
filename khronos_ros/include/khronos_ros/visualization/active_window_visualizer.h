@@ -101,6 +101,10 @@ class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
     // Height in meters of the track id labels drawn above the accumulated bounding boxes.
     float track_label_scale = 0.2f;
 
+    // Observation threshold shown as `<observations>/<threshold>` in the track labels; set it to the
+    // tracker's min_num_observations (confidence 0.5). 0 shows only the observation count.
+    int track_label_min_observations = 0;
+
     // Map of configs for display sensor information.
     hydra::SensorMap<SensorDisplay>::Config sensor_displays;
 

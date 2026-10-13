@@ -37,6 +37,9 @@
 
 #include "khronos_ros/visualization/active_window_visualizer.h"
 
+#include <iomanip>
+#include <sstream>
+
 #include <config_utilities/config_utilities.h>
 #include <cv_bridge/cv_bridge.hpp>
 #include <ianvs/node_handle.h>
@@ -75,6 +78,7 @@ void declare_config(ActiveWindowVisualizer::Config& config) {
   field(config.id_color_revolutions, "id_color_revolutions");
   field(config.bounding_box_line_width, "bounding_box_line_width");
   field(config.track_label_scale, "track_label_scale", "m");
+  field(config.track_label_min_observations, "track_label_min_observations");
   field(config.sensor_displays, "sensor_displays");
   field(config.marker_opacity, "marker_opacity");
   field(config.num_slices, "num_slices");
@@ -281,14 +285,20 @@ void ActiveWindowVisualizer::visualizeTrackAccumulated(const Tracks& tracks) con
       marker.ns = "boxes";
       marker.id = track.id;
 
-      // Track id just above the box.
+      // Track id, confidence and observation count just above the box.
       auto& label = new_bboxes.markers.emplace_back();
       label.header = header;
       label.ns = "labels";
       label.id = track.id;
       label.action = Marker::ADD;
       label.type = Marker::TEXT_VIEW_FACING;
-      label.text = "T" + std::to_string(track.id);
+      std::stringstream text;
+      text << "T" << track.id << " c=" << std::fixed << std::setprecision(2) << track.confidence
+           << " n=" << track.observations.size();
+      if (config.track_label_min_observations > 0) {
+        text << "/" << config.track_label_min_observations;
+      }
+      label.text = text.str();
       label.scale.z = config.track_label_scale;
       label.color = setColor(color);
       label.pose.orientation.w = 1.0;

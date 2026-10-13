@@ -46,7 +46,8 @@
 namespace khronos {
 namespace {
 
-std::shared_ptr<KhronosObjectAttributes> createObjectAttributes(const Track& track) {
+std::shared_ptr<KhronosObjectAttributes> createObjectAttributes(const Track& track,
+                                                                bool use_accumulated_bbox) {
   auto object = std::make_shared<KhronosObjectAttributes>();
   if (track.semantics) {
     object->semantic_label = track.semantics->category_id;
@@ -56,7 +57,9 @@ std::shared_ptr<KhronosObjectAttributes> createObjectAttributes(const Track& tra
   object->first_observed_ns = {track.first_seen};
   object->last_observed_ns = {track.last_seen};
 
-  object->bounding_box = track.last_bounding_box;
+  object->bounding_box = use_accumulated_bbox && track.accumulated_bounding_box.isValid()
+                             ? track.accumulated_bounding_box
+                             : track.last_bounding_box;
   object->position = object->bounding_box.world_P_center.cast<double>();
 
   return object;
@@ -92,6 +95,7 @@ void declare_config(ActiveWindow::Config& config) {
   field(config.mesh_integrator, "mesh_integrator");
   field(config.frame_data_buffer, "frame_data_buffer");
   field(config.khronos_sinks, "khronos_sinks");
+  field(config.live_accumulated_bounding_box, "live_accumulated_bounding_box");
 }
 
 SensorProcessor::SensorProcessor(const Config& config)
@@ -317,7 +321,7 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::extractOutputData(const FrameData& 
       continue;
     }
 
-    auto output_object = createObjectAttributes(track);
+    auto output_object = createObjectAttributes(track, config.live_accumulated_bounding_box);
     update->updates.push_back(hydra::NodeUpdate{output_object, static_cast<size_t>(track.id)});
   }
 
