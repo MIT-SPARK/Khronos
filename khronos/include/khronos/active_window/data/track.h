@@ -150,14 +150,9 @@ struct Track {
   void updateSemantics(const std::optional<SemanticClusterInfo>& other_semantics);
 
   /**
-   * @brief Add one observation's voxels to the accumulated geometry. Each voxel gets one hit, and
-   * the accumulated bounding box grows by each voxel the moment its hits reach min_hits. Since hits
-   * only grow, the bounding box is exactly the AABB of all voxels with hits >= min_hits.
-   * @param voxels Unique voxels of the observation, at voxel_size.
-   * @param voxel_size Voxel size of the accumulated voxels. Must be the same for every call.
-   * @param stamp Timestamp of the observation.
-   * @param min_hits Hits a voxel needs to be confirmed (counted in the bounding box). Must be the
-   * same for every call.
+   * @brief Add one observation's unique voxels to the accumulated geometry, one hit each. The
+   * bounding box grows by each voxel once its hits reach min_hits, so it is exactly the AABB of
+   * the confirmed voxels. voxel_size and min_hits must be the same for every call.
    */
   void accumulateVoxels(const GlobalIndexSet& voxels,
                         float voxel_size,
@@ -175,11 +170,9 @@ struct Track {
   void recomputeAccumulatedBoundingBox();
 
   /**
-   * @brief Merge another track of the same object into this one. This track keeps its id; the
-   * other track's id and upstream instance id are recorded in absorbed_track_ids and
-   * absorbed_instance_ids. Observations and accumulated voxels are combined (hits summed), and the
-   * latest-observation fields (last_*) are taken from whichever track was seen last.
-   * @param other The track to absorb. Left in a valid but unspecified state.
+   * @brief Merge another track of the same object into this one, keeping this id and recording the
+   * other's ids in absorbed_*. Observations and voxel hits are combined; last_* come from whichever
+   * track was seen last. `other` is left in a valid but unspecified state.
    */
   void absorb(Track&& other);
 

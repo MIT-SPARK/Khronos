@@ -89,10 +89,8 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   };
 
   /**
-   * @brief Per-track state of the newly-added-object filter, keyed by Track::id in
-   * track_added_states_: the EMA of the track's containment measurements and a snapshot of the
-   * track. Refreshed every frame the track is measured, and kept (and reported) after the track is
-   * gone once it was added. The state of a track absorbed by another is taken over by the survivor.
+   * @brief Per-track added-filter state: containment EMA plus a snapshot of the track, kept and
+   * reported after the track is gone once added.
    */
   struct TrackAddedState {
     //! EMA-filtered probability that this track is a newly-added object (raw input: free-space
@@ -118,9 +116,8 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   };
 
   /**
-   * @brief A newly-added object as reported to sinks. Each track is an object (the tracker merges
-   * fragment tracks of the same object, see MaxIoUTracker::mergeTracks), so `id` is the track id.
-   * It stays stable across merges since the older track survives.
+   * @brief A newly-added object as reported to sinks. Each track is an object, so `id` is the
+   * track id, stable across merges since the older track survives.
    */
   struct AddedObject {
     //! Track id of the object.
@@ -139,19 +136,16 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! Tracking-quality confidence (Track::confidence). Distinct from change_confidence -- this
     //! says how well-observed the object is, not how likely it is to be a genuine scene change.
     float confidence = 0.0f;
-    //! Change-detection confidence: EMA of the track's free-space footprint containment
-    //! (TrackAddedState::change_confidence). This, not `confidence`, is what crosses
-    //! added_probability_threshold to decide an object is newly-added.
+    //! Change-detection confidence (TrackAddedState::change_confidence); this, not `confidence`,
+    //! is compared to added_probability_threshold.
     float change_confidence = 0.0f;
     //! TrackAddedState::num_frames_observed at the time this object was reported.
     int num_frames_observed = 0;
-  };  
+  };
 
   /**
-   * @brief Debug status of one prior object considered for removal this frame: the in-bounds gate
-   * inputs, this frame's measurement and the filter state. Reported for every object with any
-   * occupied voxel in allocated map blocks (or, without a mesh, whose centroid is in bounds),
-   * including objects that fail the in-bounds gate.
+   * @brief Debug status of one prior object considered for removal this frame (gate inputs,
+   * measurement, filter state), including objects that fail the in-bounds gate.
    */
   struct RemovedCandidateStatus {
     spark_dsg::NodeId id;
@@ -187,10 +181,6 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   };
 
   /**
-   * @brief Per-frame debug status of the change detector for visualization. Separate from the
-   * removed/added outputs, which only hold objects that passed the gates.
-   */
-  /**
    * @brief Debug status of one track measured for newly-added detection this frame: its footprint
    * containment in the prior free space and its filter state.
    */
@@ -207,13 +197,16 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! 2D footprint cells of the track, and how many of them lie in the prior free space.
     int num_cells = 0;
     int num_cells_in_free = 0;
-    //! Footprint cell centers (current map frame) inside / outside the prior free space. Cells in
-    //! free space sit at the prior place height, the others at the track centroid height. Only
-    //! filled if collect_debug_voxels.
+    //! Footprint cell centers inside / outside the prior free space (at the prior place height /
+    //! track centroid height). Only filled if collect_debug_voxels.
     std::vector<Point> in_free_cells;
     std::vector<Point> out_cells;
   };
 
+  /**
+   * @brief Per-frame debug status of the change detector for visualization. Separate from the
+   * removed/added outputs, which only hold objects that passed the gates.
+   */
   struct ChangeDetectionStatus {
     //! Map voxel size [m] of the voxel indices and cells below.
     float voxel_size = 0.0f;
@@ -247,23 +240,16 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! Guards against single-frame spikes on newly-entered objects.
     int removal_min_frames_observed = 3;
 
-    //! Minimum fraction of a prior object's occupied voxels (its mesh quantized to the map voxel
-    //! size) that must lie in allocated map blocks for the object to be a removal candidate this
-    //! frame. Objects below it get no measurement, so their EMA state is frozen. Prevents an object
-    //! straddling the active window boundary from being re-measured on a small leftover piece of
-    //! its geometry. Objects without a mesh fall back to the centroid test.
+    //! Min fraction of a prior object's occupied voxels in allocated map blocks to be a removal
+    //! candidate; others are not measured (EMA frozen). Meshless objects use the centroid.
     float removal_min_in_bounds_fraction = 0.5f;
 
-    //! Minimum fraction of a prior object's occupied voxels that must have been observed in the
-    //! tracking layer (last_observed != 0) for the object to get a measurement this frame. Counted
-    //! per voxel regardless of removal_score_weighting. Keeps free ratios computed from a small,
-    //! partial view out of the filter. Can't pass unless the in-bounds gate passes at the same
-    //! fraction, so keep removal_min_in_bounds_fraction <= this as a cheap pre-filter.
+    //! Min fraction of a prior object's occupied voxels observed in the tracking layer to get a
+    //! measurement. Keep removal_min_in_bounds_fraction <= this as a cheap pre-filter.
     float removal_min_observed_fraction = 0.5f;
 
-    //! How samples of an object's mesh are counted in the removal free ratio. Both count the
-    //! object's occupied map voxels: kVertices weights each voxel by its number of mesh vertices
-    //! (one vote per vertex), kVoxels gives each voxel one vote.
+    //! Weight of each occupied map voxel in the removal free ratio: its number of mesh vertices
+    //! (kVertices) or one (kVoxels).
     enum class RemovalScoreWeighting {
       kVertices,
       kVoxels
@@ -273,10 +259,8 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! are always filled.
     bool collect_debug_voxels = false;
 
-    // Newly-added objects: each track is an object. The tracker must accumulate track geometry
-    // (MaxIoUTracker accumulate_voxels); tracks are only measured once they have confirmed
-    // accumulated voxels. Run it with merge_tracks too, or fragments of one object are reported
-    // as separate objects.
+    // Newly-added objects: each track is an object. Requires MaxIoUTracker accumulate_voxels;
+    // without merge_tracks, fragments of one object are reported separately.
 
     //! EMA smoothing factor for the per-track added_probability filter (0 < alpha <= 1).
     //! Lower = smoother / slower to react; higher = tracks raw ratios closely.
@@ -363,9 +347,8 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   bool isPointInMapBounds(const Point& point, const VolumetricMap& map) const;
 
   /**
-   * @brief Find all prior object nodes that are within the current volumetric map bounds: at
-   * least removal_min_in_bounds_fraction of their occupied voxels lie in allocated blocks. Objects
-   * without a mesh fall back to testing their centroid.
+   * @brief Find all prior objects with at least removal_min_in_bounds_fraction of their occupied
+   * voxels in allocated blocks. Objects without a mesh fall back to testing their centroid.
    * @param map The current volumetric map.
    * @param status If set, a RemovedCandidateStatus is appended for every object with any voxel in
    * bounds (or a meshless object passing the centroid test), including ones failing the gate.
@@ -430,11 +413,9 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
       ChangeDetectionStatus* status = nullptr) const;
 
   /**
-   * @brief Newly-added filter; each track is an object. Takes over the state of tracks absorbed by
-   * other tracks (Track::absorbed_track_ids), EMA-updates and snapshots each measured track, then
-   * returns the tracks passing added_probability_threshold + added_min_frames_observed. Added
-   * tracks are latched and keep being reported after the track is gone; other tracks not measured
-   * for added_prune_after_frames frames are pruned. Reported AddedObject ids are track ids.
+   * @brief Newly-added filter. Takes over the state of absorbed tracks, EMA-updates each measured
+   * track and returns the tracks passing the added gate. Added tracks are latched; others not
+   * measured for added_prune_after_frames frames are pruned.
    */
   std::vector<AddedObject> updateAddedFilter(const std::unordered_map<int, float>& measurements,
                                              const Tracks& tracks) const;
@@ -443,9 +424,8 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   void updateTrackChangeConfidence(TrackAddedState& state, float containment) const;
 
   /**
-   * @brief Cache (once per map voxel size) each prior object's mesh vertices in the prior frame,
-   * and re-quantize them into current-frame map voxels and blocks whenever current_T_prior_
-   * changed.
+   * @brief Cache each prior object's mesh vertices once, and re-quantize them into current-frame
+   * map voxels and blocks whenever current_T_prior_ changes.
    */
   void updatePriorObjectGeometry(const VolumetricMap& map) const;
 

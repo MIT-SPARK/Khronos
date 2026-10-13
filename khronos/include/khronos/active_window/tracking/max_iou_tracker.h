@@ -89,10 +89,7 @@ class MaxIoUTracker : public Tracker {
     //! single-frame artifacts such as depth smear.
     int min_voxel_hits = 2;
     //! Merge fragment tracks of the same object after association (requires accumulate_voxels).
-    //! Two static, active tracks merge if their semantics match, their centers are within
-    //! merge_distance_factor times the larger track radius, and at least
-    //! merge_containment_threshold of the smaller track's confirmed voxels lie in the other's. The
-    //! older track keeps its id and absorbs the other (see Track::absorb).
+    //! The older track absorbs the other (see mergeTracks for the merge gate).
     bool merge_tracks = false;
     //! Minimum fraction of the smaller track's confirmed voxels inside the larger track's.
     float merge_containment_threshold = 0.5f;
@@ -120,8 +117,10 @@ class MaxIoUTracker : public Tracker {
   void assignClustersToStaticTrack(const FrameData& data, Tracks& tracks);
 
   /**
-   * @brief Merge fragment tracks of the same object (see Config::merge_tracks). Each track updated
-   * in this pass is checked against all other tracks; absorbed tracks are erased from tracks.
+   * @brief Merge fragment tracks of the same object. Two static, active tracks merge if semantics
+   * match, centers are within merge_distance_factor x the larger radius, and the smaller one's
+   * confirmed voxels are at least merge_containment_threshold contained in the other's. The older
+   * track survives; absorbed tracks are erased.
    */
   void mergeTracks(Tracks& tracks) const;
 

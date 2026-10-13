@@ -771,9 +771,8 @@ void ActiveWindowChangeDetector::updatePriorObjectGeometry(const VolumetricMap& 
     return;
   }
 
-  // Re-quantize the vertices into current-frame map voxels and blocks for the new
-  // current_T_prior_. Quantizing in the current frame (not the prior frame) keeps every vertex in
-  // exactly the voxel a point lookup of it returns.
+  // Re-quantize the vertices in the current frame, so each vertex lands in exactly the voxel a
+  // point lookup of it returns.
   const auto& tracking_layer = *map.getTrackingLayer();
   const auto& tsdf_layer = map.getTsdfLayer();
   for (auto& [node_id, geometry] : prior_object_geometry_) {

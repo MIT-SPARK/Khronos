@@ -299,9 +299,8 @@ void ActiveWindowVisualizer::visualizeTrackAccumulated(const Tracks& tracks) con
     }
 
     if (draw_voxels) {
-      // Confirmed and unconfirmed voxels go in separate markers: RViz renders a whole marker in the
-      // transparent pass (no depth write, drawn behind the mesh) if any of its points is
-      // transparent, so the confirmed voxels must stay in a fully opaque marker.
+      // Separate markers: RViz draws a whole marker behind the mesh if any of its points is
+      // transparent, so the confirmed voxels need their own opaque marker.
       const auto make_marker = [&](const std::string& ns, const std_msgs::msg::ColorRGBA& color) {
         Marker marker;
         marker.action = Marker::ADD;
