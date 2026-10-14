@@ -37,7 +37,6 @@
 
 #pragma once
 
-#include <memory>
 #include <string>
 
 #include <hydra_ros/hydra_ros_pipeline.h>
@@ -62,7 +61,7 @@ class KhronosPipeline : public hydra::HydraRosPipeline {
   using BackendEvaluationCallback = std::function<
       void(TimeStamp, const DynamicSceneGraph&, const kimera_pgmo::DeformationGraph&)>;
 
-  explicit KhronosPipeline(ianvs::NodeHandle nh);
+  explicit KhronosPipeline(const Config& config, ianvs::NodeHandle nh);
   ~KhronosPipeline() = default;
 
   void init() override;

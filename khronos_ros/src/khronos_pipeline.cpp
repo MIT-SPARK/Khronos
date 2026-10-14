@@ -71,9 +71,9 @@ void declare_config(KhronosPipeline::Config& config) {
   base<hydra::HydraRosPipeline::Config>(config);
 }
 
-KhronosPipeline::KhronosPipeline(ianvs::NodeHandle nh)
-    : hydra::HydraRosPipeline(0, 5),
-      config(config::checkValid(config::fromContext<Config>())),
+KhronosPipeline::KhronosPipeline(const Config& config, ianvs::NodeHandle nh)
+    : hydra::HydraRosPipeline(config),
+      config(config::checkValid(config)),
       nh_(nh),
       changes_pub_(nh_.create_publisher<ChangeMsg>("changes", rclcpp::QoS(10).transient_local())),
       khronos_backend_(nullptr),
