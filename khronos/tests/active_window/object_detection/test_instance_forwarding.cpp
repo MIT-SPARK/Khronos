@@ -33,6 +33,7 @@
  * purposes notwithstanding any copyright notation herein.
  * -------------------------------------------------------------------------- */
 #include <glog/logging.h>
+#include <limits>
 #include <gtest/gtest.h>
 #include <hydra/common/global_info.h>
 #include <khronos/active_window/object_detection/instance_forwarding.h>
@@ -225,6 +226,30 @@ TEST(InstanceForwarding, PartialRange) {
   Pixels expected{{0, 0}, {0, 1}, {1, 0}, {1, 2}};
   EXPECT_EQ(cluster.pixels, expected);
   EXPECT_EQ(cluster.semantics, std::nullopt);
+}
+
+TEST(InstanceForwarding, NonFiniteRange) {
+  InstanceForwarding::Config config;
+  config.zero_is_unlabeled = false;
+  InstanceForwarding detector(config);
+
+  hydra::VolumetricMap map(hydra::VolumetricMap::Config{});
+
+  // Invalid depth (NaN/inf range) must not join a cluster, even with no range limits set.
+  hydra::InputData input{nullptr};
+  input.instance_image = cv::Mat::zeros(3, 2, CV_16S);
+  input.range_image = cv::Mat(3, 2, CV_32FC1, 1.0f);
+  input.range_image.at<InputData::RangeType>(1, 1) = std::numeric_limits<float>::quiet_NaN();
+  input.range_image.at<InputData::RangeType>(2, 0) = std::numeric_limits<float>::infinity();
+
+  FrameData data{input};
+  data.object_image = cv::Mat::zeros(3, 2, CV_32S);
+
+  detector.processInput(map, data);
+  ASSERT_EQ(data.semantic_clusters.size(), 1u);
+  const auto& cluster = data.semantic_clusters[0];
+  Pixels expected{{0, 0}, {0, 1}, {1, 0}, {1, 2}};
+  EXPECT_EQ(cluster.pixels, expected);
 }
 
 TEST(InstanceForwarding, ClosedSetLabels) {

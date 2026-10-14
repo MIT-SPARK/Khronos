@@ -62,9 +62,9 @@ class FrameDataBuffer {
   virtual ~FrameDataBuffer() = default;
 
   /**
-   * @brief Get the latest frame data.
+   * @brief Get the latest frame data, even if it was not kept in the buffer.
    */
-  const FrameData& getLatestData() const { return *buffer_.back(); }
+  const FrameData& getLatestData() const { return *latest_data_; }
 
   /**
    * @brief Add new frame data as candidate to the buffer.
@@ -97,6 +97,8 @@ class FrameDataBuffer {
   std::deque<FrameData::Ptr> buffer_;
   TimeStamp oldest_time_stamp_ = 0;
   int input_counter_ = 0;
+  // Most recently added frame, whether or not it was kept in the buffer.
+  FrameData::Ptr latest_data_;
 };
 
 void declare_config(FrameDataBuffer::Config& config);

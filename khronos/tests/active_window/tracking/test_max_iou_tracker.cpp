@@ -1,6 +1,7 @@
 #include <initializer_list>
 #include <memory>
 
+#include <config_utilities/validation.h>
 #include <gtest/gtest.h>
 #include <hydra/input/camera.h>
 #include <khronos/active_window/tracking/max_iou_tracker.h>
@@ -34,6 +35,34 @@ void appendObservations(std::initializer_list<Detection> detections,
     clusters.push_back(cluster);
     ++column;
   }
+}
+
+//! Voxels of the axis-aligned voxel box [min, max] (inclusive).
+GlobalIndexSet voxelBox(const GlobalIndex& min, const GlobalIndex& max) {
+  GlobalIndexSet voxels;
+  for (int x = min.x(); x <= max.x(); ++x) {
+    for (int y = min.y(); y <= max.y(); ++y) {
+      for (int z = min.z(); z <= max.z(); ++z) {
+        voxels.emplace(x, y, z);
+      }
+    }
+  }
+  return voxels;
+}
+
+//! Static track updated in tracker pass 0 whose voxels were each observed `hits` times.
+Track makeTrack(int id, TimeStamp first_seen, const GlobalIndexSet& voxels, int hits, int category = 1) {
+  Track track;
+  track.id = id;
+  track.first_seen = first_seen;
+  track.last_seen = first_seen + hits - 1;
+  track.semantics = SemanticClusterInfo(category);
+  track.sequence_number = 0;
+  for (int i = 0; i < hits; ++i) {
+    track.observations.emplace_back(first_seen + i, id, -1, "camera");
+    track.accumulateVoxels(voxels, 0.1f, first_seen + i, 2);
+  }
+  return track;
 }
 
 }  // namespace
@@ -141,6 +170,43 @@ TEST_P(MaxIoUTrackerTest, UnmatchedIdsFallBack) {
   EXPECT_EQ(tracks[0].observations.size(), 2u);
 }
 
+TEST(TrackAccumulation, BoundingBoxGrowsWithConfirmedVoxels) {
+  Track track;
+  const float voxel_size = 0.5f;
+  // Two hits needed: a voxel seen once is not in the bounding box.
+  track.accumulateVoxels({GlobalIndex(0, 0, 0), GlobalIndex(4, 0, 0)}, voxel_size, 1, 2);
+  EXPECT_EQ(track.accumulated_voxels.size(), 2u);
+  EXPECT_FALSE(track.accumulated_bounding_box.isValid());
+  EXPECT_TRUE(track.confirmedVoxels().empty());
+
+  // Second hit of (0,0,0) confirms it: the box is exactly its cube.
+  track.accumulateVoxels({GlobalIndex(0, 0, 0), GlobalIndex(0, 2, 0)}, voxel_size, 2, 2);
+  EXPECT_EQ(track.accumulated_voxels.at(GlobalIndex(0, 0, 0)).hits, 2);
+  EXPECT_EQ(track.accumulated_voxels.at(GlobalIndex(0, 0, 0)).last_seen, 2u);
+  EXPECT_EQ(track.accumulated_voxels.at(GlobalIndex(4, 0, 0)).last_seen, 1u);
+  ASSERT_TRUE(track.accumulated_bounding_box.isValid());
+  EXPECT_EQ(track.confirmedVoxels(), GlobalIndexSet({GlobalIndex(0, 0, 0)}));
+  EXPECT_TRUE(track.accumulated_bounding_box.dimensions.isApprox(Eigen::Vector3f::Constant(0.5f)));
+  EXPECT_TRUE(track.accumulated_bounding_box.world_P_center.isApprox(
+      Eigen::Vector3f::Constant(0.25f)));
+
+  // Confirming (4,0,0) grows the box to enclose both cubes; more hits don't change it.
+  track.accumulateVoxels({GlobalIndex(4, 0, 0)}, voxel_size, 3, 2);
+  track.accumulateVoxels({GlobalIndex(0, 0, 0), GlobalIndex(4, 0, 0)}, voxel_size, 4, 2);
+  EXPECT_EQ(track.confirmedVoxels().size(), 2u);
+  EXPECT_TRUE(track.accumulated_bounding_box.dimensions.isApprox(Eigen::Vector3f(2.5f, 0.5f, 0.5f)));
+  EXPECT_TRUE(track.accumulated_bounding_box.world_P_center.isApprox(
+      Eigen::Vector3f(1.25f, 0.25f, 0.25f)));
+}
+
+TEST(TrackAccumulation, SingleHitIsUnion) {
+  Track track;
+  track.accumulateVoxels({GlobalIndex(0, 0, 0)}, 1.0f, 1, 1);
+  track.accumulateVoxels({GlobalIndex(1, 1, 1)}, 1.0f, 2, 1);
+  EXPECT_EQ(track.confirmedVoxels().size(), 2u);
+  EXPECT_TRUE(track.accumulated_bounding_box.dimensions.isApprox(Eigen::Vector3f::Constant(2.0f)));
+}
+
 INSTANTIATE_TEST_SUITE_P(AssociationModes,
                          MaxIoUTrackerTest,
                          testing::Values(Association::kAssignCluster, Association::kAssignTrack));
@@ -203,6 +269,185 @@ TEST_F(MaxIoUTrackerTest, DynamicIdPreassociation) {
         EXPECT_EQ(tracks[0].semantics->category_id, 1);
       }
     }
+  }
+}
+
+TEST_F(MaxIoUTrackerTest, AccumulatesStaticObservations) {
+  config.min_voxel_hits = 2;
+  MaxIoUTracker tracker(config);
+  Tracks tracks;
+  // Each detection has two points, (x, 0, 1) and (x + 1, 1, 2), in different voxels.
+  auto first = frame(1, {{10, 0.0f}}, {{5, 20.0f}});
+  tracker.processInput(first, tracks);
+  ASSERT_EQ(tracks.size(), 2u);
+  const Track& dynamic = tracks[0].is_dynamic ? tracks[0] : tracks[1];
+  const Track& track = tracks[0].is_dynamic ? tracks[1] : tracks[0];
+  EXPECT_TRUE(dynamic.accumulated_voxels.empty());
+  EXPECT_EQ(track.accumulated_voxels.size(), 2u);
+  EXPECT_FLOAT_EQ(track.accumulated_voxel_size, config.voxel_size);
+  EXPECT_EQ(track.accumulated_min_hits, 2);
+  EXPECT_FALSE(track.accumulated_bounding_box.isValid());
+
+  // The same object again: both voxels confirmed, last_bounding_box is unaffected.
+  auto second = frame(2, {{10, 0.0f}});
+  tracker.processInput(second, tracks);
+  const Track& updated = tracks[0].is_dynamic ? tracks[1] : tracks[0];
+  ASSERT_EQ(updated.observations.size(), 2u);
+  EXPECT_EQ(updated.confirmedVoxels().size(), 2u);
+  ASSERT_TRUE(updated.accumulated_bounding_box.isValid());
+  // Two voxel cubes around (0, 0, 1) and (1, 1, 2): about 1.1 m on each side.
+  const auto& bbox = updated.accumulated_bounding_box;
+  EXPECT_LT((bbox.dimensions - Eigen::Vector3f::Constant(1.1f)).cwiseAbs().maxCoeff(), 1e-3f);
+  EXPECT_LT((bbox.world_P_center - Eigen::Vector3f(0.5f, 0.5f, 1.5f)).cwiseAbs().maxCoeff(),
+            config.voxel_size);
+  EXPECT_EQ(updated.last_bounding_box, second.semantic_clusters[0].bounding_box);
+}
+
+TEST_F(MaxIoUTrackerTest, AccumulationDoesNotChangeAssociation) {
+  Tracks with;
+  Tracks without;
+  for (const bool accumulate : {true, false}) {
+    config.accumulate_voxels = accumulate;
+    MaxIoUTracker tracker(config);
+    auto& tracks = accumulate ? with : without;
+    auto first = frame(1, {{10, 0.0f}, {20, 10.0f}});
+    tracker.processInput(first, tracks);
+    auto next = frame(2, {{11, 0.0f}, {12, 0.0f}, {21, 10.0f, 2}, {30, 20.0f}});
+    tracker.processInput(next, tracks);
+  }
+
+  ASSERT_EQ(with.size(), without.size());
+  for (size_t i = 0; i < with.size(); ++i) {
+    EXPECT_EQ(with[i].id, without[i].id);
+    EXPECT_EQ(with[i].observations.size(), without[i].observations.size());
+    EXPECT_EQ(with[i].last_bounding_box, without[i].last_bounding_box);
+    EXPECT_FALSE(with[i].accumulated_voxels.empty());
+    EXPECT_TRUE(without[i].accumulated_voxels.empty());
+  }
+}
+
+TEST(TrackAbsorb, CombinesTracks) {
+  Track older = makeTrack(1, 10, voxelBox({0, 0, 0}, {1, 0, 0}), 1);
+  Track newer = makeTrack(2, 20, voxelBox({1, 0, 0}, {2, 0, 0}), 1);
+  newer.absorbed_track_ids = {5};
+  older.absorb(std::move(newer));
+
+  EXPECT_EQ(older.id, 1);
+  EXPECT_EQ(older.absorbed_track_ids, std::set<int>({2, 5}));
+  EXPECT_EQ(older.absorbed_instance_ids, std::set<int>({1, 2}));
+  EXPECT_EQ(older.first_seen, 10u);
+  EXPECT_EQ(older.last_seen, 20u);
+  ASSERT_EQ(older.observations.size(), 2u);
+  EXPECT_EQ(older.observations.back().stamp, 20u);
+  EXPECT_EQ(older.latestInstanceId(), 2);
+  // Hits add up: the shared voxel got confirmed, so the bbox is exactly its cube.
+  EXPECT_EQ(older.accumulated_voxels.at(GlobalIndex(1, 0, 0)).hits, 2);
+  EXPECT_EQ(older.confirmedVoxels(), GlobalIndexSet({GlobalIndex(1, 0, 0)}));
+  ASSERT_TRUE(older.accumulated_bounding_box.isValid());
+  EXPECT_TRUE(older.accumulated_bounding_box.dimensions.isApprox(Eigen::Vector3f::Constant(0.1f)));
+}
+
+TEST_F(MaxIoUTrackerTest, MergesContainedFragmentIntoOlderTrack) {
+  config.merge_tracks = true;
+  const MaxIoUTracker tracker(config);
+  for (const bool newer_is_container : {false, true}) {
+    SCOPED_TRACE(newer_is_container);
+    const auto big = voxelBox({0, 0, 0}, {3, 3, 3});
+    const auto small = voxelBox({1, 1, 1}, {2, 2, 2});
+    Tracks tracks{makeTrack(1, 10, newer_is_container ? small : big, 2),
+                  makeTrack(2, 20, newer_is_container ? big : small, 2)};
+    tracker.mergeTracks(tracks);
+    ASSERT_EQ(tracks.size(), 1u);
+    EXPECT_EQ(tracks[0].id, 1);
+    EXPECT_EQ(tracks[0].absorbed_track_ids, std::set<int>({2}));
+    EXPECT_EQ(tracks[0].accumulated_voxels.size(), big.size());
+    EXPECT_EQ(tracks[0].accumulated_voxels.at(GlobalIndex(1, 1, 1)).hits, 4);
+  }
+}
+
+TEST_F(MaxIoUTrackerTest, MergeGates) {
+  config.merge_tracks = true;
+  const auto big = voxelBox({0, 0, 0}, {3, 3, 3});
+  const auto small = voxelBox({1, 1, 1}, {2, 2, 2});
+  {
+    SCOPED_TRACE("unconfirmed voxels don't count");
+    Tracks tracks{makeTrack(1, 10, big, 2), makeTrack(2, 20, small, 1)};
+    MaxIoUTracker(config).mergeTracks(tracks);
+    EXPECT_EQ(tracks.size(), 2u);
+  }
+  {
+    SCOPED_TRACE("semantics must match");
+    Tracks tracks{makeTrack(1, 10, big, 2), makeTrack(2, 20, small, 2, 2)};
+    MaxIoUTracker(config).mergeTracks(tracks);
+    EXPECT_EQ(tracks.size(), 2u);
+  }
+  {
+    SCOPED_TRACE("inactive tracks don't merge");
+    Tracks tracks{makeTrack(1, 10, big, 2), makeTrack(2, 20, small, 2)};
+    tracks[0].is_active = false;
+    MaxIoUTracker(config).mergeTracks(tracks);
+    EXPECT_EQ(tracks.size(), 2u);
+  }
+  {
+    SCOPED_TRACE("distance gate");
+    // Centers 0.1 m apart; the big track's radius is ~0.35 m.
+    auto distance_config = config;
+    distance_config.merge_distance_factor = 0.1f;
+    Tracks tracks{makeTrack(1, 10, big, 2), makeTrack(2, 20, voxelBox({0, 0, 0}, {1, 1, 1}), 2)};
+    MaxIoUTracker(distance_config).mergeTracks(tracks);
+    EXPECT_EQ(tracks.size(), 2u);
+  }
+  {
+    SCOPED_TRACE("containment threshold");
+    // Two equal tracks sharing half of their voxels.
+    const auto left = voxelBox({0, 0, 0}, {1, 1, 1});
+    const auto right = voxelBox({1, 0, 0}, {2, 1, 1});
+    for (const float threshold : {0.6f, 0.5f}) {
+      auto threshold_config = config;
+      threshold_config.merge_containment_threshold = threshold;
+      Tracks tracks{makeTrack(1, 10, left, 2), makeTrack(2, 20, right, 2)};
+      MaxIoUTracker(threshold_config).mergeTracks(tracks);
+      EXPECT_EQ(tracks.size(), threshold > 0.5f ? 2u : 1u);
+    }
+  }
+}
+
+TEST_F(MaxIoUTrackerTest, MergeRequiresAccumulation) {
+  config.merge_tracks = true;
+  EXPECT_TRUE(config::isValid(config));
+  config.accumulate_voxels = false;
+  EXPECT_FALSE(config::isValid(config));
+}
+
+TEST_F(MaxIoUTrackerTest, MergedTrackClaimsAbsorbedIds) {
+  config.preassociate_by_id = true;
+  for (const bool merge : {false, true}) {
+    SCOPED_TRACE(merge);
+    config.merge_tracks = merge;
+    MaxIoUTracker tracker(config);
+    Tracks tracks;
+    // Track for upstream id 10, then a second track for id 20 on the same object.
+    auto first = frame(1, {{10, 0.0f}});
+    tracker.processInput(first, tracks);
+    auto second = frame(2, {{10, 0.0f}});
+    tracker.processInput(second, tracks);
+    auto third = frame(3, {{10, 0.0f}, {20, 0.0f}});
+    tracker.processInput(third, tracks);
+    auto fourth = frame(4, {{10, 0.0f}, {20, 0.0f}});
+    tracker.processInput(fourth, tracks);
+    ASSERT_EQ(tracks.size(), merge ? 1u : 2u);
+    if (!merge) {
+      continue;
+    }
+    EXPECT_EQ(tracks[0].absorbed_track_ids.size(), 1u);
+    EXPECT_EQ(tracks[0].absorbed_instance_ids, std::set<int>({10, 20}));
+
+    // Id 10 shows up again somewhere without geometric overlap: it still goes to the survivor.
+    auto fifth = frame(5, {{10, 30.0f}});
+    tracker.processInput(fifth, tracks);
+    ASSERT_EQ(tracks.size(), 1u);
+    EXPECT_EQ(tracks[0].observations.back().semantic_cluster_id, 10);
+    EXPECT_EQ(tracks[0].last_seen, 5u);
   }
 }
 
