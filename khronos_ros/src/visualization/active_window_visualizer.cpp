@@ -285,7 +285,7 @@ void ActiveWindowVisualizer::visualizeTrackAccumulated(const Tracks& tracks) con
       marker.ns = "boxes";
       marker.id = track.id;
 
-      // Track id, confidence and observation count just above the box.
+      // Track id, confidence, observation count and box volume just above the box.
       auto& label = new_bboxes.markers.emplace_back();
       label.header = header;
       label.ns = "labels";
@@ -298,6 +298,7 @@ void ActiveWindowVisualizer::visualizeTrackAccumulated(const Tracks& tracks) con
       if (config.track_label_min_observations > 0) {
         text << "/" << config.track_label_min_observations;
       }
+      text << " v=" << std::setprecision(1) << bbox.volume() << "m3";
       label.text = text.str();
       label.scale.z = config.track_label_scale;
       label.color = setColor(color);
