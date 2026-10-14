@@ -37,6 +37,9 @@
 
 #include "khronos_ros/visualization/active_window_visualizer.h"
 
+#include <iomanip>
+#include <sstream>
+
 #include <config_utilities/config_utilities.h>
 #include <cv_bridge/cv_bridge.hpp>
 #include <ianvs/node_handle.h>
@@ -74,6 +77,8 @@ void declare_config(ActiveWindowVisualizer::Config& config) {
   field(config.dynamic_point_scale, "dynamic_point_scale", "m");
   field(config.id_color_revolutions, "id_color_revolutions");
   field(config.bounding_box_line_width, "bounding_box_line_width");
+  field(config.track_label_scale, "track_label_scale", "m");
+  field(config.track_label_min_observations, "track_label_min_observations");
   field(config.sensor_displays, "sensor_displays");
   field(config.marker_opacity, "marker_opacity");
   field(config.num_slices, "num_slices");
@@ -102,6 +107,10 @@ ActiveWindowVisualizer::ActiveWindowVisualizer(const Config& config, const ianvs
   object_bb_pub_ = nh_.create_publisher<MarkerArray>("object_bounding_boxes", config.queue_size);
   track_bbox_pub_ = nh_.create_publisher<MarkerArray>("tracking/bounding_box", config.queue_size);
   track_voxels_pub_ = nh_.create_publisher<MarkerArray>("tracking/voxels", config.queue_size);
+  track_accumulated_bbox_pub_ =
+      nh_.create_publisher<MarkerArray>("tracking/accumulated_bounding_box", config.queue_size);
+  track_accumulated_voxels_pub_ =
+      nh_.create_publisher<MarkerArray>("tracking/accumulated_voxels", config.queue_size);
   track_pixels_pub_ = nh_.create_publisher<MarkerArray>("tracking/pixels", config.queue_size);
 }
 
@@ -162,6 +171,7 @@ void ActiveWindowVisualizer::visualizeAllTracks(const Tracks& tracks, const Fram
   Timer timer("visualize/active_window/tracking", stamp_.nanoseconds());
   visualizeTrackBoundingBoxes(tracks);
   visualizeTrackVoxels(tracks);
+  visualizeTrackAccumulated(tracks);
   visualizeTrackPixels(tracks);
   visualizeTrackingImage(tracks, data);
   if (use_stamp) {
@@ -244,6 +254,107 @@ void ActiveWindowVisualizer::visualizeTrackVoxels(const Tracks& tracks) const {
   voxel_tracks_tracker_.clearPrevious(header, msg);
   if (!msg.markers.empty()) {
     track_voxels_pub_->publish(msg);
+  }
+}
+
+void ActiveWindowVisualizer::visualizeTrackAccumulated(const Tracks& tracks) const {
+  const bool draw_bbox = track_accumulated_bbox_pub_->get_subscription_count() > 0u;
+  const bool draw_voxels = track_accumulated_voxels_pub_->get_subscription_count() > 0u;
+  if (!draw_bbox && !draw_voxels) {
+    return;
+  }
+
+  std_msgs::msg::Header header;
+  header.frame_id = config.global_frame_name;
+  header.stamp = getStamp();
+  const auto unconfirmed_color = setColor(spark_dsg::Color(128, 128, 128, 80));
+
+  // Marker ids are track ids so a track keeps its marker while other tracks come and go.
+  MarkerArray new_bboxes;
+  MarkerArray new_voxels;
+  for (const Track& track : tracks) {
+    if (track.accumulated_voxels.empty()) {
+      continue;
+    }
+    const auto color = colormaps::quality(track.confidence);
+
+    if (draw_bbox && track.accumulated_bounding_box.isValid()) {
+      const auto& bbox = track.accumulated_bounding_box;
+      auto& marker = new_bboxes.markers.emplace_back(
+          setBoundingBox(bbox, color, header, config.bounding_box_line_width));
+      marker.ns = "boxes";
+      marker.id = track.id;
+
+      // Track id, confidence, observation count and box volume just above the box.
+      auto& label = new_bboxes.markers.emplace_back();
+      label.header = header;
+      label.ns = "labels";
+      label.id = track.id;
+      label.action = Marker::ADD;
+      label.type = Marker::TEXT_VIEW_FACING;
+      std::stringstream text;
+      text << "T" << track.id << " c=" << std::fixed << std::setprecision(2) << track.confidence
+           << " n=" << track.observations.size();
+      if (config.track_label_min_observations > 0) {
+        text << "/" << config.track_label_min_observations;
+      }
+      text << " v=" << std::setprecision(1) << bbox.volume() << "m3";
+      label.text = text.str();
+      label.scale.z = config.track_label_scale;
+      label.color = setColor(color);
+      label.pose.orientation.w = 1.0;
+      label.pose.position.x = bbox.world_P_center.x();
+      label.pose.position.y = bbox.world_P_center.y();
+      label.pose.position.z =
+          bbox.world_P_center.z() + 0.5 * bbox.dimensions.z() + config.track_label_scale;
+    }
+
+    if (draw_voxels) {
+      // Separate markers: RViz draws a whole marker behind the mesh if any of its points is
+      // transparent, so the confirmed voxels need their own opaque marker.
+      const auto make_marker = [&](const std::string& ns, const std_msgs::msg::ColorRGBA& color) {
+        Marker marker;
+        marker.action = Marker::ADD;
+        marker.ns = ns;
+        marker.id = track.id;
+        marker.header = header;
+        marker.type = Marker::CUBE_LIST;
+        marker.scale = setScale(track.accumulated_voxel_size);
+        marker.pose.orientation.w = 1.f;
+        marker.color = color;
+        return marker;
+      };
+      Marker confirmed = make_marker("confirmed", setColor(color));
+      Marker unconfirmed = make_marker("unconfirmed", unconfirmed_color);
+      for (const auto& [index, voxel] : track.accumulated_voxels) {
+        auto& marker = voxel.hits >= track.accumulated_min_hits ? confirmed : unconfirmed;
+        marker.points.emplace_back(
+            setPoint(spatial_hash::centerPointFromIndex(index, track.accumulated_voxel_size)));
+      }
+      // Empty lists (e.g. nothing confirmed yet) are left out; MarkerTracker deletes old ones.
+      for (auto* marker : {&confirmed, &unconfirmed}) {
+        if (!marker->points.empty()) {
+          new_voxels.markers.push_back(std::move(*marker));
+        }
+      }
+    }
+  }
+
+  if (draw_bbox) {
+    MarkerArray msg;
+    accumulated_bbox_tracker_.add(new_bboxes, msg);
+    accumulated_bbox_tracker_.clearPrevious(header, msg);
+    if (!msg.markers.empty()) {
+      track_accumulated_bbox_pub_->publish(msg);
+    }
+  }
+  if (draw_voxels) {
+    MarkerArray msg;
+    accumulated_voxels_tracker_.add(new_voxels, msg);
+    accumulated_voxels_tracker_.clearPrevious(header, msg);
+    if (!msg.markers.empty()) {
+      track_accumulated_voxels_pub_->publish(msg);
+    }
   }
 }
 

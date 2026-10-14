@@ -37,6 +37,8 @@
 
 #include "khronos/active_window/active_window.h"
 
+#include <unordered_set>
+
 #include <hydra/common/global_info.h>
 #include <hydra/input/sensor_utilities.h>
 #include <hydra/reconstruction/integration_masking.h>
@@ -44,7 +46,8 @@
 namespace khronos {
 namespace {
 
-std::shared_ptr<KhronosObjectAttributes> createObjectAttributes(const Track& track) {
+std::shared_ptr<KhronosObjectAttributes> createObjectAttributes(const Track& track,
+                                                                bool use_accumulated_bbox) {
   auto object = std::make_shared<KhronosObjectAttributes>();
   if (track.semantics) {
     object->semantic_label = track.semantics->category_id;
@@ -54,7 +57,9 @@ std::shared_ptr<KhronosObjectAttributes> createObjectAttributes(const Track& tra
   object->first_observed_ns = {track.first_seen};
   object->last_observed_ns = {track.last_seen};
 
-  object->bounding_box = track.last_bounding_box;
+  object->bounding_box = use_accumulated_bbox && track.accumulated_bounding_box.isValid()
+                             ? track.accumulated_bounding_box
+                             : track.last_bounding_box;
   object->position = object->bounding_box.world_P_center.cast<double>();
 
   return object;
@@ -89,7 +94,9 @@ void declare_config(ActiveWindow::Config& config) {
   field(config.extraction_worker, "extraction_worker");
   field(config.mesh_integrator, "mesh_integrator");
   field(config.frame_data_buffer, "frame_data_buffer");
+  field(config.vote_filter, "vote_filter");
   field(config.khronos_sinks, "khronos_sinks");
+  field(config.live_accumulated_bounding_box, "live_accumulated_bounding_box");
 }
 
 SensorProcessor::SensorProcessor(const Config& config)
@@ -113,7 +120,8 @@ ActiveWindow::ActiveWindow(const Config& config, const OutputQueue::Ptr& output_
       mesh_integrator_(config.mesh_integrator),
       extraction_worker_(config.extraction_worker, config.object_extractor.create()),
       sinks_(KhronosSink::instantiate(config.khronos_sinks)),
-      frame_data_buffer_(config.frame_data_buffer) {
+      frame_data_buffer_(config.frame_data_buffer),
+      vote_filter_(config.vote_filter) {
   if (!map_window_) {
     LOG(WARNING) << "[Khronos Active Window] map_window is required. Set active_window.map_window "
                     "in config (e.g. type: spatial or type: temporal).";
@@ -138,8 +146,19 @@ void ActiveWindow::addKhronosSink(const KhronosSink::Ptr& sink) {
 void ActiveWindow::updateTrackingStatus(const FrameData& data) {
   for (auto& track : tracks_) {
     const Eigen::Vector3d track_pos = track.last_bounding_box.world_P_center.cast<double>();
+    const bool was_active = track.is_active;
     track.is_active = map_window_->inBounds(
         data.input.timestamp_ns, data.input.world_T_body, track.last_seen, track_pos);
+
+    // Prune inconsistent observations once, before sinks see the track and before extraction.
+    if (was_active && !track.is_active) {
+      const auto num_filtered = vote_filter_.filter(frame_data_buffer_, track);
+      if (num_filtered) {
+        CLOG(4) << "[Khronos Active Window] Vote filter pruned " << num_filtered << " of "
+                << num_filtered + track.observations.size() << " observations of track "
+                << track.id << ".";
+      }
+    }
   }
 }
 
@@ -175,7 +194,18 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
   // Initialize tracking for new detections and track and associate objects
   // throughout frames.
   if (processor->tracker) {
+    std::unordered_set<int> previous_ids;
+    for (const auto& track : tracks_) {
+      previous_ids.insert(track.id);
+    }
+
     processor->tracker->processInput(*data, tracks_);
+
+    // Tracks only disappear here if the tracker merged them into other tracks.
+    for (const auto& track : tracks_) {
+      previous_ids.erase(track.id);
+    }
+    pending_retractions_.insert(pending_retractions_.end(), previous_ids.begin(), previous_ids.end());
   }
 
   // Update track active status using the active window's VolumetricWindow policy.
@@ -229,6 +259,9 @@ void ActiveWindow::finishMapping() {
     block.has_active_data = false;
   }
   for (Track& track : tracks_) {
+    if (track.is_active) {
+      vote_filter_.filter(frame_data_buffer_, track);
+    }
     track.is_active = false;
   }
   // Extract objects and wait for them to finish extraction.
@@ -291,12 +324,20 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::extractOutputData(const FrameData& 
   output->graph_update[update->layer] = update;
   extraction_worker_.fill(*update);
 
+  // Delete the object nodes of tracks merged into other tracks (see MaxIoUTracker::mergeTracks).
+  // Deleting a track that never got a node is a no-op downstream.
+  for (const int absorbed_id : pending_retractions_) {
+    update->updates.push_back(hydra::NodeUpdate{
+        nullptr, static_cast<size_t>(absorbed_id), hydra::NodeUpdate::UpdateType::Delete});
+  }
+  pending_retractions_.clear();
+
   for (const auto& track : tracks_) {
     if (track.confidence < config.min_object_confidence) {
       continue;
     }
 
-    auto output_object = createObjectAttributes(track);
+    auto output_object = createObjectAttributes(track, config.live_accumulated_bounding_box);
     update->updates.push_back(hydra::NodeUpdate{output_object, static_cast<size_t>(track.id)});
   }
 

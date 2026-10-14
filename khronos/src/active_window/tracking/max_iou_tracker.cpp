@@ -37,6 +37,7 @@
 
 #include "khronos/active_window/tracking/max_iou_tracker.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -96,11 +97,23 @@ void declare_config(MaxIoUTracker::Config& config) {
   field(config.voxel_size, "voxel_size", "m");
   field(config.preassociate_by_id, "preassociate_by_id");
   field(config.preassociate_to_dynamic, "preassociate_to_dynamic");
+  field(config.accumulate_voxels, "accumulate_voxels");
+  field(config.min_voxel_hits, "min_voxel_hits");
+  field(config.merge_tracks, "merge_tracks");
+  field(config.merge_containment_threshold, "merge_containment_threshold");
+  field(config.merge_distance_factor, "merge_distance_factor");
+  field(config.merge_min_cosine_sim, "merge_min_cosine_sim");
 
   checkInRange(config.min_cross_iou, 0.0f, 1.0f, "min_cross_iou");
   checkInRange(config.min_semantic_iou, 0.0f, 1.0f, "min_semantic_iou");
   checkInRange(config.min_cosine_sim, -1.0f, 1.0f, "min_cosine_sim");
   check(config.voxel_size, GT, 0.f, "voxel_size");
+  check(config.min_voxel_hits, GE, 1, "min_voxel_hits");
+  checkCondition(!config.merge_tracks || config.accumulate_voxels,
+                 "merge_tracks requires accumulate_voxels");
+  checkInRange(config.merge_containment_threshold, 0.0f, 1.0f, "merge_containment_threshold");
+  check(config.merge_distance_factor, GT, 0.f, "merge_distance_factor");
+  checkInRange(config.merge_min_cosine_sim, -1.0f, 1.0f, "merge_min_cosine_sim");
 }
 
 MaxIoUTracker::Config::Config()
@@ -139,6 +152,11 @@ void MaxIoUTracker::processInput(FrameData& data, Tracks& tracks) {
   // Associate current objects to tracks and create new tracks for unassociated objects.
   // TODO(lschmid): Handle objects splitting or merging explicitly at some point.
   associateTracks(data, tracks);
+
+  // Merge fragment tracks of the same object.
+  if (config.merge_tracks) {
+    mergeTracks(tracks);
+  }
 
   MLOG(3) << "Previous tracks: " << prev_num_tracks << " Current tracks: " << tracks.size();
   ++sequence_number_;
@@ -257,6 +275,29 @@ void MaxIoUTracker::preassociateSemanticTracks(const FrameData& data, Tracks& tr
       track.observations.back().semantic_cluster_id = cluster.id;
     } else {
       updateTrack(data, cluster, track, false);
+    }
+  }
+
+  if (!config.merge_tracks) {
+    return;
+  }
+
+  // Merged tracks also claim the upstream ids of the tracks they absorbed. This runs after all
+  // latest ids are matched, so a track currently using an id keeps it.
+  for (auto& track : tracks) {
+    if (track.is_dynamic || track.sequence_number == sequence_number_) {
+      continue;
+    }
+
+    for (const int absorbed_id : track.absorbed_instance_ids) {
+      const auto iter = id_to_cluster.find(absorbed_id);
+      if (iter == id_to_cluster.end() || semantic_assigned_[iter->second]) {
+        continue;
+      }
+
+      semantic_assigned_[iter->second] = true;
+      updateTrack(data, data.semantic_clusters[iter->second], track, false);
+      break;
     }
   }
 }
@@ -496,6 +537,16 @@ void MaxIoUTracker::updateTrack(const FrameData& data,
     track.last_voxel_size = config.voxel_size;
   }
 
+  // Accumulate the geometry of static observations; dynamic objects move between observations.
+  if (config.accumulate_voxels && !is_observation_dynamic && !track.is_dynamic) {
+    GlobalIndexSet voxels;
+    voxels.reserve(track.last_points.size());
+    for (const auto& point : track.last_points) {
+      voxels.insert(grid.toIndex(point));
+    }
+    track.accumulateVoxels(voxels, config.voxel_size, data.input.timestamp_ns, config.min_voxel_hits);
+  }
+
   track.last_bounding_box = observation.bounding_box;
   if (!is_observation_dynamic) {
     // NOTE(nathan) we want to avoid overwriting any track semantic information with dynamic
@@ -525,6 +576,129 @@ void MaxIoUTracker::updateTrack(const FrameData& data,
   track.confidence = std::min(track.confidence, 1.0f);
 }
 
+float MaxIoUTracker::computeContainment(const Track& a, const Track& b) {
+  const auto count_confirmed = [](const Track& track) {
+    size_t num = 0;
+    for (const auto& [index, voxel] : track.accumulated_voxels) {
+      num += voxel.hits >= track.accumulated_min_hits ? 1 : 0;
+    }
+    return num;
+  };
+  const size_t num_a = count_confirmed(a);
+  const size_t num_b = count_confirmed(b);
+  if (num_a == 0 || num_b == 0) {
+    return 0.0f;
+  }
+
+  // Fraction of the smaller track's confirmed voxels that are confirmed in the larger one.
+  const Track& small = num_a <= num_b ? a : b;
+  const Track& large = num_a <= num_b ? b : a;
+  size_t intersection = 0;
+  for (const auto& [index, voxel] : small.accumulated_voxels) {
+    if (voxel.hits < small.accumulated_min_hits) {
+      continue;
+    }
+    const auto it = large.accumulated_voxels.find(index);
+    if (it != large.accumulated_voxels.end() && it->second.hits >= large.accumulated_min_hits) {
+      ++intersection;
+    }
+  }
+  return static_cast<float>(intersection) / std::min(num_a, num_b);
+}
+
+void MaxIoUTracker::mergeTracks(Tracks& tracks) const {
+  const auto bounding_box = [](const Track& track) -> const BoundingBox& {
+    return track.accumulated_bounding_box.isValid() ? track.accumulated_bounding_box
+                                                    : track.last_bounding_box;
+  };
+  const auto can_merge = [](const Track& track) {
+    return !track.is_dynamic && track.is_active && !track.accumulated_voxels.empty();
+  };
+
+  std::vector<bool> absorbed(tracks.size(), false);
+  size_t num_merged = 0;
+  bool merged = true;
+  // Merging grows the survivor, which can enable further merges. Bounded to be safe.
+  for (size_t iteration = 0; merged && iteration < tracks.size(); ++iteration) {
+    merged = false;
+    for (size_t i = 0; i < tracks.size(); ++i) {
+      if (absorbed[i] || tracks[i].sequence_number != sequence_number_ || !can_merge(tracks[i])) {
+        continue;
+      }
+
+      const Track& track = tracks[i];
+      const BoundingBox& bbox = bounding_box(track);
+      if (!bbox.isValid()) {
+        continue;
+      }
+
+      std::optional<size_t> best;
+      float best_containment = config.merge_containment_threshold;
+      for (size_t j = 0; j < tracks.size(); ++j) {
+        if (j == i || absorbed[j] || !can_merge(tracks[j])) {
+          continue;
+        }
+
+        const Track& other = tracks[j];
+        const BoundingBox& other_bbox = bounding_box(other);
+        if (!other_bbox.isValid()) {
+          continue;
+        }
+
+        if (!semanticsMatch(track.semantics, other.semantics, config.merge_min_cosine_sim)) {
+          continue;
+        }
+
+        // Distance gate adaptive to the larger of the two tracks (radius = half bbox diagonal).
+        const float radius = 0.5f * std::max(bbox.dimensions.norm(), other_bbox.dimensions.norm());
+        const float distance = (bbox.world_P_center - other_bbox.world_P_center).norm();
+        if (distance > config.merge_distance_factor * radius) {
+          continue;
+        }
+
+        const float containment = computeContainment(track, other);
+        if (containment >= best_containment) {
+          best = j;
+          best_containment = containment;
+        }
+      }
+
+      if (!best) {
+        continue;
+      }
+
+      // The older track keeps its id so ids already reported downstream stay stable.
+      const bool keep_i = std::make_pair(tracks[i].first_seen, tracks[i].id) <
+                          std::make_pair(tracks[*best].first_seen, tracks[*best].id);
+      const size_t survivor = keep_i ? i : *best;
+      const size_t victim = keep_i ? *best : i;
+      MLOG(3) << "Merging track " << tracks[victim].id << " into track " << tracks[survivor].id
+              << " (containment " << best_containment << ")";
+      tracks[survivor].absorb(std::move(tracks[victim]));
+      absorbed[victim] = true;
+      merged = true;
+      ++num_merged;
+    }
+  }
+
+  if (num_merged == 0) {
+    return;
+  }
+
+  // Erase absorbed tracks, keeping the order of the remaining ones.
+  size_t num_kept = 0;
+  for (size_t i = 0; i < tracks.size(); ++i) {
+    if (!absorbed[i]) {
+      if (num_kept != i) {
+        tracks[num_kept] = std::move(tracks[i]);
+      }
+      ++num_kept;
+    }
+  }
+  tracks.erase(tracks.begin() + num_kept, tracks.end());
+  MLOG(3) << "Merged " << num_merged << " tracks, " << tracks.size() << " remaining";
+}
+
 float MaxIoUTracker::computeIoUVoxels(const FrameData& /* data */,
                                       const MeasurementCluster& cluster,
                                       const Track& track) const {
@@ -538,20 +712,25 @@ float MaxIoUTracker::computeIoUVoxels(const FrameData& /* data */,
   return intersection / (cluster.voxels.size() + track.last_voxels.size() - intersection);
 }
 
-float MaxIoUTracker::computeIoUPixels(const FrameData& data,
-                                      const MeasurementCluster& cluster,
-                                      const Track& track) const {
-  // Project every pixel of cluster 1 into the frame of cluster 2.
+std::set<Pixel> MaxIoUTracker::reprojectPoints(const FrameData& data, const Points& points) const {
   const Transform sensor_T_world = data.input.getSensorPose().inverse();
   const Sensor& sensor = data.input.getSensor();
   std::set<Pixel> reprojected_pixels;
-  for (const Point& point : track.last_points) {
+  for (const Point& point : points) {
     int u, v;
     const auto p_sensor = sensor_T_world * Eigen::Vector3d(point[0], point[1], point[2]);
     if (sensor.projectPointToImagePlane(p_sensor.cast<float>(), u, v)) {
       reprojected_pixels.emplace(u, v);
     }
   }
+  return reprojected_pixels;
+}
+
+float MaxIoUTracker::computeIoUPixels(const FrameData& data,
+                                      const MeasurementCluster& cluster,
+                                      const Track& track) const {
+  // Project every pixel of cluster 1 into the frame of cluster 2.
+  const auto reprojected_pixels = reprojectPoints(data, track.last_points);
 
   // Compute IoU of the reprojected pixels and cluster 2.
   float intersection = 0.f;

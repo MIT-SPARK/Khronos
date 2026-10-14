@@ -82,6 +82,21 @@ class MaxIoUTracker : public Tracker {
     bool preassociate_by_id = false;
     //! Whether or not to allow preassociation dynamic tracks
     bool preassociate_to_dynamic = false;
+    //! Accumulate the voxels (at voxel_size) of all static observations of a track into
+    //! Track::accumulated_voxels and Track::accumulated_bounding_box. Association is unaffected.
+    bool accumulate_voxels = true;
+    //! Observations a voxel needs to be counted in Track::accumulated_bounding_box. Filters out
+    //! single-frame artifacts such as depth smear.
+    int min_voxel_hits = 2;
+    //! Merge fragment tracks of the same object after association (requires accumulate_voxels).
+    //! The older track absorbs the other (see mergeTracks for the merge gate).
+    bool merge_tracks = false;
+    //! Minimum fraction of the smaller track's confirmed voxels inside the larger track's.
+    float merge_containment_threshold = 0.5f;
+    //! Max center distance as a multiple of the larger track radius (half bbox diagonal).
+    float merge_distance_factor = 2.0f;
+    //! Minimum cosine similarity of the semantic features of two tracks to merge.
+    float merge_min_cosine_sim = 0.0f;
   } const config;
 
   // Construction.
@@ -100,6 +115,20 @@ class MaxIoUTracker : public Tracker {
   void preassociateSemanticTracks(const FrameData& data, Tracks& tracks);
   void assignStaticTracksToCluster(const FrameData& data, Tracks& tracks);
   void assignClustersToStaticTrack(const FrameData& data, Tracks& tracks);
+
+  /**
+   * @brief Merge fragment tracks of the same object. Two static, active tracks merge if semantics
+   * match, centers are within merge_distance_factor x the larger radius, and the smaller one's
+   * confirmed voxels are at least merge_containment_threshold contained in the other's. The older
+   * track survives; absorbed tracks are erased.
+   */
+  void mergeTracks(Tracks& tracks) const;
+
+  /**
+   * @brief Fraction of the confirmed accumulated voxels of the track with fewer of them that are
+   * also confirmed voxels of the other track. 0 if either has no confirmed voxels.
+   */
+  static float computeContainment(const Track& a, const Track& b);
 
   Track& addNewTrack(const FrameData& data,
                      const MeasurementCluster& observation,
@@ -124,6 +153,17 @@ class MaxIoUTracker : public Tracker {
   float computeIoUPixels(const FrameData& data,
                          const MeasurementCluster& cluster,
                          const Track& track) const;
+  /**
+   * @brief Reproject a set of 3D world points into the given frame's sensor image plane.
+   * Extracted from computeIoUPixels so debugging/visualization tools (e.g. test_track_association)
+   * can obtain the same reprojected pixel set the tracker's own pixel-IoU comparison uses, without
+   * duplicating the formula.
+   * @param data The frame to reproject into (uses its sensor pose and sensor model).
+   * @param points 3D world points to reproject (e.g. a track's last_points).
+   * @return The set of image pixels the points project onto (points that fail to project, e.g.
+   * behind the camera, are omitted).
+   */
+  std::set<Pixel> reprojectPoints(const FrameData& data, const Points& points) const;
   float computeIoUBoundingBox(const FrameData& data,
                               const MeasurementCluster& cluster,
                               const Track& track) const;

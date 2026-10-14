@@ -57,6 +57,7 @@
 #include "khronos/active_window/motion_detection/motion_detector.h"
 #include "khronos/active_window/object_detection/object_detector.h"
 #include "khronos/active_window/object_extraction/object_worker_pool.h"
+#include "khronos/active_window/tracking/observation_vote_filter.h"
 #include "khronos/active_window/tracking/tracker.h"
 #include "khronos/common/common_types.h"
 
@@ -102,10 +103,14 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     ObjectWorkerPool::Config extraction_worker;
     hydra::MeshIntegratorConfig mesh_integrator;
     FrameDataBuffer::Config frame_data_buffer;
+    ObservationVoteFilter::Config vote_filter;
     std::vector<KhronosSink::Factory> khronos_sinks;
 
     //! Minimum confidence before object is forwarded to graph builder
     float min_object_confidence = 0.5f;
+
+    //! Give active-track nodes the accumulated bounding box (once valid) instead of the last one.
+    bool live_accumulated_bounding_box = false;
 
     // override layer defaults of Hydra
     Config() : hydra::ActiveWindowModule::Config(false, true) {}
@@ -203,11 +208,15 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   // Keep frames in buffer for later extraction of objects.
   Tracks tracks_;
   FrameDataBuffer frame_data_buffer_;
+  ObservationVoteFilter vote_filter_;
 
   // Variables.
   TimeStamp latest_stamp_;
   TimeStamp last_full_upated_ = 0;
   size_t num_frames_processed_ = 0;  // For info only.
+  // Ids of tracks absorbed by other tracks (MaxIoUTracker::mergeTracks) since the last output,
+  // whose object nodes are deleted downstream with the next output.
+  std::vector<int> pending_retractions_;
 
  private:
   inline static const auto registration_ = config::
