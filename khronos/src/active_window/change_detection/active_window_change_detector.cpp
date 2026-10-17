@@ -76,6 +76,8 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field<Path::Absolute>(config.prior_map_path, "prior_map_path");
   field(config.awcd_sinks, "awcd_sinks");
   field(config.transformation_getter, "transformation_getter");
+  field(config.start_enabled, "start_enabled");
+  field(config.controller, "controller");
   field(config.enable_icp_refinement, "enable_icp_refinement");
   field(config.icp_crop_radius, "icp_crop_radius");
   field(config.icp_num_threads, "icp_num_threads");
@@ -91,7 +93,9 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
 ActiveWindowChangeDetector::ActiveWindowChangeDetector(const Config& config)
     : config(config::checkValid(config)),
       transformation_getter_(config.transformation_getter.create()),
+      controller_(config.controller.create()),
       sinks_(ActiveWindowCDSink::instantiate(config.awcd_sinks)) {
+  controller_->setEnabled(config.start_enabled);
   MLOG(1) << "[Khronos Active Window Change Detector] Initialized with prior map path: "
           << config.prior_map_path;
   loadPriorMap();
@@ -522,6 +526,13 @@ void ActiveWindowChangeDetector::updateAddedFilter(
 void ActiveWindowChangeDetector::call(const FrameData& data,
                                       const VolumetricMap& map,
                                       const Tracks& tracks) const {
+  ChangeDetectionStatus status;
+  status.voxel_size = map.config.voxel_size;
+  if (controller_->consumeReset()) {
+    resetHistory();
+    status.history_reset = true;
+  }
+
   // Poll the transformation getter and update current_T_prior_ if a new transform is available.
   const auto tf = transformation_getter_->getTransformation();
   if (tf.has_value()) {
@@ -541,11 +552,17 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
     }
   }
 
+  // While stopped only the transform is updated; sinks still get it (TfIcpPublisher closes the
+  // loop).
+  if (!controller_->isEnabled()) {
+    status.detection_enabled = false;
+    ActiveWindowCDSink::callAll(sinks_, prior_graph_, {}, {}, current_T_prior_, status);
+    return;
+  }
+
   ++frame_index_;
 
   // 1. Find all object nodes in the prior graph within current volumetric map bounds.
-  ChangeDetectionStatus status;
-  status.voxel_size = map.config.voxel_size;
   const auto objects_id_in_bounds = findPriorObjectsInMapBounds(map, &status);
 
   // 2. Compute per-frame free ratios for objects with valid measurements.
@@ -584,6 +601,14 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   // Call all sinks with removed objects, newly-added objects, and the prior-to-current transform.
   ActiveWindowCDSink::callAll(
       sinks_, prior_graph_, removed_objects, newly_added_objects, current_T_prior_, status);
+}
+
+void ActiveWindowChangeDetector::resetHistory() const {
+  MLOG(1) << "[ActiveWindowChangeDetector] Resetting change detection history ("
+          << removed_candidates_.size() << " removal and " << added_candidates_.size()
+          << " added candidates).";
+  removed_candidates_.clear();
+  added_candidates_.clear();
 }
 
 void ActiveWindowChangeDetector::loadPriorMap() {

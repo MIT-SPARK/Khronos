@@ -85,7 +85,13 @@ void ActiveWindowChangeDetectorPublisher::call(
     const std::vector<RemovedObject>& removed_objects,
     const std::vector<AddedObject>& newly_added_objects,
     const Eigen::Isometry3d& current_T_prior,
-    const ActiveWindowChangeDetector::ChangeDetectionStatus& /* status */) const {
+    const ActiveWindowChangeDetector::ChangeDetectionStatus& status) const {
+  // Stopped: stay silent so the base station keeps the last changes. A reset always publishes
+  // (empty while stopped) so the base station clears this robot.
+  if (!status.detection_enabled && !status.history_reset) {
+    return;
+  }
+
   // Gate publishing on set-membership change: only publish if the set of removed and/or added
   // object ids differs from the last message actually published (not just from last frame's
   // detector output), so an unchanged scene does not keep re-publishing every frame.
@@ -98,7 +104,7 @@ void ActiveWindowChangeDetectorPublisher::call(
     cur_added_ids.insert(static_cast<int64_t>(obj.id));
   }
 
-  if (last_removed_ids_.has_value() && last_added_ids_.has_value() &&
+  if (!status.history_reset && last_removed_ids_.has_value() && last_added_ids_.has_value() &&
       *last_removed_ids_ == cur_removed_ids && *last_added_ids_ == cur_added_ids) {
     return;
   }

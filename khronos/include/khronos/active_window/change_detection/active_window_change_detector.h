@@ -48,6 +48,7 @@
 #include <spatial_hash/hash.h>
 
 #include "khronos/active_window/active_window.h"
+#include "khronos/active_window/change_detection/change_detection_controller.h"
 #include "khronos/active_window/change_detection/transformation_getter.h"
 #include "khronos/utils/icp_registration_utils.h"
 
@@ -172,6 +173,10 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   struct ChangeDetectionStatus {
     //! Map voxel size [m] of the voxel indices and cells below.
     float voxel_size = 0.0f;
+    //! Whether detection ran this frame; if stopped, no snapshots or candidates are reported.
+    bool detection_enabled = true;
+    //! Whether the detection history was reset at the start of this frame.
+    bool history_reset = false;
     //! This frame's measurements.
     std::vector<RemovedObjectSnapshot> removed_snapshots;
     std::vector<AddedObjectSnapshot> added_snapshots;
@@ -250,6 +255,13 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     config::VirtualConfig<TransformationGetter> transformation_getter{
         IdentityTransformationGetter::Config{}};
 
+    //! Whether detection runs from startup. Transform/ICP updates run either way.
+    bool start_enabled = true;
+
+    //! Plugin to start, stop and reset detection at runtime (e.g. RosChangeDetectionController).
+    config::VirtualConfig<ChangeDetectionController> controller{
+        ChangeDetectionController::Config{}};
+
     //! Enable ICP refinement on the transform returned by transformation_getter.
     bool enable_icp_refinement = false;
 
@@ -298,6 +310,9 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   void call(const FrameData& data, const VolumetricMap& map, const Tracks& tracks) const override;
 
   void loadPriorMap();
+
+  //! Clear all removed and added candidates (latched removals and added tracks included).
+  void resetHistory() const;
 
   bool isPriorPointFree(const Point& point_in_map, const VolumetricMap& map) const;
 
@@ -452,6 +467,9 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
 
   //! Plugin that provides the odom_T_prior transform.
   TransformationGetter::Ptr transformation_getter_;
+
+  //! Run control (enabled / reset requests).
+  ChangeDetectionController::Ptr controller_;
 
   //! Sinks for the change detector output.
   ActiveWindowCDSink::List sinks_;
