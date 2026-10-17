@@ -39,6 +39,7 @@
 
 #include <iomanip>
 #include <sstream>
+#include <unordered_map>
 
 #include <config_utilities/config.h>
 #include <config_utilities/types/path.h>
@@ -352,7 +353,7 @@ std::string removedLabel(const RemovedObjectSnapshot& candidate, const ChangeFil
 void ActiveWindowChangeDetectorVisualizer::visualizeRemovedStatus(
     const DynamicSceneGraph::Ptr& dsg,
     const ActiveWindowChangeDetector::ChangeDetectionStatus& status) const {
-  if (!dsg || !status.removed_candidates || status_pub_->get_subscription_count() == 0u) {
+  if (!dsg || status_pub_->get_subscription_count() == 0u) {
     return;
   }
 
@@ -360,8 +361,10 @@ void ActiveWindowChangeDetectorVisualizer::visualizeRemovedStatus(
   header.frame_id = config.global_frame_name;
   header.stamp = getStamp();
 
-  // Candidates never measured have no accumulated state yet: show an empty filter.
-  const auto& objects = *status.removed_candidates;
+  // Candidates never measured have no accumulated state yet: show an empty filter. While detection
+  // is stopped there are no candidates, so the previous markers are cleared.
+  const std::unordered_map<spark_dsg::NodeId, RemovedObject> none;
+  const auto& objects = status.removed_candidates ? *status.removed_candidates : none;
   const ChangeFilter unmeasured;
 
   MarkerArray new_markers;
@@ -469,7 +472,7 @@ void ActiveWindowChangeDetectorVisualizer::visualizeRemovedVoxels(
 void ActiveWindowChangeDetectorVisualizer::visualizeAddedStatus(
     const ActiveWindowChangeDetector::ChangeDetectionStatus& status,
     const Eigen::Isometry3d& current_T_prior) const {
-  if (!status.added_candidates || status_pub_->get_subscription_count() == 0u) {
+  if (status_pub_->get_subscription_count() == 0u) {
     return;
   }
 
@@ -481,7 +484,9 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedStatus(
   // prior (map) frame.
   const Eigen::Isometry3d prior_T_current = current_T_prior.inverse();
 
-  const auto& objects = *status.added_candidates;
+  // No candidates while detection is stopped: the previous markers are cleared.
+  const std::unordered_map<int, AddedObject> none;
+  const auto& objects = status.added_candidates ? *status.added_candidates : none;
 
   MarkerArray new_markers;
   for (const auto& candidate : status.added_snapshots) {

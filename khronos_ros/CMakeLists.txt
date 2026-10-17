@@ -17,6 +17,8 @@ find_package(gflags REQUIRED)
 find_package(hydra_ros REQUIRED)
 find_package(khronos REQUIRED)
 find_package(khronos_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(tf2_ros REQUIRED)
 
 # ##############################################################################
@@ -34,6 +36,7 @@ add_library(
   src/active_window/tf_transformation_getter.cpp
   src/active_window/tf_icp_publisher.cpp
   src/active_window/active_window_change_detector_publisher.cpp
+  src/active_window/ros_change_detection_controller.cpp
   src/visualization/active_window_visualizer.cpp
   src/visualization/implicit_shape_plugin.cpp
   src/visualization/active_window_change_detector_visualizer.cpp
@@ -45,7 +48,7 @@ target_include_directories(
          "$<INSTALL_INTERFACE:include>"
 )
 target_link_libraries(${PROJECT_NAME} PUBLIC khronos::khronos hydra_ros::hydra_ros PRIVATE cv_bridge::cv_bridge)
-ament_target_dependencies(${PROJECT_NAME} PUBLIC khronos_msgs tf2_ros)
+ament_target_dependencies(${PROJECT_NAME} PUBLIC khronos_msgs std_msgs std_srvs tf2_ros)
 
 # ##############################################################################
 # Executables #
