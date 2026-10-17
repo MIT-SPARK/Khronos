@@ -75,7 +75,8 @@ ActiveWindowChangeDetectorPublisher::ActiveWindowChangeDetectorPublisher(
     : config(config::checkValid(config)),
       nh_(nh ? *nh / "change_detector_publisher"
              : ianvs::NodeHandle::this_node("change_detector_publisher")) {
-  changes_pub_ = nh_.create_publisher<khronos_msgs::msg::AwcdChanges>(config.topic, config.queue_size);
+  changes_pub_ =
+      nh_.create_publisher<khronos_msgs::msg::AwcdChanges>(config.topic, config.queue_size);
   MLOG(1) << "[ActiveWindowChangeDetectorPublisher] Initialized.";
 }
 
@@ -131,9 +132,9 @@ ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeRemovedInfo(
   info.id = static_cast<int64_t>(obj.id);
   // Latched at the detector: constant across every message that reports this object as removed.
   info.stamp = static_cast<builtin_interfaces::msg::Time>(
-      rclcpp::Time(static_cast<int64_t>(obj.first_removed_ns)));
-  info.change_confidence = obj.change_confidence;
-  info.num_frames_observed = obj.num_frames_observed;
+      rclcpp::Time(static_cast<int64_t>(obj.filter.first_changed_ns)));
+  info.change_confidence = obj.filter.change_confidence;
+  info.num_frames_observed = obj.filter.num_frames_observed;
   return info;
 }
 
@@ -145,14 +146,12 @@ ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeAddedInfo(
   info.stamp = static_cast<builtin_interfaces::msg::Time>(
       rclcpp::Time(static_cast<int64_t>(obj.first_seen)));
 
-  const Eigen::Vector3d centroid = prior_T_current * obj.centroid.cast<double>();
-  info.centroid.x = centroid.x();
-  info.centroid.y = centroid.y();
-  info.centroid.z = centroid.z();
-
   BoundingBox bbox = obj.bounding_box;
   if (bbox.isValid()) {
     bbox.transform(prior_T_current);
+    info.centroid.x = bbox.world_P_center.x();
+    info.centroid.y = bbox.world_P_center.y();
+    info.centroid.z = bbox.world_P_center.z();
     info.bbox_center.x = bbox.world_P_center.x();
     info.bbox_center.y = bbox.world_P_center.y();
     info.bbox_center.z = bbox.world_P_center.z();
@@ -175,8 +174,8 @@ ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeAddedInfo(
   // wired in here, so `name` is left empty. The base station can resolve it against the
   // same label space config (instance_seg_label_space.yaml) used to produce category_id.
   info.confidence = obj.confidence;
-  info.change_confidence = obj.change_confidence;
-  info.num_frames_observed = obj.num_frames_observed;
+  info.change_confidence = obj.filter.change_confidence;
+  info.num_frames_observed = obj.filter.num_frames_observed;
 
   return info;
 }
