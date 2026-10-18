@@ -55,9 +55,8 @@ class KhronosPipeline : public hydra::HydraRosPipeline {
     Config();
   } const config;
 
-  // Types.
   using ActiveWindowEvaluationCallback =
-      std::function<void(const VolumetricMap&, const FrameData&, const Tracks&)>;
+      std::function<void(const FrameData&, const VolumetricMap&, const Tracks&)>;
   using BackendEvaluationCallback = std::function<
       void(TimeStamp, const DynamicSceneGraph&, const kimera_pgmo::DeformationGraph&)>;
 
@@ -89,20 +88,16 @@ class KhronosPipeline : public hydra::HydraRosPipeline {
    */
   void setBackendEvaluationCallback(const BackendEvaluationCallback& callback_function);
 
-  /**
-   * @brief Get the configuration of the pipeline as a string.
-   */
+  //! Get the configuration of the pipeline as a string.
   std::string getConfigInfo() const;
 
  private:
-  // ROS.
   ianvs::NodeHandle nh_;
   rclcpp::Publisher<khronos_msgs::msg::Changes>::SharedPtr changes_pub_;
 
   Backend* khronos_backend_;
   ActiveWindow* khronos_active_window_;
 
-  // Callbacks.
   ActiveWindowEvaluationCallback aw_evaluation_callback_;
   BackendEvaluationCallback backend_evaluation_callback_;
 };

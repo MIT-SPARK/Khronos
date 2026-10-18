@@ -54,7 +54,7 @@ namespace khronos {
 namespace {
 
 struct Proc {
-  Proc(const std::string& cmd) : pipe_(popen(cmd.c_str(), "r")) {}
+  explicit Proc(const std::string& cmd) : pipe_(popen(cmd.c_str(), "r")) {}
 
   ~Proc() {
     if (pipe_) {
@@ -188,8 +188,8 @@ void ExperimentManager::finishMappingAndSaveCallback(
   final_map_saved_ = true;
 }
 
-void ExperimentManager::evaluateFrontend(const VolumetricMap& map,
-                                         const FrameData& data,
+void ExperimentManager::evaluateFrontend(const FrameData& data,
+                                         const VolumetricMap& map,
                                          const Tracks& tracks) {
   Timer timer("evaluate/frontend/all", data.input.timestamp_ns);
   if (!data_dir_) {
@@ -200,7 +200,7 @@ void ExperimentManager::evaluateFrontend(const VolumetricMap& map,
   for (size_t i = 0; i < frontend_callbacks_.size(); ++i) {
     frontend_callback_counters_[i]++;
     if (frontend_callback_counters_[i] >= frontend_callbacks_[i].first) {
-      frontend_callbacks_[i].second(map, data, tracks);
+      frontend_callbacks_[i].second(data, map, tracks);
       frontend_callback_counters_[i] = 0;
     }
   }
@@ -264,10 +264,11 @@ void ExperimentManager::logData() {
       // Just log how many snapshots were saved
       const std::string snapshots_path = data_dir_.path() / "snapshots";
       if (std::filesystem::exists(snapshots_path)) {
-        const std::size_t number_snapshots = std::distance(
-            std::filesystem::directory_iterator(snapshots_path),
-            std::filesystem::directory_iterator{});
-        logger_->log("Saved '" + std::to_string(number_snapshots) + "' snapshots during operation.");
+        const std::size_t number_snapshots =
+            std::distance(std::filesystem::directory_iterator(snapshots_path),
+                          std::filesystem::directory_iterator{});
+        logger_->log("Saved '" + std::to_string(number_snapshots) +
+                     "' snapshots during operation.");
       } else if (config.save_every_n_frames > 0) {
         logger_->log("Snapshots directory not found, periodic saves may have failed.");
       }
@@ -321,7 +322,8 @@ void ExperimentManager::logConfigs() {
 
       // Check if there are uncommitted changes
       std::string git_status;
-      std::string git_status_cmd = "cd " + khronos_path.string() + " && git status --porcelain 2>/dev/null";
+      std::string git_status_cmd =
+          "cd " + khronos_path.string() + " && git status --porcelain 2>/dev/null";
       if (exec(git_status_cmd, git_status) && !git_status.empty()) {
         logger_->log("WARNING: Uncommitted changes detected in repository!");
 

@@ -56,9 +56,6 @@
 namespace khronos {
 
 using hydra::UpdateInfo;
-using spark_dsg::ObjectNodeAttributes;
-using spark_dsg::PlaceNodeAttributes;
-using spark_dsg::SemanticNodeAttributes;
 
 void declare_config(Backend::Config& config) {
   using namespace config;

@@ -83,25 +83,19 @@ void KhronosPipeline::init() {
   HydraRosPipeline::init();
   khronos_active_window_ = dynamic_cast<ActiveWindow*>(active_window_.get());
   khronos_backend_ = dynamic_cast<Backend*>(backend_.get());
-
-  backend_->addSink(
-      Backend::Sink::fromCallback([this](uint64_t timestamp_ns, const auto& dsg, const auto& dfg) {
-        if (backend_evaluation_callback_) {
-          backend_evaluation_callback_(timestamp_ns, dsg, dfg);
-        }
-      }));
+  if (backend_evaluation_callback_) {
+    backend_->addSink(Backend::Sink::fromCallback(backend_evaluation_callback_));
+  }
 
   if (khronos_active_window_) {
     // Need to make the nodehandle private to get private topics in the aw_visualizer.
     const auto aw_nh = nh_ / "~" / RosNs::VISUALIZATION;
     khronos_active_window_->addKhronosSink(std::make_shared<ActiveWindowVisualizer>(
         config::fromContext<ActiveWindowVisualizer::Config>(RosNs::VISUALIZATION), &aw_nh));
-    khronos_active_window_->addKhronosSink(ActiveWindow::KhronosSink::fromCallback(
-        [this](const auto& frame_data, const auto& map, const auto& tracks) {
-          if (aw_evaluation_callback_) {
-            aw_evaluation_callback_(map, frame_data, tracks);
-          }
-        }));
+    if (aw_evaluation_callback_) {
+      using AWSink = ActiveWindow::KhronosSink;
+      khronos_active_window_->addKhronosSink(AWSink::fromCallback(aw_evaluation_callback_));
+    }
   } else {
     LOG(ERROR) << "Active window is not khronos::ActiveWindow!";
   }
@@ -118,14 +112,14 @@ void KhronosPipeline::init() {
   }
 }
 
-bool KhronosPipeline::save(const hydra::DataDirectory& log_setup, bool save_full_state) {
+bool KhronosPipeline::save(const hydra::DataDirectory& log_setup, bool save_full) {
   if (!log_setup) {
     LOG(WARNING) << "[Khronos Pipeline] Could not save: Invalid log setup.";
     return false;
   }
 
   // Save state of all modules.
-  if (save_full_state) {
+  if (save_full) {
     // HydraRosPipeline::save calls save on all modules including backend
     HydraRosPipeline::save(log_setup);
   } else {
@@ -137,29 +131,7 @@ bool KhronosPipeline::save(const hydra::DataDirectory& log_setup, bool save_full
     }
   }
 
-  // TODO(nathan) not threadsafe!
-  auto dsg = backend_dsg_->graph->clone();
-  const auto backend_path = log_setup.path("backend");
-
-  if (khronos_active_window_) {
-    // Add all objects that are currently in the active window.
-    auto aw_objects = khronos_active_window_->extractObjects();
-    size_t current_object_id = 0;
-    for (const auto& node : dsg->getLayer(DsgLayers::OBJECTS).nodes()) {
-      current_object_id = std::max(current_object_id, NodeSymbol(node.id).categoryId());
-    }
-
-    for (auto& object : aw_objects) {
-      NodeSymbol object_symbol('O', ++current_object_id);
-      dsg->emplaceNode(DsgLayers::OBJECTS,
-                       object_symbol,
-                       std::make_unique<KhronosObjectAttributes>(std::move(*object)));
-    }
-  }
-
-  dsg->save(backend_path / "dsg_with_mesh", true);
-  CLOG(2) << "[Khronos Pipeline] Saved " << (save_full_state ? "full state" : "evaluation DSG")
-          << " to '" << log_setup.path() << "'.";
+  MLOG(2) << "Saved " << (save_full ? "full state" : "eval") << " to '" << log_setup.path() << "'.";
   return true;
 }
 
