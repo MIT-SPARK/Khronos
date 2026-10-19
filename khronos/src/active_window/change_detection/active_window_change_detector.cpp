@@ -359,6 +359,59 @@ GlobalIndexSet ActiveWindowChangeDetector::getTrackFootprint2D(const Track& trac
   return footprint;
 }
 
+void ActiveWindowChangeDetector::updatePriorKnownFootprint2D(float voxel_size) const {
+  if (!prior_graph_ || voxel_size == prior_known_voxel_size_) {
+    return;
+  }
+
+  prior_known_footprint_2d_.clear();
+  prior_known_voxel_size_ = voxel_size;
+  const float voxel_size_inv = 1.0f / voxel_size;
+
+  // Free space: traversability place footprints, rasterized as in getPriorFreeFootprint2D.
+  if (prior_graph_->hasLayer(DsgLayers::MESH_PLACES)) {
+    const float step = voxel_size * 0.5f;
+    for (const auto& node : prior_graph_->getLayer(DsgLayers::MESH_PLACES).nodes()) {
+      const auto* attrs = node.tryAttributes<spark_dsg::TravNodeAttributes>();
+      if (!attrs) {
+        continue;
+      }
+      const double max_r = attrs->max_radius;
+      const Eigen::Vector3d& c = attrs->position;
+      for (double x = c.x() - max_r; x <= c.x() + max_r; x += step) {
+        for (double y = c.y() - max_r; y <= c.y() + max_r; y += step) {
+          const Eigen::Vector3d candidate(x, y, c.z());
+          if (attrs->contains(candidate)) {
+            prior_known_footprint_2d_.insert(to2DIndex(candidate.cast<float>(), voxel_size_inv));
+          }
+        }
+      }
+    }
+  }
+
+  // Occupied space: background mesh and object meshes.
+  if (prior_graph_->mesh()) {
+    for (const auto& point : prior_graph_->mesh()->points) {
+      prior_known_footprint_2d_.insert(to2DIndex(point, voxel_size_inv));
+    }
+  }
+  if (prior_graph_->hasLayer(DsgLayers::OBJECTS)) {
+    for (const auto& node : prior_graph_->getLayer(DsgLayers::OBJECTS).nodes()) {
+      const auto* attrs = node.tryAttributes<KhronosObjectAttributes>();
+      if (!attrs) {
+        continue;
+      }
+      for (size_t i = 0; i < attrs->mesh.numVertices(); ++i) {
+        prior_known_footprint_2d_.insert(
+            to2DIndex(attrs->bounding_box.pointToWorldFrame(attrs->mesh.pos(i)), voxel_size_inv));
+      }
+    }
+  }
+
+  MLOG(1) << "[ActiveWindowChangeDetector] Prior known 2D footprint: "
+          << prior_known_footprint_2d_.size() << " cells.";
+}
+
 std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRatios(
     const Tracks& tracks,
     const VolumetricMap& map,
@@ -383,11 +436,16 @@ std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRat
   spatial_hash::IndexHashMap<float> cell_heights;
   const GlobalIndexSet prior_free =
       getPriorFreeFootprint2D(map, collect_cells ? &cell_heights : nullptr);
-  if (prior_free.empty()) {
+  // An empty free footprint is fine as long as the prior has places: the active window may lie
+  // outside the prior map, where every track cell counts as free.
+  if (!prior_graph_ || !prior_graph_->hasLayer(DsgLayers::MESH_PLACES)) {
     return measurements;
   }
 
   const float voxel_size = map.config.voxel_size;
+  const float voxel_size_inv = 1.0f / voxel_size;
+  updatePriorKnownFootprint2D(voxel_size);
+  const Eigen::Isometry3d prior_T_current = current_T_prior_.inverse();
 
   for (const Track& track : tracks) {
     // Skip dynamic objects and tracks without confirmed accumulated voxels yet (their accumulated
@@ -401,39 +459,46 @@ std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRat
       continue;
     }
 
-    // TODO(multy): what if some of the track points are outside the prior map bounds? Should we
-    // skip those points or count them as unknown? For now, we will just count the points that are
-    // in the prior map bounds and known. Containment ratio: fraction of the track's 2D footprint
-    // that falls in prior free space.
-    int intersection = 0;
+    // Containment ratio: fraction of the track's 2D footprint that is free in the prior, i.e. in
+    // the prior free space or outside the prior known footprint (never observed, so new).
+    const float centroid_z = track.accumulated_bounding_box.world_P_center.z();
+    int num_in_free = 0;
+    int num_outside_prior = 0;
+    std::vector<Point> free_cells, not_free_cells;
     for (const GlobalIndex& idx : track2D) {
+      Point center = spatial_hash::centerPointFromIndex(idx, voxel_size);
+      bool is_free = false;
       if (prior_free.count(idx)) {
-        ++intersection;
+        ++num_in_free;
+        is_free = true;
+        const auto height_it = cell_heights.find(idx);
+        if (height_it != cell_heights.end()) {
+          center.z() = height_it->second;
+        }
+      } else {
+        center.z() = centroid_z;
+        const Point center_prior = (prior_T_current * center.cast<double>()).cast<float>();
+        if (!prior_known_footprint_2d_.count(to2DIndex(center_prior, voxel_size_inv))) {
+          ++num_outside_prior;
+          is_free = true;
+        }
+      }
+      if (collect_cells) {
+        (is_free ? free_cells : not_free_cells).push_back(center);
       }
     }
-    const float containment = static_cast<float>(intersection) / static_cast<float>(track2D.size());
+    const float containment =
+        static_cast<float>(num_in_free + num_outside_prior) / static_cast<float>(track2D.size());
 
     if (status) {
       auto& snapshot = status->added_snapshots.emplace_back();
       snapshot.track_id = track.id;
       snapshot.raw_containment = containment;
       snapshot.num_cells = track2D.size();
-      snapshot.num_cells_in_free = intersection;
-      if (collect_cells) {
-        // Cells in prior free space sit at their place's height, the others at the track centroid.
-        const float centroid_z = track.accumulated_bounding_box.world_P_center.z();
-        for (const GlobalIndex& idx : track2D) {
-          Point center = spatial_hash::centerPointFromIndex(idx, voxel_size);
-          const auto height_it = cell_heights.find(idx);
-          if (height_it != cell_heights.end()) {
-            center.z() = height_it->second;
-            snapshot.in_free_cells.push_back(center);
-          } else {
-            center.z() = centroid_z;
-            snapshot.out_cells.push_back(center);
-          }
-        }
-      }
+      snapshot.num_cells_in_free = num_in_free;
+      snapshot.num_cells_outside_prior = num_outside_prior;
+      snapshot.in_free_cells = std::move(free_cells);
+      snapshot.out_cells = std::move(not_free_cells);
     }
 
     measurements[track.id] = containment;

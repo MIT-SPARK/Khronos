@@ -157,11 +157,13 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     int track_id = -1;
     //! Raw containment this frame.
     float raw_containment = 0.0f;
-    //! 2D footprint cells of the track, and how many of them lie in the prior free space.
+    //! 2D footprint cells of the track, how many of them lie in the prior free space, and how many
+    //! lie outside the prior known footprint (never observed in the prior, so also counted free).
     int num_cells = 0;
     int num_cells_in_free = 0;
-    //! Footprint cell centers inside / outside the prior free space (at the prior place height /
-    //! track centroid height). Only filled if collect_debug_voxels.
+    int num_cells_outside_prior = 0;
+    //! Footprint cell centers counted free / not free (at the prior place height, or the track
+    //! centroid height for cells outside the prior). Only filled if collect_debug_voxels.
     std::vector<Point> in_free_cells;
     std::vector<Point> out_cells;
   };
@@ -414,6 +416,10 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
       const VolumetricMap& map,
       spatial_hash::IndexHashMap<float>* cell_heights = nullptr) const;
 
+  // Builds prior_known_footprint_2d_ once per voxel size: 2D cells (prior frame) covered by the
+  // prior traversability places, background mesh, or object meshes.
+  void updatePriorKnownFootprint2D(float voxel_size) const;
+
   // Returns 2D voxel indices (z forced to 0) of a track's confirmed accumulated voxels.
   GlobalIndexSet getTrackFootprint2D(const Track& track, float voxel_size) const;
 
@@ -453,6 +459,13 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
 
   //! Whether block_counts must be recomputed because current_T_prior_ changed.
   mutable bool prior_geometry_blocks_dirty_ = true;
+
+  //! 2D cells (z = 0, prior frame) the prior map observed. Track cells outside it were never
+  //! observed in the prior and count as free for added-object containment.
+  mutable GlobalIndexSet prior_known_footprint_2d_;
+
+  //! Voxel size prior_known_footprint_2d_ was built with (0 = not built yet).
+  mutable float prior_known_voxel_size_ = 0.0f;
 
   //! Accumulated removal state per prior object, keyed by NodeId. Created on the first
   //! measurement; never erased (freeze-last for unobserved objects).
