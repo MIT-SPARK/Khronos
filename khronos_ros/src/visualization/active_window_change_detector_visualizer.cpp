@@ -307,8 +307,8 @@ std::string addedLabel(const AddedObjectSnapshot& candidate, const ChangeFilter&
   ss << std::fixed << std::setprecision(2);
   ss << "T" << candidate.track_id << (filter.is_changed ? " ADDED" : "")
      << " p=" << filter.change_confidence << " n=" << filter.num_frames_observed;
-  ss << "\nraw=" << candidate.raw_containment << " cells " << candidate.num_cells_in_free << "/"
-     << candidate.num_cells;
+  ss << "\nraw=" << candidate.raw_containment << " cells " << candidate.num_cells_in_free << "+"
+     << candidate.num_cells_outside_prior << "/" << candidate.num_cells;
   return ss.str();
 }
 
