@@ -44,6 +44,13 @@
 namespace khronos {
 namespace {
 
+static const auto registration =
+    config::RegistrationWithConfig<hydra::ActiveWindowModule,
+                                   ActiveWindow,
+                                   ActiveWindow::Config,
+                                   hydra::ActiveWindowModule::OutputQueue::Ptr,
+                                   std::unique_ptr<hydra::VolumetricWindow>>("ActiveWindow");
+
 std::shared_ptr<KhronosObjectAttributes> createObjectAttributes(const Track& track,
                                                                 bool use_accumulated_bbox) {
   auto object = std::make_shared<KhronosObjectAttributes>();
@@ -109,8 +116,10 @@ SensorProcessor::SensorProcessor(const Config& config)
   }
 }
 
-ActiveWindow::ActiveWindow(const Config& config, const OutputQueue::Ptr& output_queue)
-    : hydra::ActiveWindowModule(config, output_queue),
+ActiveWindow::ActiveWindow(const Config& config,
+                           const OutputQueue::Ptr& output_queue,
+                           std::unique_ptr<hydra::VolumetricWindow>&& window)
+    : hydra::ActiveWindowModule(config, output_queue, std::move(window)),
       config(config::checkValid(config)),
       processors_(config.processors),
       tracking_integrator_(config.tracking_integrator, map_window_.get()),

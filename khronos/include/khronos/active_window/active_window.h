@@ -115,7 +115,9 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   } const config;
 
   // Construction.
-  ActiveWindow(const Config& config, const OutputQueue::Ptr& output_queue);
+  ActiveWindow(const Config& config,
+               const OutputQueue::Ptr& output_queue,
+               std::unique_ptr<hydra::VolumetricWindow>&& window);
   virtual ~ActiveWindow() = default;
 
   std::string printInfo() const override;
@@ -200,11 +202,6 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   // Ids of tracks absorbed by other tracks (MaxIoUTracker::mergeTracks) since the last output,
   // whose object nodes are deleted downstream with the next output.
   std::vector<int> pending_retractions_;
-
- private:
-  inline static const auto registration_ = config::
-      RegistrationWithConfig<hydra::ActiveWindowModule, ActiveWindow, Config, OutputQueue::Ptr>(
-          "ActiveWindow");
 };
 
 void declare_config(ActiveWindow::Config& config);
