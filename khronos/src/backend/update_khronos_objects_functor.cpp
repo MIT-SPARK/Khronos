@@ -47,9 +47,8 @@ void UpdateKhronosObjectsFunctor::call(const DynamicSceneGraph& unmerged,
   // we want to use the unmerged graph for most things
   const auto& objects = unmerged.getLayer(DsgLayers::OBJECTS);
   // we want to iterate over the unmerged graph
-  const auto new_loopclosure = info->loop_closure_detected;
   active_tracker.clear();  // reset from previous pass
-  LayerView view = new_loopclosure ? LayerView(objects) : active_tracker.view(objects);
+  LayerView view = info->full_update ? LayerView(objects) : active_tracker.view(objects);
 
   // interpolate to update
   deformation_interpolator.interpolateNodePositions(unmerged, *dsg.graph, info, view);
@@ -61,10 +60,9 @@ MergeList UpdateKhronosObjectsFunctor::findMerges(const DynamicSceneGraph& graph
     return {};
   }
 
-  const auto new_lcd = info->loop_closure_detected;
   const auto& objects = graph.getLayer(DsgLayers::OBJECTS);
   // freeze layer view to avoid messing with tracker
-  LayerView view = new_lcd ? LayerView(objects) : active_tracker.view(objects, true);
+  LayerView view = info->full_update ? LayerView(objects) : active_tracker.view(objects, true);
 
   MergeList proposals;
   merge_proposer.findMerges(

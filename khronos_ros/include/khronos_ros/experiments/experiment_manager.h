@@ -113,7 +113,7 @@ class ExperimentManager {
   void logConfigs();
 
   // Perform evaluations every frame.
-  void evaluateFrontend(const VolumetricMap& map, const FrameData& data, const Tracks& tracks);
+  void evaluateFrontend(const FrameData& data, const VolumetricMap& map, const Tracks& tracks);
   void evaluateBackend(TimeStamp timestamp_ns,
                        const DynamicSceneGraph& dsg,
                        const kimera_pgmo::DeformationGraph& deformation_graph);

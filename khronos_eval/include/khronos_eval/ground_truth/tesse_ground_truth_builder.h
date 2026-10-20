@@ -9,8 +9,8 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/common/semantic_color_map.h>
 #include <hydra/common/labelspace.h>
+#include <hydra/common/semantic_color_map.h>
 #include <hydra/utils/nearest_neighbor_utilities.h>
 #include <khronos/common/common_types.h>
 
@@ -99,7 +99,6 @@ class TesseGroundTruthBuilder {
   // The semantic colors to semantic labels mapping.
   hydra::SemanticColorMap color_map_;
   hydra::Labelspace label_space_;
-  hydra::LabelRemapper label_remapper_;
 
   // Variables.
   size_t num_objects_ = 0;

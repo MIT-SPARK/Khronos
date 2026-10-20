@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
   // Start Ros.
   auto node = std::make_shared<rclcpp::Node>("khronos_node");
   ianvs::NodeHandle nh(*node);
-  
+
   // Register node as current node so ianvs::NodeHandle::this_node() works
   ianvs::CurrentNode::init(node);
 
@@ -62,7 +62,8 @@ int main(int argc, char** argv) {
   google::InstallFailureSignalHandler();
 
   // Setup node.
-  auto khronos = std::make_shared<khronos::KhronosPipeline>(nh);
+  const auto khronos_config = config::fromContext<khronos::KhronosPipeline::Config>();
+  auto khronos = std::make_shared<khronos::KhronosPipeline>(khronos_config, nh);
   // Don't add experiment namespace to avoid double namespacing
   const auto experiment_config =
       config::fromContext<khronos::ExperimentManager::Config>(khronos::RosNs::EXPERIMENT);

@@ -61,10 +61,8 @@ class FrameDataBuffer {
   explicit FrameDataBuffer(const Config& config);
   virtual ~FrameDataBuffer() = default;
 
-  /**
-   * @brief Get the latest frame data, even if it was not kept in the buffer.
-   */
-  const FrameData& getLatestData() const { return *buffer_.back(); }
+  //! Get the latest frame data if it exists
+  const FrameData* getLatestData() const;
 
   /**
    * @brief Add new frame data as candidate to the buffer.

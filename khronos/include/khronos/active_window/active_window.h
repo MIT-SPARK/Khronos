@@ -115,7 +115,9 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   } const config;
 
   // Construction.
-  ActiveWindow(const Config& config, const OutputQueue::Ptr& output_queue);
+  ActiveWindow(const Config& config,
+               const OutputQueue::Ptr& output_queue,
+               std::unique_ptr<hydra::VolumetricWindow>&& window);
   virtual ~ActiveWindow() = default;
 
   std::string printInfo() const override;
@@ -123,32 +125,17 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   // Access. These are not thread-safe!
   VolumetricMap& getMap() { return map_; }
   const VolumetricMap& getMap() const { return map_; }
-  const FrameData& getLatestFrameData() const { return frame_data_buffer_.getLatestData(); }
   const Tracks& getTracks() const { return tracks_; }
 
-  // Module setup.
-  /**
-   * @brief Add a sink to the active window. The sink will be called whenever the active window
-   * finishes processing a frame.
-   * @param sink The sink to add.
-   */
+  //! Add a sink that is called whenever the active window finishes processing a frame.
   void addKhronosSink(const KhronosSink::Ptr& sink);
 
-  // Interaction.
-  /**
-   * @brief Finishes the mapping process of the active window. This will act as
-   * if infinite time without further observations have passed and will reset
-   * the currently trackd data inside the active window. Pushes all data currently in the active
-   * window to the output. NOTE(lschmid): This currently duplicates the last timestamp received.
-   * Maybe better to take a separate stamp as input? Also, the final output data will not contain a
-   * transform.
-   */
-  void finishMapping();
-
-  // TMP: Extract objects for evaluation.
-  std::vector<std::shared_ptr<KhronosObjectAttributes>> extractObjects();
+  //! Override stop to finalize tracks and forward resulting objects
+  void stop() override;
 
  protected:
+  void finishMapping();
+
   // Spin the active window in a separate thread.
   hydra::ActiveWindowOutput::Ptr spinOnce(const hydra::InputData::Ptr& input) override;
 
@@ -214,11 +201,6 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   // Ids of tracks absorbed by other tracks (MaxIoUTracker::mergeTracks) since the last output,
   // whose object nodes are deleted downstream with the next output.
   std::vector<int> pending_retractions_;
-
- private:
-  inline static const auto registration_ = config::
-      RegistrationWithConfig<hydra::ActiveWindowModule, ActiveWindow, Config, OutputQueue::Ptr>(
-          "ActiveWindow");
 };
 
 void declare_config(ActiveWindow::Config& config);
