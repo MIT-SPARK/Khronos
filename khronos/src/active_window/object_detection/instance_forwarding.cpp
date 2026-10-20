@@ -37,6 +37,7 @@
 
 #include "khronos/active_window/object_detection/instance_forwarding.h"
 
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -180,7 +181,8 @@ void InstanceForwarding::extractSemanticClusters(FrameData& data) {
       }
 
       const auto range = data.input.range_image.at<InputData::RangeType>(v, u);
-      if (range < config.min_range || (config.max_range > 0.f && range > config.max_range)) {
+      if (!std::isfinite(range) || range < config.min_range ||
+          (config.max_range > 0.f && range > config.max_range)) {
         continue;
       }
 

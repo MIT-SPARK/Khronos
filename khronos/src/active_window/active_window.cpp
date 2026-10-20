@@ -44,7 +44,8 @@
 namespace khronos {
 namespace {
 
-std::shared_ptr<KhronosObjectAttributes> createObjectAttributes(const Track& track) {
+std::shared_ptr<KhronosObjectAttributes> createObjectAttributes(const Track& track,
+                                                                bool use_accumulated_bbox) {
   auto object = std::make_shared<KhronosObjectAttributes>();
   if (track.semantics) {
     object->semantic_label = track.semantics->category_id;
@@ -54,7 +55,9 @@ std::shared_ptr<KhronosObjectAttributes> createObjectAttributes(const Track& tra
   object->first_observed_ns = {track.first_seen};
   object->last_observed_ns = {track.last_seen};
 
-  object->bounding_box = track.last_bounding_box;
+  object->bounding_box = use_accumulated_bbox && track.accumulated_bounding_box.isValid()
+                             ? track.accumulated_bounding_box
+                             : track.last_bounding_box;
   object->position = object->bounding_box.world_P_center.cast<double>();
 
   return object;
@@ -90,6 +93,7 @@ void declare_config(ActiveWindow::Config& config) {
   field(config.mesh_integrator, "mesh_integrator");
   field(config.frame_data_buffer, "frame_data_buffer");
   field(config.khronos_sinks, "khronos_sinks");
+  field(config.live_accumulated_bounding_box, "live_accumulated_bounding_box");
 }
 
 SensorProcessor::SensorProcessor(const Config& config)
@@ -175,7 +179,9 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
   // Initialize tracking for new detections and track and associate objects
   // throughout frames.
   if (processor->tracker) {
-    processor->tracker->processInput(*data, tracks_);
+    const auto retracted_ids = processor->tracker->processInput(*data, tracks_);
+    pending_retractions_.insert(
+        pending_retractions_.end(), retracted_ids.begin(), retracted_ids.end());
   }
 
   // Update track active status using the active window's VolumetricWindow policy.
@@ -291,12 +297,20 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::extractOutputData(const FrameData& 
   output->graph_update[update->layer] = update;
   extraction_worker_.fill(*update);
 
+  // Delete the object nodes of tracks merged into other tracks (see MaxIoUTracker::mergeTracks).
+  // Deleting a track that never got a node is a no-op downstream.
+  for (const int absorbed_id : pending_retractions_) {
+    update->updates.push_back(hydra::NodeUpdate{
+        nullptr, static_cast<size_t>(absorbed_id), hydra::NodeUpdate::UpdateType::Delete});
+  }
+  pending_retractions_.clear();
+
   for (const auto& track : tracks_) {
     if (track.confidence < config.min_object_confidence) {
       continue;
     }
 
-    auto output_object = createObjectAttributes(track);
+    auto output_object = createObjectAttributes(track, config.live_accumulated_bounding_box);
     update->updates.push_back(hydra::NodeUpdate{output_object, static_cast<size_t>(track.id)});
   }
 

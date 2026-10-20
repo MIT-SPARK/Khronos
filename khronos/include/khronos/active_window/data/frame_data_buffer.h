@@ -62,7 +62,7 @@ class FrameDataBuffer {
   virtual ~FrameDataBuffer() = default;
 
   /**
-   * @brief Get the latest frame data.
+   * @brief Get the latest frame data, even if it was not kept in the buffer.
    */
   const FrameData& getLatestData() const { return *buffer_.back(); }
 

@@ -45,6 +45,7 @@
 
 #include <hydra/common/output_sink.h>
 #include <hydra/utils/logging.h>
+#include <spatial_hash/hash.h>
 
 #include "khronos/active_window/active_window.h"
 #include "khronos/active_window/change_detection/transformation_getter.h"
@@ -88,50 +89,12 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   };
 
   /**
-   * @brief A newly-added object as reported to sinks. Objects are persistent, identity-bearing
-   * entities that accumulate evidence from associated Tracks (see AddedObjectState /
-   * TrackAddedState) -- downstream consumers only ever see AddedObject, never Track. `id` comes
-   * from a dedicated per-detector counter (next_object_id_), fully decoupled from any Track::id,
-   * so it is stable for the object's whole lifetime regardless of which tracks associate to it
-   * (barring `reassociate_every_frame`, which can move a track to a different object but never
-   * changes an existing object's id).
-   */
-  struct AddedObject {
-    //! Stable id for this object, from the detector's own next_object_id_ counter.
-    int id;
-    //! All track ids that have ever been associated to this object, for provenance/debugging.
-    std::set<int> member_track_ids;
-    //! Earliest first_seen over all associated tracks.
-    TimeStamp first_seen;
-    //! Latest last_seen over all associated tracks.
-    TimeStamp last_seen;
-    //! Incrementally-folded bounding box (see Config::bbox_merge_type: union or weighted average).
-    BoundingBox bounding_box;
-    //! Centroid of the folded bounding box.
-    Point centroid;
-    //! Fused semantic info (Track::updateSemantics-style aggregation over associated tracks).
-    std::optional<SemanticClusterInfo> semantics;
-    //! Tracking-quality confidence: max Track::confidence over ever-associated tracks. Distinct
-    //! from change_confidence -- this says how well-observed the object is, not how likely it is
-    //! to be a genuine scene change.
-    float confidence = 0.0f;
-    //! Change-detection confidence: max per-track free-space-containment EMA
-    //! (TrackAddedState::change_confidence) over ever-associated tracks. This, not `confidence`,
-    //! is what crosses added_probability_threshold to decide an object is newly-added.
-    float change_confidence = 0.0f;
-    //! AddedObjectState::num_frames_observed at the time this object was reported.
-    int num_frames_observed = 0;
-  };
-
-  /**
-   * @brief Per-track temporal state for the newly-added-object EMA filter, independent of any
-   * object association. Keyed by Track::id in track_added_states_. A track's own EMA lives here
-   * for its whole lifetime; association (below) only says which object it currently contributes
-   * to, it does not replace or share this per-track state with any other track.
+   * @brief Per-track added-filter state: containment EMA plus a snapshot of the track, kept and
+   * reported after the track is gone once added.
    */
   struct TrackAddedState {
-    //! EMA-filtered probability that this track alone indicates a newly-added object (raw input:
-    //! free-space containment of the track's footprint).
+    //! EMA-filtered probability that this track is a newly-added object (raw input: free-space
+    //! containment of the track's footprint).
     double change_confidence = 0.0;
     //! Number of frames for which a valid containment measurement was available.
     int num_frames_observed = 0;
@@ -139,47 +102,123 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     float last_containment = 0.0f;
     //! frame_index_ value at the last frame this track was measured (staleness pruning).
     int last_updated_frame = 0;
-    //! Object this track currently contributes to, or -1 if not yet associated to any object.
-    int object_id = -1;
+    //! Snapshot of the track at its last measurement.
+    BoundingBox bounding_box;
+    std::optional<SemanticClusterInfo> semantics;
+    TimeStamp first_seen = 0;
+    TimeStamp last_seen = 0;
+    //! Track::confidence (tracking quality).
+    float confidence = 0.0f;
+    //! Latched true once the track passes the added gate; prevents pruning.
+    bool ever_added = false;
+    //! The track id and the ids of all tracks it absorbed (Track::absorbed_track_ids).
+    std::set<int> member_track_ids;
   };
 
   /**
-   * @brief Persistent, incrementally-updated state for one added object. Keyed by a dedicated
-   * object id (next_object_id_) in added_object_states_ -- NOT by any Track::id. Updated by
-   * folding in each newly-associated-or-updated track's info (see Config::bbox_merge_type for how
-   * bounding boxes fold); never rebuilt from scratch. See AddedObject for the field-by-field
-   * meaning of confidence vs. change_confidence -- this struct mirrors that split.
+   * @brief A newly-added object as reported to sinks. Each track is an object, so `id` is the
+   * track id, stable across merges since the older track survives.
    */
-  struct AddedObjectState {
-    //! Incrementally-folded bounding box (see Config::bbox_merge_type).
-    BoundingBox bounding_box;
-    //! Earliest first_seen over all associated tracks.
-    TimeStamp first_seen = 0;
-    //! Latest last_seen over all associated tracks.
-    TimeStamp last_seen = 0;
-    //! Incrementally-fused semantic info (Track::updateSemantics-style aggregation).
-    std::optional<SemanticClusterInfo> semantics;
-    //! Tracking-quality confidence: max Track::confidence over ever-associated tracks. Also used
-    //! as the blend weight for Config::BboxMergeType::kWeightedAverage.
-    float confidence = 0.0f;
-    //! Change-detection confidence: max over ever-associated tracks' own EMA
-    //! (TrackAddedState::change_confidence). Drives the added-object gate, not `confidence`.
-    double change_confidence = 0.0;
-    //! Max TrackAddedState::num_frames_observed over ever-associated tracks.
-    int num_frames_observed = 0;
-    //! Latched true once the object passes the added gate; prevents pruning of confirmed objects.
-    bool ever_added = false;
-    //! frame_index_ value at the last frame any associated track was updated (staleness pruning).
-    int last_updated_frame = 0;
-    //! All track ids ever associated to this object, for provenance/debugging only -- no cached
-    //! Track copies are kept; folding is incremental (see updateAddedFilter).
+  struct AddedObject {
+    //! Track id of the object.
+    int id;
+    //! The track id and the ids of all tracks it absorbed (Track::absorbed_track_ids).
     std::set<int> member_track_ids;
+    //! First and last observation of the track.
+    TimeStamp first_seen;
+    TimeStamp last_seen;
+    //! Accumulated bounding box of the track (Track::accumulated_bounding_box).
+    BoundingBox bounding_box;
+    //! Center of the bounding box.
+    Point centroid;
+    //! Semantic info of the track.
+    std::optional<SemanticClusterInfo> semantics;
+    //! Tracking-quality confidence (Track::confidence). Distinct from change_confidence -- this
+    //! says how well-observed the object is, not how likely it is to be a genuine scene change.
+    float confidence = 0.0f;
+    //! Change-detection confidence (TrackAddedState::change_confidence); this, not `confidence`,
+    //! is compared to added_probability_threshold.
+    float change_confidence = 0.0f;
+    //! TrackAddedState::num_frames_observed at the time this object was reported.
+    int num_frames_observed = 0;
+  };
+
+  /**
+   * @brief Debug status of one prior object considered for removal this frame (gate inputs,
+   * measurement, filter state), including objects that fail the in-bounds gate.
+   */
+  struct RemovedCandidateStatus {
+    spark_dsg::NodeId id;
+    //! Whether the object has a mesh. Meshless objects use the centroid in-bounds test and can
+    //! never be measured.
+    bool has_geometry = false;
+    //! Unique occupied map voxels of the object, and how many of them lie in allocated blocks.
+    int num_voxels = 0;
+    int num_voxels_in_bounds = 0;
+    //! Whether the object passed the in-bounds gate (removal_min_in_bounds_fraction).
+    bool in_bounds = false;
+    //! Object voxels observed in the tracking layer (last_observed != 0), counted per voxel.
+    //! Only computed for in-bounds objects.
+    int num_voxels_observed = 0;
+    //! Whether the object passed the observed gate (removal_min_observed_fraction).
+    bool observed = false;
+    //! Whether the object got a measurement this frame (passed both gates, >= 1 known sample).
+    bool measured = false;
+    //! Known and free samples this frame, in units of removal_score_weighting.
+    int num_known = 0;
+    int num_free = 0;
+    //! Raw free ratio this frame (valid if measured).
+    float raw_ratio = 0.0f;
+    //! Filter state after this frame's update (frozen if not measured).
+    float free_probability = 0.0f;
+    int num_frames_observed = 0;
+    //! Whether the object passed the removal gate this frame.
+    bool removed = false;
+    //! Object voxels (current map frame) by state. Only filled if collect_debug_voxels.
+    std::vector<GlobalIndex> free_voxels;
+    std::vector<GlobalIndex> occupied_voxels;
+    std::vector<GlobalIndex> unknown_voxels;
+  };
+
+  /**
+   * @brief Debug status of one track measured for newly-added detection this frame: its footprint
+   * containment in the prior free space and its filter state.
+   */
+  struct AddedCandidateStatus {
+    int track_id = -1;
+    //! Whether the track passed the added gate this frame.
+    bool added = false;
+    //! Accumulated track bounding box in the current map frame.
+    BoundingBox bounding_box;
+    //! Raw containment this frame and the track's own filter state after the update.
+    float raw_containment = 0.0f;
+    float change_confidence = 0.0f;
+    int num_frames_observed = 0;
+    //! 2D footprint cells of the track, and how many of them lie in the prior free space.
+    int num_cells = 0;
+    int num_cells_in_free = 0;
+    //! Footprint cell centers inside / outside the prior free space (at the prior place height /
+    //! track centroid height). Only filled if collect_debug_voxels.
+    std::vector<Point> in_free_cells;
+    std::vector<Point> out_cells;
+  };
+
+  /**
+   * @brief Per-frame debug status of the change detector for visualization. Separate from the
+   * removed/added outputs, which only hold objects that passed the gates.
+   */
+  struct ChangeDetectionStatus {
+    //! Map voxel size [m] of the voxel indices and cells below.
+    float voxel_size = 0.0f;
+    std::vector<RemovedCandidateStatus> removed_candidates;
+    std::vector<AddedCandidateStatus> added_candidates;
   };
 
   using ActiveWindowCDSink = hydra::OutputSink<const DynamicSceneGraph::Ptr&,
                                                const std::vector<RemovedObject>&,
                                                const std::vector<AddedObject>&,
-                                               const Eigen::Isometry3d&>;
+                                               const Eigen::Isometry3d&,
+                                               const ChangeDetectionStatus&>;
 
   // Config.
   struct Config : hydra::VerbosityConfig {
@@ -188,10 +227,6 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
 
     //! Path to prior map to use for change detection.
     std::filesystem::path prior_map_path;
-
-    //! Ratio of free prior map points of an object's vertices in a single frame.
-    //! Used as raw input to the EMA filter; not the final removal decision threshold.
-    float removal_vertex_free_ratio_threshold = 0.8f;
 
     //! EMA smoothing factor for the per-object free_probability filter (0 < alpha <= 1).
     //! Lower values give more smoothing (slower to react); higher values track raw ratios closely.
@@ -205,9 +240,27 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! Guards against single-frame spikes on newly-entered objects.
     int removal_min_frames_observed = 3;
 
-    //! Raw per-frame containment ratio fed into the EMA filter for newly-added-object detection.
-    //! Not the final decision threshold; that role is played by added_probability_threshold.
-    float added_object_containment_threshold = 0.5f;
+    //! Min fraction of a prior object's occupied voxels in allocated map blocks to be a removal
+    //! candidate; others are not measured (EMA frozen). Meshless objects use the centroid.
+    float removal_min_in_bounds_fraction = 0.5f;
+
+    //! Min fraction of a prior object's occupied voxels observed in the tracking layer to get a
+    //! measurement. Keep removal_min_in_bounds_fraction <= this as a cheap pre-filter.
+    float removal_min_observed_fraction = 0.5f;
+
+    //! Weight of each occupied map voxel in the removal free ratio: its number of mesh vertices
+    //! (kVertices) or one (kVoxels).
+    enum class RemovalScoreWeighting {
+      kVertices,
+      kVoxels
+    } removal_score_weighting = RemovalScoreWeighting::kVertices;
+
+    //! Fill the per-voxel lists of ChangeDetectionStatus for visualization. Scalar status fields
+    //! are always filled.
+    bool collect_debug_voxels = false;
+
+    // Newly-added objects: each track is an object. Requires MaxIoUTracker accumulate_voxels;
+    // without merge_tracks, fragments of one object are reported separately.
 
     //! EMA smoothing factor for the per-track added_probability filter (0 < alpha <= 1).
     //! Lower = smoother / slower to react; higher = tracks raw ratios closely.
@@ -222,38 +275,6 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! Frames of no measurement after which a non-added track's state record is pruned.
     //! Tracks that ever crossed the threshold are never pruned.
     int added_prune_after_frames = 50;
-
-    //! Master switch for track-to-object association of added-object candidates (see
-    //! "Association" in updateAddedFilter). Disable to fall back to one object per track id
-    //! (no fusion of fragmented tracks at all).
-    bool enable_added_object_merging = true;
-
-    //! 3D bounding box IoU above which an unassociated track is considered a match for an
-    //! existing object (geometric criterion, OR'd with merge_centroid_distance_threshold). <= 0
-    //! disables this criterion (geometric match then relies solely on centroid distance).
-    float merge_bbox_iou_threshold = 0.2f;
-
-    //! Centroid distance [m] below which an unassociated track is considered a match for an
-    //! existing object (geometric criterion, OR'd with merge_bbox_iou_threshold). <= 0 disables
-    //! this criterion.
-    float merge_centroid_distance_threshold = 0.5f;
-
-    //! Minimum semantic feature cosine similarity required for a track to match an existing
-    //! object. Passed to semanticsMatch; category_id must also match. This criterion is always
-    //! required (AND'd with the geometric criteria above).
-    float merge_min_semantic_cosine_sim = 0.7f;
-
-    //! If true, an already-associated track re-runs candidate search against all current objects
-    //! every frame and can switch association if a different object now scores better. Default
-    //! false (sticky): a track keeps its first association forever. Note that switching does not
-    //! retract the track's past contribution from its old object -- only future folds move.
-    bool reassociate_every_frame = false;
-
-    //! How an object's bounding box is updated when a track folds into it.
-    enum class BboxMergeType {
-      kUnion,           //! Smallest box enclosing both (spark_dsg::BoundingBox::merge). Can only grow.
-      kWeightedAverage  //! Blend object's current box with the track's, weighted by confidence.
-    } bbox_merge_type = BboxMergeType::kUnion;
 
     //! Sinks for the change detector output.
     std::vector<ActiveWindowCDSink::Factory> awcd_sinks;
@@ -326,11 +347,15 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   bool isPointInMapBounds(const Point& point, const VolumetricMap& map) const;
 
   /**
-   * @brief Find all prior object nodes whose centroid is within the current volumetric map bounds.
+   * @brief Find all prior objects with at least removal_min_in_bounds_fraction of their occupied
+   * voxels in allocated blocks. Objects without a mesh fall back to testing their centroid.
    * @param map The current volumetric map.
+   * @param status If set, a RemovedCandidateStatus is appended for every object with any voxel in
+   * bounds (or a meshless object passing the centroid test), including ones failing the gate.
    * @return Vector of node IDs for objects within map bounds.
    */
-  std::vector<spark_dsg::NodeId> findPriorObjectsInMapBounds(const VolumetricMap& map) const;
+  std::vector<spark_dsg::NodeId> findPriorObjectsInMapBounds(
+      const VolumetricMap& map, ChangeDetectionStatus* status = nullptr) const;
 
   /**
    * @brief Set the transform from prior map frame to current map frame.
@@ -355,11 +380,14 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   /**
    * @brief Compute the per-frame free ratio for each candidate object with a valid measurement
    * (num_known_vertices > 0). Objects with an empty mesh or no KhronosObjectAttributes are skipped.
+   * Samples are the object's cached map voxels, weighted per removal_score_weighting.
+   * @param status If set, the measurement fields of the matching removed_candidates are filled.
    * @return Map from NodeId to raw free ratio [0, 1] for objects that had a valid measurement.
    */
   std::unordered_map<spark_dsg::NodeId, float> computeFreeRatios(
       const std::vector<spark_dsg::NodeId>& objects_id_in_bounds,
-      const VolumetricMap& map) const;
+      const VolumetricMap& map,
+      ChangeDetectionStatus* status = nullptr) const;
 
   /**
    * @brief Update the EMA filter state for each object that has a measurement this frame,
@@ -375,54 +403,39 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
       const std::unordered_map<spark_dsg::NodeId, float>& measurements, TimeStamp stamp) const;
 
   /**
-   * @brief Compute the per-frame containment ratio for each eligible track (non-dynamic,
-   * non-empty footprint). Returns a map from track ID to raw containment ratio [0, 1].
+   * @brief Compute the per-frame containment ratio for each eligible track (non-dynamic, with
+   * confirmed accumulated voxels). Returns a map from track ID to raw containment ratio [0, 1].
    * Reuses getPriorFreeFootprint2D and getTrackFootprint2D.
    */
-  std::unordered_map<int, float> computeContainmentRatios(const Tracks& tracks,
-                                                          const VolumetricMap& map) const;
+  std::unordered_map<int, float> computeContainmentRatios(
+      const Tracks& tracks,
+      const VolumetricMap& map,
+      ChangeDetectionStatus* status = nullptr) const;
 
   /**
-   * @brief For each track with a fresh containment measurement this frame: (1) EMA-update its
-   * own TrackAddedState; (2) if already associated to an object, fold its info into that object
-   * (or re-associate first, if reassociate_every_frame); if not yet associated, search existing
-   * objects for the best match (findBestObjectMatch) and associate, or create a new object if
-   * none matches. Then gates + prunes added_object_states_ on change_confidence (not confidence)
-   * and returns the objects passing added_probability_threshold + added_min_frames_observed.
-   * Tracks absent from measurements are frozen (their state and their object's are left as-is).
+   * @brief Newly-added filter. Takes over the state of absorbed tracks, EMA-updates each measured
+   * track and returns the tracks passing the added gate. Added tracks are latched; others not
+   * measured for added_prune_after_frames frames are pruned.
    */
   std::vector<AddedObject> updateAddedFilter(const std::unordered_map<int, float>& measurements,
                                              const Tracks& tracks) const;
 
-  /**
-   * @brief Search added_object_states_ for the best match for a candidate track/object footprint
-   * (using bbox.world_P_center as the centroid), with the same criteria as before (semantics
-   * required via semanticsMatch, AND bbox IoU >= merge_bbox_iou_threshold OR centroid distance <
-   * merge_centroid_distance_threshold). Returns the highest-scoring matching object id (ties
-   * broken by smaller centroid distance), or -1 if none passes. `exclude_id` (if >= 0) skips that
-   * object id (used by reassociate_every_frame to also consider switching away from the track's
-   * current object).
-   */
-  int findBestObjectMatch(const BoundingBox& bbox,
-                          const std::optional<SemanticClusterInfo>& semantics,
-                          int exclude_id = -1) const;
+  //! EMA-update a track's change confidence with this frame's containment measurement.
+  void updateTrackChangeConfidence(TrackAddedState& state, float containment) const;
 
   /**
-   * @brief Fold one track's current info (bbox/semantics/confidence/change_confidence) into an
-   * existing AddedObjectState in place: bbox via Config::bbox_merge_type, confidence/
-   * change_confidence/num_frames_observed via max, semantics fused Track::updateSemantics-style,
-   * member_track_ids/last_updated_frame updated. For a brand-new object (state freshly
-   * default-constructed), this initializes it directly from the track with no blending.
+   * @brief Cache each prior object's mesh vertices once, and re-quantize them into current-frame
+   * map voxels and blocks whenever current_T_prior_ changes.
    */
-  void foldTrackIntoObject(AddedObjectState& state,
-                           const Track& track,
-                           const TrackAddedState& track_state) const;
+  void updatePriorObjectGeometry(const VolumetricMap& map) const;
 
   // Returns 2D voxel indices (z forced to 0, in current frame) covering the prior
   // traversable (MESH_PLACES / TravNodeAttributes) footprint within map bounds.
-  GlobalIndexSet getPriorFreeFootprint2D(const VolumetricMap& map) const;
+  // If cell_heights is set, it receives the height (current frame) of each footprint cell's place.
+  GlobalIndexSet getPriorFreeFootprint2D(
+      const VolumetricMap& map, spatial_hash::IndexHashMap<float>* cell_heights = nullptr) const;
 
-  // Returns 2D voxel indices (z forced to 0) of a track's last_points footprint.
+  // Returns 2D voxel indices (z forced to 0) of a track's confirmed accumulated voxels.
   GlobalIndexSet getTrackFootprint2D(const Track& track, float voxel_size) const;
 
   // Convert a 3-D point to a 2D voxel GlobalIndex (z component set to 0).
@@ -436,22 +449,39 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   //! current_point = current_T_prior_ * prior_point
   mutable Eigen::Isometry3d current_T_prior_ = Eigen::Isometry3d::Identity();
 
+  //! A current-frame map voxel occupied by a prior object, with the number of its mesh vertices.
+  struct ObjectVoxel {
+    GlobalIndex index;
+    int num_vertices = 0;
+  };
+
+  //! Occupied geometry of a prior object, used for the in-bounds test and the free ratio.
+  struct PriorObjectGeometry {
+    //! Mesh vertices in the prior map frame.
+    std::vector<Eigen::Vector3d> vertices;
+    //! Unique map voxels hit by the vertices, quantized in the current frame for the current
+    //! current_T_prior_. Each voxel is exactly the map voxel a lookup of its vertices returns.
+    std::vector<ObjectVoxel> voxels;
+    //! Number of occupied voxels per map block, for the current current_T_prior_.
+    spatial_hash::IndexHashMap<int> block_counts;
+  };
+
+  //! Per-object occupied geometry, keyed by prior DSG NodeId. Only objects with a mesh.
+  mutable std::unordered_map<spark_dsg::NodeId, PriorObjectGeometry> prior_object_geometry_;
+
+  //! Voxel size prior_object_geometry_ was built with (0 = not built yet).
+  mutable float prior_geometry_voxel_size_ = 0.0f;
+
+  //! Whether block_counts must be recomputed because current_T_prior_ changed.
+  mutable bool prior_geometry_blocks_dirty_ = true;
+
   //! Per-object EMA filter state for removed-object detection. Keyed by prior DSG NodeId.
   //! Populated lazily on first observation; never erased (freeze-last for unobserved objects).
   mutable std::unordered_map<spark_dsg::NodeId, RemovedObjectState> removed_object_states_;
 
-  //! Per-track EMA filter state for newly-added-object detection, independent of any object.
-  //! Keyed by Track::id. TrackAddedState::object_id says which object (if any) this track
-  //! currently contributes to.
+  //! Per-track state for newly-added-object detection, keyed by Track::id. Pruned for non-added
+  //! tracks that go stale; added tracks are kept forever.
   mutable std::unordered_map<int, TrackAddedState> track_added_states_;
-
-  //! Persistent, incrementally-updated object state. Keyed by a dedicated object id (see
-  //! next_object_id_), never by a Track::id. Pruned for non-added objects that go stale;
-  //! confirmed-added records are kept forever.
-  mutable std::unordered_map<int, AddedObjectState> added_object_states_;
-
-  //! Monotonic counter minting the next object id; never reused.
-  mutable int next_object_id_ = 0;
 
   //! Frame counter incremented once per call(), used for staleness-based pruning of added records.
   mutable int frame_index_ = 0;

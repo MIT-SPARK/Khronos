@@ -38,8 +38,11 @@
 #pragma once
 
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
+
+#include <spatial_hash/hash.h>
 
 #include "khronos/active_window/data/measurement_clusters.h"
 #include "khronos/common/common_types.h"
@@ -75,6 +78,18 @@ struct Observation {
 using Observations = std::vector<Observation>;
 
 /**
+ * @brief Accumulated evidence of a single voxel of a track.
+ */
+struct TrackVoxel {
+  //! Number of observations whose points fell into this voxel (at most one hit per observation).
+  int hits = 0;
+  //! Timestamp of the latest observation that hit this voxel.
+  TimeStamp last_seen = 0;
+};
+
+using TrackVoxels = spatial_hash::IndexHashMap<TrackVoxel>;
+
+/**
  * @brief Data structure to track objects and associations throughout the active window.
  */
 struct Track {
@@ -100,6 +115,22 @@ struct Track {
   // Centroid of the observation, used for dynamic tracking.
   Point last_centroid;
 
+  // Geometry accumulated over all static observations, at accumulated_voxel_size. Unlike the last_*
+  // fields these are never overwritten. Empty if the tracker does not accumulate.
+  TrackVoxels accumulated_voxels;
+  float accumulated_voxel_size = 0.0f;
+  // Hits an accumulated voxel needs to be confirmed, i.e. counted in the bounding box.
+  int accumulated_min_hits = 1;
+  // AABB over the confirmed accumulated voxels (see accumulateVoxels). Invalid until the first
+  // voxel is confirmed.
+  BoundingBox accumulated_bounding_box;
+
+  // Ids of all tracks merged into this one (see absorb), transitively.
+  std::set<int> absorbed_track_ids;
+  // Upstream instance ids (semantic_cluster_id, e.g. BoxMOT ids) the merged tracks were last
+  // observed with (this track's included), so later detections with those ids can still associate.
+  std::set<int> absorbed_instance_ids;
+
   //! Semantic information associated with the track
   std::optional<SemanticClusterInfo> semantics;
   size_t num_features = 0;
@@ -117,6 +148,38 @@ struct Track {
   std::optional<uint32_t> sequence_number;
 
   void updateSemantics(const std::optional<SemanticClusterInfo>& other_semantics);
+
+  /**
+   * @brief Add one observation's unique voxels to the accumulated geometry, one hit each. The
+   * bounding box grows by each voxel once its hits reach min_hits, so it is exactly the AABB of
+   * the confirmed voxels. voxel_size and min_hits must be the same for every call.
+   */
+  void accumulateVoxels(const GlobalIndexSet& voxels,
+                        float voxel_size,
+                        TimeStamp stamp,
+                        int min_hits);
+
+  /**
+   * @brief Accumulated voxels with at least accumulated_min_hits hits (what the bounding box covers).
+   */
+  GlobalIndexSet confirmedVoxels() const;
+
+  /**
+   * @brief Recompute accumulated_bounding_box from the confirmed accumulated voxels.
+   */
+  void recomputeAccumulatedBoundingBox();
+
+  /**
+   * @brief Merge another track of the same object into this one, keeping this id and recording the
+   * other's ids in absorbed_*. Observations and voxel hits are combined; last_* come from whichever
+   * track was seen last. `other` is left in a valid but unspecified state.
+   */
+  void absorb(Track&& other);
+
+  /**
+   * @brief Upstream instance id (semantic_cluster_id) of the most recent observation that has one.
+   */
+  std::optional<int> latestInstanceId() const;
 };
 
 using Tracks = std::vector<Track>;

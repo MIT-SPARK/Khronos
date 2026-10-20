@@ -37,7 +37,110 @@
 
 #include "khronos/active_window/data/track.h"
 
+#include <algorithm>
+
+#include <spatial_hash/grid.h>
+
 namespace khronos {
+
+void Track::accumulateVoxels(const GlobalIndexSet& voxels,
+                             float voxel_size,
+                             TimeStamp stamp,
+                             int min_hits) {
+  accumulated_voxel_size = voxel_size;
+  accumulated_min_hits = min_hits;
+  const Eigen::Vector3f voxel_dims = Eigen::Vector3f::Constant(voxel_size);
+  for (const GlobalIndex& index : voxels) {
+    auto& voxel = accumulated_voxels[index];
+    ++voxel.hits;
+    voxel.last_seen = stamp;
+    if (voxel.hits == min_hits) {
+      // The voxel just got confirmed: grow the bounding box by its cube.
+      accumulated_bounding_box.merge(
+          BoundingBox(voxel_dims, spatial_hash::centerPointFromIndex(index, voxel_size)));
+    }
+  }
+}
+
+GlobalIndexSet Track::confirmedVoxels() const {
+  GlobalIndexSet confirmed;
+  for (const auto& [index, voxel] : accumulated_voxels) {
+    if (voxel.hits >= accumulated_min_hits) {
+      confirmed.insert(index);
+    }
+  }
+  return confirmed;
+}
+
+void Track::recomputeAccumulatedBoundingBox() {
+  accumulated_bounding_box = BoundingBox();
+  const Eigen::Vector3f voxel_dims = Eigen::Vector3f::Constant(accumulated_voxel_size);
+  for (const auto& [index, voxel] : accumulated_voxels) {
+    if (voxel.hits >= accumulated_min_hits) {
+      accumulated_bounding_box.merge(BoundingBox(
+          voxel_dims, spatial_hash::centerPointFromIndex(index, accumulated_voxel_size)));
+    }
+  }
+}
+
+std::optional<int> Track::latestInstanceId() const {
+  for (auto it = observations.rbegin(); it != observations.rend(); ++it) {
+    if (it->semantic_cluster_id >= 0) {
+      return it->semantic_cluster_id;
+    }
+  }
+  return std::nullopt;
+}
+
+void Track::absorb(Track&& other) {
+  // Provenance and upstream ids of both tracks: after merging the observations, the latest
+  // observation of this track may be the other's, which would shadow this track's own latest id.
+  absorbed_track_ids.insert(other.id);
+  absorbed_track_ids.insert(other.absorbed_track_ids.begin(), other.absorbed_track_ids.end());
+  for (const auto& instance_id : {latestInstanceId(), other.latestInstanceId()}) {
+    if (instance_id) {
+      absorbed_instance_ids.insert(*instance_id);
+    }
+  }
+  absorbed_instance_ids.insert(other.absorbed_instance_ids.begin(),
+                               other.absorbed_instance_ids.end());
+
+  // The latest-observation state comes from whichever track was seen last.
+  if (other.last_seen > last_seen) {
+    last_bounding_box = std::move(other.last_bounding_box);
+    last_voxels = std::move(other.last_voxels);
+    last_points = std::move(other.last_points);
+    last_voxel_size = other.last_voxel_size;
+    last_centroid = other.last_centroid;
+  }
+  first_seen = std::min(first_seen, other.first_seen);
+  last_seen = std::max(last_seen, other.last_seen);
+
+  observations.insert(observations.end(), other.observations.begin(), other.observations.end());
+  std::stable_sort(observations.begin(),
+                   observations.end(),
+                   [](const Observation& a, const Observation& b) { return a.stamp < b.stamp; });
+
+  // Both tracks observed the object at different times, so their hits add up.
+  if (accumulated_voxels.empty()) {
+    accumulated_voxel_size = other.accumulated_voxel_size;
+    accumulated_min_hits = other.accumulated_min_hits;
+  }
+  for (const auto& [index, other_voxel] : other.accumulated_voxels) {
+    auto& voxel = accumulated_voxels[index];
+    voxel.hits += other_voxel.hits;
+    voxel.last_seen = std::max(voxel.last_seen, other_voxel.last_seen);
+  }
+  recomputeAccumulatedBoundingBox();
+
+  updateSemantics(other.semantics);
+  // Confidence counts observations, so it adds up too.
+  confidence = std::min(confidence + other.confidence, 1.0f);
+  if (other.sequence_number &&
+      (!sequence_number || *other.sequence_number > *sequence_number)) {
+    sequence_number = other.sequence_number;
+  }
+}
 
 void Track::updateSemantics(const std::optional<SemanticClusterInfo>& other) {
   if (!other) {
