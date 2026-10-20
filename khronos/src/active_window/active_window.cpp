@@ -254,7 +254,13 @@ void ActiveWindow::finishMapping() {
   }
 
   // Extract objects and wait for them to finish extraction.
-  auto output = extractOutputData(frame_data_buffer_.getLatestData(), false);
+  const auto latest = frame_data_buffer_.getLatestData();
+  if (!latest) {
+    LOG_IF(WARNING, num_frames_processed_ > 0) << "Unable to get last frame from buffer!";
+    return;
+  }
+
+  auto output = extractOutputData(*latest, false);
   if (output && output_queue_) {
     output_queue_->push(output);
   }

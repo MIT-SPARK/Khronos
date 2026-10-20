@@ -125,7 +125,6 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   // Access. These are not thread-safe!
   VolumetricMap& getMap() { return map_; }
   const VolumetricMap& getMap() const { return map_; }
-  const FrameData& getLatestFrameData() const { return frame_data_buffer_.getLatestData(); }
   const Tracks& getTracks() const { return tracks_; }
 
   //! Add a sink that is called whenever the active window finishes processing a frame.

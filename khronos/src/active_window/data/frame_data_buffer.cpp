@@ -84,6 +84,10 @@ void FrameDataBuffer::trimBuffer(const Tracks& tracks) {
   }
 }
 
+const FrameData* FrameDataBuffer::getLatestData() const {
+  return buffer_.empty() ? nullptr : buffer_.back().get();
+}
+
 void FrameDataBuffer::storeData(const FrameData::Ptr& data) {
   // Only keep every n-th frame.
   const bool store_data = input_counter_ == 0;
