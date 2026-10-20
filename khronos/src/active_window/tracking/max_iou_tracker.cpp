@@ -78,6 +78,15 @@ std::optional<uint32_t> getSemanticId(const Track& track) {
   return std::nullopt;
 }
 
+// Number of accumulated voxels with at least the track's minimum hits.
+size_t countConfirmed(const Track& track) {
+  size_t num = 0;
+  for (const auto& [index, voxel] : track.accumulated_voxels) {
+    num += voxel.hits >= track.accumulated_min_hits ? 1 : 0;
+  }
+  return num;
+}
+
 }  // namespace
 
 void declare_config(MaxIoUTracker::Config& config) {
@@ -544,7 +553,8 @@ void MaxIoUTracker::updateTrack(const FrameData& data,
     for (const auto& point : track.last_points) {
       voxels.insert(grid.toIndex(point));
     }
-    track.accumulateVoxels(voxels, config.voxel_size, data.input.timestamp_ns, config.min_voxel_hits);
+    track.accumulateVoxels(
+        voxels, config.voxel_size, data.input.timestamp_ns, config.min_voxel_hits);
   }
 
   track.last_bounding_box = observation.bounding_box;
@@ -577,15 +587,8 @@ void MaxIoUTracker::updateTrack(const FrameData& data,
 }
 
 float MaxIoUTracker::computeContainment(const Track& a, const Track& b) {
-  const auto count_confirmed = [](const Track& track) {
-    size_t num = 0;
-    for (const auto& [index, voxel] : track.accumulated_voxels) {
-      num += voxel.hits >= track.accumulated_min_hits ? 1 : 0;
-    }
-    return num;
-  };
-  const size_t num_a = count_confirmed(a);
-  const size_t num_b = count_confirmed(b);
+  const size_t num_a = countConfirmed(a);
+  const size_t num_b = countConfirmed(b);
   if (num_a == 0 || num_b == 0) {
     return 0.0f;
   }

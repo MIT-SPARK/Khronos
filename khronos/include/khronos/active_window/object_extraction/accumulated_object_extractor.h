@@ -39,6 +39,7 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/global_info.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos/active_window/object_extraction/object_extractor.h"
 
@@ -51,8 +52,9 @@ namespace khronos {
  */
 class AccumulatedObjectExtractor : public ObjectExtractor {
  public:
-  struct Config {
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+  struct Config : hydra::VerbosityConfig {
+    Config()
+        : hydra::VerbosityConfig{hydra::GlobalInfo::instance().getConfig().default_verbosity} {}
 
     // Extract only objects with an existence confidence larger than this value [0, 1].
     float min_object_allocation_confidence = 0.5f;

@@ -44,7 +44,7 @@ namespace khronos {
 
 void declare_config(AccumulatedObjectExtractor::Config& config) {
   using namespace config;
-  name("AccumulatedObjectExtractor::Config");
+  name("AccumulatedObjectExtractor");
   field(config.verbosity, "verbosity");
   field(config.min_object_allocation_confidence, "min_object_allocation_confidence");
   field(config.min_object_volume, "min_object_volume", "m^3");
@@ -100,8 +100,7 @@ KhronosObjectAttributes::Ptr AccumulatedObjectExtractor::extractStaticObject(
   const float volume = bbox.volume();
   if (volume < config.min_object_volume || volume > config.max_object_volume) {
     CLOG(5) << "[AccumulatedObjectExtractor] Dropping track " << track.id << ": volume " << volume
-            << " outside [" << config.min_object_volume << ", " << config.max_object_volume
-            << "].";
+            << " outside [" << config.min_object_volume << ", " << config.max_object_volume << "].";
     return nullptr;
   }
 
