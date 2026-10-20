@@ -61,7 +61,7 @@ void declare_config(ExternalTracker::Config& config) {
 
 ExternalTracker::ExternalTracker(const Config& config) : config(config::checkValid(config)) {}
 
-void ExternalTracker::processInput(FrameData& data, Tracks& tracks) {
+std::vector<int> ExternalTracker::processInput(FrameData& data, Tracks& tracks) {
   processing_stamp_ = data.input.timestamp_ns;
   Timer timer("tracking/all", processing_stamp_);
 
@@ -74,6 +74,7 @@ void ExternalTracker::processInput(FrameData& data, Tracks& tracks) {
   // Associate current objects to existing tracks and create new tracks for
   // unassociated objects.
   associateTracks(data, tracks);
+  return {};
 }
 
 void ExternalTracker::associateTracks(const FrameData& data, Tracks& tracks) {

@@ -147,7 +147,7 @@ float MaxIoUTracker::computeIoU(const FrameData& data,
   }
 }
 
-void MaxIoUTracker::processInput(FrameData& data, Tracks& tracks) {
+std::vector<int> MaxIoUTracker::processInput(FrameData& data, Tracks& tracks) {
   Timer timer("tracking/all", data.input.timestamp_ns);
 
   // Compute values the objects are going to be tracked by (pixels, voxels, or bounding box).
@@ -163,12 +163,14 @@ void MaxIoUTracker::processInput(FrameData& data, Tracks& tracks) {
   associateTracks(data, tracks);
 
   // Merge fragment tracks of the same object.
+  std::vector<int> retracted_ids;
   if (config.merge_tracks) {
-    mergeTracks(tracks);
+    retracted_ids = mergeTracks(tracks);
   }
 
   MLOG(3) << "Previous tracks: " << prev_num_tracks << " Current tracks: " << tracks.size();
   ++sequence_number_;
+  return retracted_ids;
 }
 
 void MaxIoUTracker::associateTracks(const FrameData& data, Tracks& tracks) {
@@ -609,7 +611,7 @@ float MaxIoUTracker::computeContainment(const Track& a, const Track& b) {
   return static_cast<float>(intersection) / std::min(num_a, num_b);
 }
 
-void MaxIoUTracker::mergeTracks(Tracks& tracks) const {
+std::vector<int> MaxIoUTracker::mergeTracks(Tracks& tracks) const {
   const auto bounding_box = [](const Track& track) -> const BoundingBox& {
     return track.accumulated_bounding_box.isValid() ? track.accumulated_bounding_box
                                                     : track.last_bounding_box;
@@ -619,7 +621,7 @@ void MaxIoUTracker::mergeTracks(Tracks& tracks) const {
   };
 
   std::vector<bool> absorbed(tracks.size(), false);
-  size_t num_merged = 0;
+  std::vector<int> absorbed_ids;
   bool merged = true;
   // Merging grows the survivor, which can enable further merges. Bounded to be safe.
   for (size_t iteration = 0; merged && iteration < tracks.size(); ++iteration) {
@@ -677,15 +679,15 @@ void MaxIoUTracker::mergeTracks(Tracks& tracks) const {
       const size_t victim = keep_i ? *best : i;
       MLOG(3) << "Merging track " << tracks[victim].id << " into track " << tracks[survivor].id
               << " (containment " << best_containment << ")";
+      absorbed_ids.push_back(tracks[victim].id);
       tracks[survivor].absorb(std::move(tracks[victim]));
       absorbed[victim] = true;
       merged = true;
-      ++num_merged;
     }
   }
 
-  if (num_merged == 0) {
-    return;
+  if (absorbed_ids.empty()) {
+    return absorbed_ids;
   }
 
   // Erase absorbed tracks, keeping the order of the remaining ones.
@@ -699,7 +701,8 @@ void MaxIoUTracker::mergeTracks(Tracks& tracks) const {
     }
   }
   tracks.erase(tracks.begin() + num_kept, tracks.end());
-  MLOG(3) << "Merged " << num_merged << " tracks, " << tracks.size() << " remaining";
+  MLOG(3) << "Merged " << absorbed_ids.size() << " tracks, " << tracks.size() << " remaining";
+  return absorbed_ids;
 }
 
 float MaxIoUTracker::computeIoUVoxels(const FrameData& /* data */,

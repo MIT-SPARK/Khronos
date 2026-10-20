@@ -104,7 +104,7 @@ class MaxIoUTracker : public Tracker {
   virtual ~MaxIoUTracker() = default;
 
   // Inputs.
-  void processInput(FrameData& data, Tracks& tracks) override;
+  std::vector<int> processInput(FrameData& data, Tracks& tracks) override;
 
   // Processing.
   void setupTrackMeasurements(FrameData& data) const;
@@ -121,8 +121,9 @@ class MaxIoUTracker : public Tracker {
    * match, centers are within merge_distance_factor x the larger radius, and the smaller one's
    * confirmed voxels are at least merge_containment_threshold contained in the other's. The older
    * track survives; absorbed tracks are erased.
+   * @returns Ids of the absorbed (erased) tracks.
    */
-  void mergeTracks(Tracks& tracks) const;
+  std::vector<int> mergeTracks(Tracks& tracks) const;
 
   /**
    * @brief Fraction of the confirmed accumulated voxels of the track with fewer of them that are

@@ -64,7 +64,7 @@ class ExternalTracker : public Tracker {
   virtual ~ExternalTracker() = default;
 
   // Inputs.
-  void processInput(FrameData& data, Tracks& tracks) override;
+  std::vector<int> processInput(FrameData& data, Tracks& tracks) override;
 
  protected:
   // Processing.

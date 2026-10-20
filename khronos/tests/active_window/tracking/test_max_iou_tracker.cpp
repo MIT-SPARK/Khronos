@@ -51,7 +51,11 @@ GlobalIndexSet voxelBox(const GlobalIndex& min, const GlobalIndex& max) {
 }
 
 //! Static track updated in tracker pass 0 whose voxels were each observed `hits` times.
-Track makeTrack(int id, TimeStamp first_seen, const GlobalIndexSet& voxels, int hits, int category = 1) {
+Track makeTrack(int id,
+                TimeStamp first_seen,
+                const GlobalIndexSet& voxels,
+                int hits,
+                int category = 1) {
   Track track;
   track.id = id;
   track.first_seen = first_seen;
@@ -187,16 +191,17 @@ TEST(TrackAccumulation, BoundingBoxGrowsWithConfirmedVoxels) {
   ASSERT_TRUE(track.accumulated_bounding_box.isValid());
   EXPECT_EQ(track.confirmedVoxels(), GlobalIndexSet({GlobalIndex(0, 0, 0)}));
   EXPECT_TRUE(track.accumulated_bounding_box.dimensions.isApprox(Eigen::Vector3f::Constant(0.5f)));
-  EXPECT_TRUE(track.accumulated_bounding_box.world_P_center.isApprox(
-      Eigen::Vector3f::Constant(0.25f)));
+  EXPECT_TRUE(
+      track.accumulated_bounding_box.world_P_center.isApprox(Eigen::Vector3f::Constant(0.25f)));
 
   // Confirming (4,0,0) grows the box to enclose both cubes; more hits don't change it.
   track.accumulateVoxels({GlobalIndex(4, 0, 0)}, voxel_size, 3, 2);
   track.accumulateVoxels({GlobalIndex(0, 0, 0), GlobalIndex(4, 0, 0)}, voxel_size, 4, 2);
   EXPECT_EQ(track.confirmedVoxels().size(), 2u);
-  EXPECT_TRUE(track.accumulated_bounding_box.dimensions.isApprox(Eigen::Vector3f(2.5f, 0.5f, 0.5f)));
-  EXPECT_TRUE(track.accumulated_bounding_box.world_P_center.isApprox(
-      Eigen::Vector3f(1.25f, 0.25f, 0.25f)));
+  EXPECT_TRUE(
+      track.accumulated_bounding_box.dimensions.isApprox(Eigen::Vector3f(2.5f, 0.5f, 0.5f)));
+  EXPECT_TRUE(
+      track.accumulated_bounding_box.world_P_center.isApprox(Eigen::Vector3f(1.25f, 0.25f, 0.25f)));
 }
 
 TEST(TrackAccumulation, SingleHitIsUnion) {
@@ -356,7 +361,7 @@ TEST_F(MaxIoUTrackerTest, MergesContainedFragmentIntoOlderTrack) {
     const auto small = voxelBox({1, 1, 1}, {2, 2, 2});
     Tracks tracks{makeTrack(1, 10, newer_is_container ? small : big, 2),
                   makeTrack(2, 20, newer_is_container ? big : small, 2)};
-    tracker.mergeTracks(tracks);
+    EXPECT_EQ(tracker.mergeTracks(tracks), std::vector<int>({2}));
     ASSERT_EQ(tracks.size(), 1u);
     EXPECT_EQ(tracks[0].id, 1);
     EXPECT_EQ(tracks[0].absorbed_track_ids, std::set<int>({2}));

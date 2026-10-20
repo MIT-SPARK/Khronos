@@ -37,8 +37,6 @@
 
 #include "khronos/active_window/active_window.h"
 
-#include <unordered_set>
-
 #include <hydra/common/global_info.h>
 #include <hydra/input/sensor_utilities.h>
 #include <hydra/reconstruction/integration_masking.h>
@@ -181,18 +179,9 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
   // Initialize tracking for new detections and track and associate objects
   // throughout frames.
   if (processor->tracker) {
-    std::unordered_set<int> previous_ids;
-    for (const auto& track : tracks_) {
-      previous_ids.insert(track.id);
-    }
-
-    processor->tracker->processInput(*data, tracks_);
-
-    // Tracks only disappear here if the tracker merged them into other tracks.
-    for (const auto& track : tracks_) {
-      previous_ids.erase(track.id);
-    }
-    pending_retractions_.insert(pending_retractions_.end(), previous_ids.begin(), previous_ids.end());
+    const auto retracted_ids = processor->tracker->processInput(*data, tracks_);
+    pending_retractions_.insert(
+        pending_retractions_.end(), retracted_ids.begin(), retracted_ids.end());
   }
 
   // Update track active status using the active window's VolumetricWindow policy.

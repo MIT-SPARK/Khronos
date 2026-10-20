@@ -37,6 +37,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include "khronos/active_window/data/frame_data.h"
 #include "khronos/active_window/data/track.h"
 
@@ -58,8 +60,10 @@ class Tracker {
    * frames and between each other.
    * @param data The current frame data.
    * @param tracks The object tracks to populate
+   * @returns Ids of tracks removed from `tracks` in this call (e.g. merged into other tracks),
+   * whose objects need to be retracted downstream.
    */
-  virtual void processInput(FrameData& /* data */, Tracks& /*tracks*/) {}
+  virtual std::vector<int> processInput(FrameData& /* data */, Tracks& /*tracks*/) { return {}; }
 };
 
 }  // namespace khronos
