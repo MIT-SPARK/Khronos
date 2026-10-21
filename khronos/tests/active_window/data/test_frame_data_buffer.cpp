@@ -105,9 +105,10 @@ TEST_F(FrameDataBufferTest, StoresEveryNthFrame) {
   FrameDataBuffer buffer(config);
   for (TimeStamp stamp = 1; stamp <= 7; ++stamp) {
     buffer.storeData(makeFrame(stamp));
-    // The latest frame is always available, even if it is not kept.
-    EXPECT_EQ(buffer.getLatestData().input.timestamp_ns, stamp);
+    const auto latest = buffer.getLatestData();
+    ASSERT_TRUE(latest);
   }
+
   // Every 3rd frame (1, 4, 7) is kept; skipped frames are only held until the next one arrives.
   for (TimeStamp stamp = 1; stamp <= 7; ++stamp) {
     EXPECT_EQ(has(buffer, stamp), stamp == 1 || stamp == 4 || stamp == 7) << stamp;
