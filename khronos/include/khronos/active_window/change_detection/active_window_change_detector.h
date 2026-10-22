@@ -155,15 +155,14 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
    */
   struct AddedObjectSnapshot {
     int track_id = -1;
-    //! Raw containment this frame.
+    //! Raw added measurement this frame: footprint containment (graph) or free ratio (mesh).
     float raw_containment = 0.0f;
-    //! 2D footprint cells of the track, how many of them lie in the prior free space, and how many
-    //! lie outside the prior known footprint (never observed in the prior, so also counted free).
+    //! Cells of the track: 2D footprint cells (graph) or 3D confirmed voxels (mesh); and how many
+    //! of them are free in the prior (in the prior places / not colliding with the prior mesh).
     int num_cells = 0;
     int num_cells_in_free = 0;
-    int num_cells_outside_prior = 0;
-    //! Footprint cell centers counted free / not free (at the prior place height, or the track
-    //! centroid height for cells outside the prior). Only filled if collect_debug_voxels.
+    //! Cell centers free / not free in the prior. Graph: at the prior place height / track
+    //! centroid height. Mesh: voxel centers. Only filled if collect_debug_voxels.
     std::vector<Point> in_free_cells;
     std::vector<Point> out_cells;
   };
@@ -249,6 +248,18 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! Frames of no measurement after which a non-added track's state record is pruned.
     //! Tracks that ever crossed the threshold are never pruned.
     int added_prune_after_frames = 50;
+
+    //! How a track's added measurement is computed. kGraph: fraction of its 2D footprint in the
+    //! prior traversability places. kMesh: fraction of its 3D voxels not colliding with the prior
+    //! mesh (background + object meshes), so space the prior never observed counts as free.
+    enum class AddedDetectionMethod {
+      kGraph,
+      kMesh
+    } added_detection_method = AddedDetectionMethod::kGraph;
+
+    //! kMesh: a track voxel collides if a prior mesh voxel lies within this many voxels
+    //! (Chebyshev distance). 0 = same voxel only.
+    int added_mesh_collision_radius = 0;
 
     //! Sinks for the change detector output.
     std::vector<ActiveWindowCDSink::Factory> awcd_sinks;
@@ -394,6 +405,22 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
       ChangeDetectionStatus* status = nullptr) const;
 
   /**
+   * @brief Compute the per-frame free ratio for each eligible track (as computeContainmentRatios):
+   * the fraction of its confirmed accumulated voxels with no prior mesh voxel within
+   * added_mesh_collision_radius. Returns a map from track ID to raw free ratio [0, 1].
+   */
+  std::unordered_map<int, float> computeMeshFreeRatios(
+      const Tracks& tracks,
+      const VolumetricMap& map,
+      ChangeDetectionStatus* status = nullptr) const;
+
+  /**
+   * @brief Build prior_mesh_voxels_ once per voxel size from the prior background mesh and object
+   * meshes, in the prior frame.
+   */
+  void updatePriorMeshVoxels(float voxel_size) const;
+
+  /**
    * @brief Newly-added filter. Takes over the state of absorbed tracks, EMA-updates and snapshots
    * each measured track, and re-evaluates the added gate of every entry. Entries that never passed
    * the gate and were not measured for added_prune_after_frames frames are pruned.
@@ -415,10 +442,6 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   GlobalIndexSet getPriorFreeFootprint2D(
       const VolumetricMap& map,
       spatial_hash::IndexHashMap<float>* cell_heights = nullptr) const;
-
-  // Builds prior_known_footprint_2d_ once per voxel size: 2D cells (prior frame) covered by the
-  // prior traversability places, background mesh, or object meshes.
-  void updatePriorKnownFootprint2D(float voxel_size) const;
 
   // Returns 2D voxel indices (z forced to 0) of a track's confirmed accumulated voxels.
   GlobalIndexSet getTrackFootprint2D(const Track& track, float voxel_size) const;
@@ -460,12 +483,12 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   //! Whether block_counts must be recomputed because current_T_prior_ changed.
   mutable bool prior_geometry_blocks_dirty_ = true;
 
-  //! 2D cells (z = 0, prior frame) the prior map observed. Track cells outside it were never
-  //! observed in the prior and count as free for added-object containment.
-  mutable GlobalIndexSet prior_known_footprint_2d_;
+  //! Voxels (prior frame) hit by the prior background and object mesh vertices, for kMesh
+  //! added detection.
+  mutable GlobalIndexSet prior_mesh_voxels_;
 
-  //! Voxel size prior_known_footprint_2d_ was built with (0 = not built yet).
-  mutable float prior_known_voxel_size_ = 0.0f;
+  //! Voxel size prior_mesh_voxels_ was built with (0 = not built yet).
+  mutable float prior_mesh_voxel_size_ = 0.0f;
 
   //! Accumulated removal state per prior object, keyed by NodeId. Created on the first
   //! measurement; never erased (freeze-last for unobserved objects).

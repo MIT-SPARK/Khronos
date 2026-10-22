@@ -73,6 +73,10 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.added_probability_threshold, "added_probability_threshold");
   field(config.added_min_frames_observed, "added_min_frames_observed");
   field(config.added_prune_after_frames, "added_prune_after_frames");
+  enum_field(config.added_detection_method,
+             "added_detection_method",
+             std::vector<std::string>{"graph", "mesh"});
+  field(config.added_mesh_collision_radius, "added_mesh_collision_radius");
   field<Path::Absolute>(config.prior_map_path, "prior_map_path");
   field(config.awcd_sinks, "awcd_sinks");
   field(config.transformation_getter, "transformation_getter");
@@ -87,6 +91,7 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.icp_min_inliers, "icp_min_inliers");
   checkInRange(config.removal_min_in_bounds_fraction, 0.0f, 1.0f, "removal_min_in_bounds_fraction");
   checkInRange(config.removal_min_observed_fraction, 0.0f, 1.0f, "removal_min_observed_fraction");
+  check(config.added_mesh_collision_radius, GE, 0, "added_mesh_collision_radius");
   check<Path::Exists>(config.prior_map_path, "prior_map_path");
 }
 
@@ -359,93 +364,22 @@ GlobalIndexSet ActiveWindowChangeDetector::getTrackFootprint2D(const Track& trac
   return footprint;
 }
 
-void ActiveWindowChangeDetector::updatePriorKnownFootprint2D(float voxel_size) const {
-  if (!prior_graph_ || voxel_size == prior_known_voxel_size_) {
-    return;
-  }
-
-  prior_known_footprint_2d_.clear();
-  prior_known_voxel_size_ = voxel_size;
-  const float voxel_size_inv = 1.0f / voxel_size;
-
-  // Free space: traversability place footprints, rasterized as in getPriorFreeFootprint2D.
-  if (prior_graph_->hasLayer(DsgLayers::MESH_PLACES)) {
-    const float step = voxel_size * 0.5f;
-    for (const auto& node : prior_graph_->getLayer(DsgLayers::MESH_PLACES).nodes()) {
-      const auto* attrs = node.tryAttributes<spark_dsg::TravNodeAttributes>();
-      if (!attrs) {
-        continue;
-      }
-      const double max_r = attrs->max_radius;
-      const Eigen::Vector3d& c = attrs->position;
-      for (double x = c.x() - max_r; x <= c.x() + max_r; x += step) {
-        for (double y = c.y() - max_r; y <= c.y() + max_r; y += step) {
-          const Eigen::Vector3d candidate(x, y, c.z());
-          if (attrs->contains(candidate)) {
-            prior_known_footprint_2d_.insert(to2DIndex(candidate.cast<float>(), voxel_size_inv));
-          }
-        }
-      }
-    }
-  }
-
-  // Occupied space: background mesh and object meshes.
-  if (prior_graph_->mesh()) {
-    for (const auto& point : prior_graph_->mesh()->points) {
-      prior_known_footprint_2d_.insert(to2DIndex(point, voxel_size_inv));
-    }
-  }
-  if (prior_graph_->hasLayer(DsgLayers::OBJECTS)) {
-    for (const auto& node : prior_graph_->getLayer(DsgLayers::OBJECTS).nodes()) {
-      const auto* attrs = node.tryAttributes<KhronosObjectAttributes>();
-      if (!attrs) {
-        continue;
-      }
-      for (size_t i = 0; i < attrs->mesh.numVertices(); ++i) {
-        prior_known_footprint_2d_.insert(
-            to2DIndex(attrs->bounding_box.pointToWorldFrame(attrs->mesh.pos(i)), voxel_size_inv));
-      }
-    }
-  }
-
-  MLOG(1) << "[ActiveWindowChangeDetector] Prior known 2D footprint: "
-          << prior_known_footprint_2d_.size() << " cells.";
-}
-
 std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRatios(
     const Tracks& tracks,
     const VolumetricMap& map,
     ChangeDetectionStatus* status) const {
   std::unordered_map<int, float> measurements;
 
-  // Tracks are measured on their accumulated geometry, which the tracker must provide.
-  const bool has_static_tracks = std::any_of(tracks.begin(), tracks.end(), [](const Track& t) {
-    return !t.is_dynamic && !t.observations.empty();
-  });
-  const bool has_accumulation = std::any_of(
-      tracks.begin(), tracks.end(), [](const Track& t) { return !t.accumulated_voxels.empty(); });
-  if (has_static_tracks && !has_accumulation) {
-    LOG_FIRST_N(WARNING, 1)
-        << "[ActiveWindowChangeDetector] Tracks have no accumulated voxels: run "
-           "the tracker with accumulate_voxels: true. No added objects will be "
-           "detected.";
-  }
-
   // Build the 2D free-space footprint from prior traversability places.
   const bool collect_cells = status && config.collect_debug_voxels;
   spatial_hash::IndexHashMap<float> cell_heights;
   const GlobalIndexSet prior_free =
       getPriorFreeFootprint2D(map, collect_cells ? &cell_heights : nullptr);
-  // An empty free footprint is fine as long as the prior has places: the active window may lie
-  // outside the prior map, where every track cell counts as free.
-  if (!prior_graph_ || !prior_graph_->hasLayer(DsgLayers::MESH_PLACES)) {
+  if (prior_free.empty()) {
     return measurements;
   }
 
   const float voxel_size = map.config.voxel_size;
-  const float voxel_size_inv = 1.0f / voxel_size;
-  updatePriorKnownFootprint2D(voxel_size);
-  const Eigen::Isometry3d prior_T_current = current_T_prior_.inverse();
 
   for (const Track& track : tracks) {
     // Skip dynamic objects and tracks without confirmed accumulated voxels yet (their accumulated
@@ -459,46 +393,39 @@ std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRat
       continue;
     }
 
-    // Containment ratio: fraction of the track's 2D footprint that is free in the prior, i.e. in
-    // the prior free space or outside the prior known footprint (never observed, so new).
-    const float centroid_z = track.accumulated_bounding_box.world_P_center.z();
-    int num_in_free = 0;
-    int num_outside_prior = 0;
-    std::vector<Point> free_cells, not_free_cells;
+    // TODO(multy): what if some of the track points are outside the prior map bounds? Should we
+    // skip those points or count them as unknown? For now, we will just count the points that are
+    // in the prior map bounds and known. Containment ratio: fraction of the track's 2D footprint
+    // that falls in prior free space.
+    int intersection = 0;
     for (const GlobalIndex& idx : track2D) {
-      Point center = spatial_hash::centerPointFromIndex(idx, voxel_size);
-      bool is_free = false;
       if (prior_free.count(idx)) {
-        ++num_in_free;
-        is_free = true;
-        const auto height_it = cell_heights.find(idx);
-        if (height_it != cell_heights.end()) {
-          center.z() = height_it->second;
-        }
-      } else {
-        center.z() = centroid_z;
-        const Point center_prior = (prior_T_current * center.cast<double>()).cast<float>();
-        if (!prior_known_footprint_2d_.count(to2DIndex(center_prior, voxel_size_inv))) {
-          ++num_outside_prior;
-          is_free = true;
-        }
-      }
-      if (collect_cells) {
-        (is_free ? free_cells : not_free_cells).push_back(center);
+        ++intersection;
       }
     }
-    const float containment =
-        static_cast<float>(num_in_free + num_outside_prior) / static_cast<float>(track2D.size());
+    const float containment = static_cast<float>(intersection) / static_cast<float>(track2D.size());
 
     if (status) {
       auto& snapshot = status->added_snapshots.emplace_back();
       snapshot.track_id = track.id;
       snapshot.raw_containment = containment;
       snapshot.num_cells = track2D.size();
-      snapshot.num_cells_in_free = num_in_free;
-      snapshot.num_cells_outside_prior = num_outside_prior;
-      snapshot.in_free_cells = std::move(free_cells);
-      snapshot.out_cells = std::move(not_free_cells);
+      snapshot.num_cells_in_free = intersection;
+      if (collect_cells) {
+        // Cells in prior free space sit at their place's height, the others at the track centroid.
+        const float centroid_z = track.accumulated_bounding_box.world_P_center.z();
+        for (const GlobalIndex& idx : track2D) {
+          Point center = spatial_hash::centerPointFromIndex(idx, voxel_size);
+          const auto height_it = cell_heights.find(idx);
+          if (height_it != cell_heights.end()) {
+            center.z() = height_it->second;
+            snapshot.in_free_cells.push_back(center);
+          } else {
+            center.z() = centroid_z;
+            snapshot.out_cells.push_back(center);
+          }
+        }
+      }
     }
 
     measurements[track.id] = containment;
@@ -507,6 +434,109 @@ std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRat
   }
 
   return measurements;
+}
+
+std::unordered_map<int, float> ActiveWindowChangeDetector::computeMeshFreeRatios(
+    const Tracks& tracks,
+    const VolumetricMap& map,
+    ChangeDetectionStatus* status) const {
+  std::unordered_map<int, float> measurements;
+  const float voxel_size = map.config.voxel_size;
+  updatePriorMeshVoxels(voxel_size);
+  if (prior_mesh_voxels_.empty()) {
+    LOG_FIRST_N(WARNING, 1) << "[ActiveWindowChangeDetector] Prior graph has no background or "
+                               "object mesh; mesh-based added-object detection is a no-op.";
+    return measurements;
+  }
+
+  const bool collect_cells = status && config.collect_debug_voxels;
+  const float voxel_size_inv = 1.0f / voxel_size;
+  const Eigen::Isometry3d prior_T_current = current_T_prior_.inverse();
+  const int r = config.added_mesh_collision_radius;
+  const auto collides = [&](const GlobalIndex& index) {
+    for (int dx = -r; dx <= r; ++dx) {
+      for (int dy = -r; dy <= r; ++dy) {
+        for (int dz = -r; dz <= r; ++dz) {
+          if (prior_mesh_voxels_.count(index + GlobalIndex(dx, dy, dz))) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+
+  for (const Track& track : tracks) {
+    // Same eligibility as computeContainmentRatios.
+    if (track.is_dynamic || !track.accumulated_bounding_box.isValid()) {
+      continue;
+    }
+
+    const GlobalIndexSet voxels = track.confirmedVoxels();
+    if (voxels.empty()) {
+      continue;
+    }
+
+    int num_free = 0;
+    std::vector<Point> free_cells, collided_cells;
+    for (const GlobalIndex& index : voxels) {
+      const Point center = spatial_hash::centerPointFromIndex(index, track.accumulated_voxel_size);
+      const Point center_prior = (prior_T_current * center.cast<double>()).cast<float>();
+      const bool is_free =
+          !collides(spatial_hash::indexFromPoint<GlobalIndex>(center_prior, voxel_size_inv));
+      num_free += is_free ? 1 : 0;
+      if (collect_cells) {
+        (is_free ? free_cells : collided_cells).push_back(center);
+      }
+    }
+    const float free_ratio = static_cast<float>(num_free) / static_cast<float>(voxels.size());
+
+    if (status) {
+      auto& snapshot = status->added_snapshots.emplace_back();
+      snapshot.track_id = track.id;
+      snapshot.raw_containment = free_ratio;
+      snapshot.num_cells = voxels.size();
+      snapshot.num_cells_in_free = num_free;
+      snapshot.in_free_cells = std::move(free_cells);
+      snapshot.out_cells = std::move(collided_cells);
+    }
+
+    measurements[track.id] = free_ratio;
+    MLOG(4) << "[ActiveWindowChangeDetector] Track " << track.id
+            << " raw mesh free ratio: " << free_ratio;
+  }
+
+  return measurements;
+}
+
+void ActiveWindowChangeDetector::updatePriorMeshVoxels(float voxel_size) const {
+  if (!prior_graph_ || voxel_size == prior_mesh_voxel_size_) {
+    return;
+  }
+
+  prior_mesh_voxels_.clear();
+  prior_mesh_voxel_size_ = voxel_size;
+  const float voxel_size_inv = 1.0f / voxel_size;
+  if (prior_graph_->mesh()) {
+    for (const auto& point : prior_graph_->mesh()->points) {
+      prior_mesh_voxels_.insert(spatial_hash::indexFromPoint<GlobalIndex>(point, voxel_size_inv));
+    }
+  }
+  if (prior_graph_->hasLayer(DsgLayers::OBJECTS)) {
+    for (const auto& node : prior_graph_->getLayer(DsgLayers::OBJECTS).nodes()) {
+      const auto* attrs = node.tryAttributes<KhronosObjectAttributes>();
+      if (!attrs) {
+        continue;
+      }
+      for (size_t i = 0; i < attrs->mesh.numVertices(); ++i) {
+        prior_mesh_voxels_.insert(spatial_hash::indexFromPoint<GlobalIndex>(
+            attrs->bounding_box.pointToWorldFrame(attrs->mesh.pos(i)), voxel_size_inv));
+      }
+    }
+  }
+
+  MLOG(1) << "[ActiveWindowChangeDetector] Prior mesh occupancy: " << prior_mesh_voxels_.size()
+          << " voxels.";
 }
 
 void ActiveWindowChangeDetector::updateAddedFilter(
@@ -636,13 +666,28 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   // 3. Update the removal filters and gates.
   updateRemovedFilter(free_ratio_measurements, data.input.timestamp_ns);
 
-  // 4. Compute per-frame containment ratios for newly-added-object detection.
-  // Known limitation: objects on tables cannot be detected this way (footprint-on-ground
-  // heuristic).
-  const auto containment_measurements = computeContainmentRatios(tracks, map, &status);
+  // 4. Compute per-frame added measurements for newly-added-object detection. Known limitation
+  // of kGraph: objects on tables cannot be detected (footprint-on-ground heuristic).
+  // Tracks are measured on their accumulated geometry, which the tracker must provide.
+  const bool has_static_tracks = std::any_of(tracks.begin(), tracks.end(), [](const Track& t) {
+    return !t.is_dynamic && !t.observations.empty();
+  });
+  const bool has_accumulation = std::any_of(
+      tracks.begin(), tracks.end(), [](const Track& t) { return !t.accumulated_voxels.empty(); });
+  if (has_static_tracks && !has_accumulation) {
+    LOG_FIRST_N(WARNING, 1)
+        << "[ActiveWindowChangeDetector] Tracks have no accumulated voxels: run "
+           "the tracker with accumulate_voxels: true. No added objects will be "
+           "detected.";
+  }
+
+  const auto added_measurements =
+      config.added_detection_method == Config::AddedDetectionMethod::kMesh
+          ? computeMeshFreeRatios(tracks, map, &status)
+          : computeContainmentRatios(tracks, map, &status);
 
   // 5. Update the per-track filters and gates, and prune stale records.
-  updateAddedFilter(containment_measurements, tracks, data.input.timestamp_ns);
+  updateAddedFilter(added_measurements, tracks, data.input.timestamp_ns);
 
   // Sinks get the changed objects; the status points to all accumulated state for debugging.
   status.removed_candidates = &removed_candidates_;
