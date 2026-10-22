@@ -41,11 +41,10 @@
 // is the minimal validation for Step 1 of the tracker-debugging pipeline (see tracker_debug.md)
 // and the exact input format Step 2's replay harness consumes.
 
-#include <gtest/gtest.h>
-
 #include <filesystem>
 #include <fstream>
 
+#include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 
 #include "khronos/active_window/data/track.h"
@@ -83,13 +82,18 @@ Track makeSampleTrack() {
   feature << 0.1f, 0.2f, 0.3f, 0.4f;
   track.semantics = SemanticClusterInfo(7, feature);
 
+  track.absorbed_track_ids = {3, 17};
+  track.absorbed_instance_ids = {5, 9, 12};
+  track.is_active = false;
+
   return track;
 }
 
 }  // namespace
 
 TEST(TrackSerialization, RoundTripPreservesAllFields) {
-  const auto tmp_path = std::filesystem::temp_directory_path() / "khronos_track_roundtrip_test.json";
+  const auto tmp_path =
+      std::filesystem::temp_directory_path() / "khronos_track_roundtrip_test.json";
 
   const Track original = makeSampleTrack();
   original.save(tmp_path.string());
@@ -102,6 +106,9 @@ TEST(TrackSerialization, RoundTripPreservesAllFields) {
   EXPECT_EQ(original.is_dynamic, reloaded.is_dynamic);
   EXPECT_FLOAT_EQ(original.confidence, reloaded.confidence);
   EXPECT_EQ(original.num_features, reloaded.num_features);
+  EXPECT_EQ(original.is_active, reloaded.is_active);
+  EXPECT_EQ(original.absorbed_track_ids, reloaded.absorbed_track_ids);
+  EXPECT_EQ(original.absorbed_instance_ids, reloaded.absorbed_instance_ids);
 
   ASSERT_EQ(original.observations.size(), reloaded.observations.size());
   for (size_t i = 0; i < original.observations.size(); ++i) {
@@ -142,10 +149,10 @@ TEST(TrackSerialization, RoundTripPreservesAllFields) {
   EXPECT_LT((original.semantics->feature - reloaded.semantics->feature).norm(), 1e-5f);
 }
 
-TEST(TrackSerialization, LoadsTracksWithoutAccumulatedVoxels) {
+TEST(TrackSerialization, LoadsTracksWithoutAccumulatedVoxelsOrMerges) {
   const auto tmp_path = std::filesystem::temp_directory_path() / "khronos_track_legacy_test.json";
 
-  // Tracks saved before accumulation existed have no accumulated_* fields.
+  // Tracks saved before accumulation and merging existed have no accumulated_*/absorbed_* fields.
   Track original = makeSampleTrack();
   original.accumulated_voxels.clear();
   original.save(tmp_path.string());
@@ -158,6 +165,8 @@ TEST(TrackSerialization, LoadsTracksWithoutAccumulatedVoxels) {
   j.erase("accumulated_voxel_size");
   j.erase("accumulated_min_hits");
   j.erase("accumulated_bounding_box");
+  j.erase("absorbed_track_ids");
+  j.erase("absorbed_instance_ids");
   {
     std::ofstream file(tmp_path);
     file << j.dump();
@@ -168,6 +177,8 @@ TEST(TrackSerialization, LoadsTracksWithoutAccumulatedVoxels) {
   EXPECT_EQ(reloaded.id, original.id);
   EXPECT_TRUE(reloaded.accumulated_voxels.empty());
   EXPECT_FALSE(reloaded.accumulated_bounding_box.isValid());
+  EXPECT_TRUE(reloaded.absorbed_track_ids.empty());
+  EXPECT_TRUE(reloaded.absorbed_instance_ids.empty());
 }
 
 }  // namespace khronos

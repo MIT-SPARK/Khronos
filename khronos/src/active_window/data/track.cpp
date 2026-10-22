@@ -60,7 +60,8 @@ json toJson(const GlobalIndexSet& voxels) {
 GlobalIndexSet globalIndexSetFromJson(const json& j) {
   GlobalIndexSet voxels;
   for (const auto& entry : j) {
-    voxels.insert(GlobalIndex(entry.at(0).get<int>(), entry.at(1).get<int>(), entry.at(2).get<int>()));
+    voxels.insert(
+        GlobalIndex(entry.at(0).get<int>(), entry.at(1).get<int>(), entry.at(2).get<int>()));
   }
   return voxels;
 }
@@ -86,9 +87,9 @@ TrackVoxels trackVoxelsFromJson(const json& j) {
 
 void to_json(json& j, const Observation& obs) {
   j = json{{"stamp", obs.stamp},
-          {"semantic_cluster_id", obs.semantic_cluster_id},
-          {"dynamic_cluster_id", obs.dynamic_cluster_id},
-          {"sensor", obs.sensor}};
+           {"semantic_cluster_id", obs.semantic_cluster_id},
+           {"dynamic_cluster_id", obs.dynamic_cluster_id},
+           {"sensor", obs.sensor}};
 }
 
 void from_json(const json& j, Observation& obs) {
@@ -101,23 +102,26 @@ void from_json(const json& j, Observation& obs) {
 
 void to_json(json& j, const Track& track) {
   j = json{{"id", track.id},
-          {"last_seen", track.last_seen},
-          {"first_seen", track.first_seen},
-          {"observations", track.observations},
-          {"filtered_observations", track.filtered_observations},
-          {"is_active", track.is_active},
-          {"last_bounding_box", boundingBoxToJson(track.last_bounding_box)},
-          {"last_voxels", toJson(track.last_voxels)},
-          {"last_points", track.last_points},
-          {"last_voxel_size", track.last_voxel_size},
-          {"last_centroid", track.last_centroid},
-          {"accumulated_voxels", toJson(track.accumulated_voxels)},
-          {"accumulated_voxel_size", track.accumulated_voxel_size},
-          {"accumulated_min_hits", track.accumulated_min_hits},
-          {"accumulated_bounding_box", boundingBoxToJson(track.accumulated_bounding_box)},
-          {"num_features", track.num_features},
-          {"is_dynamic", track.is_dynamic},
-          {"confidence", track.confidence}};
+           {"last_seen", track.last_seen},
+           {"first_seen", track.first_seen},
+           {"observations", track.observations},
+           {"is_active", track.is_active},
+           {"last_bounding_box", boundingBoxToJson(track.last_bounding_box)},
+           {"last_voxels", toJson(track.last_voxels)},
+           {"last_points", track.last_points},
+           {"last_voxel_size", track.last_voxel_size},
+           {"last_centroid", track.last_centroid},
+           {"accumulated_voxels", toJson(track.accumulated_voxels)},
+           {"accumulated_voxel_size", track.accumulated_voxel_size},
+           {"accumulated_min_hits", track.accumulated_min_hits},
+           {"accumulated_bounding_box", boundingBoxToJson(track.accumulated_bounding_box)},
+           {"absorbed_track_ids", track.absorbed_track_ids},
+           {"absorbed_instance_ids", track.absorbed_instance_ids},
+           {"num_features", track.num_features},
+           {"is_dynamic", track.is_dynamic},
+           {"confidence", track.confidence}};
+  // sequence_number is not saved: it counts the passes of the tracker that wrote it, so a restored
+  // value would alias the replaying tracker's own pass counter.
 
   j["semantics"] = track.semantics ? track.semantics->toJson() : json(nullptr);
 }
@@ -127,8 +131,7 @@ void from_json(const json& j, Track& track) {
   track.last_seen = j.at("last_seen").get<TimeStamp>();
   track.first_seen = j.at("first_seen").get<TimeStamp>();
   track.observations = j.at("observations").get<Observations>();
-  // Tolerant reads: older saved tracks predate these fields.
-  track.filtered_observations = j.value("filtered_observations", Observations());
+  // Tolerant read: older saved tracks predate this field.
   track.is_active = j.value("is_active", true);
   track.last_bounding_box = boundingBoxFromJson(j.at("last_bounding_box"));
   track.last_voxels = globalIndexSetFromJson(j.at("last_voxels"));
@@ -141,6 +144,9 @@ void from_json(const json& j, Track& track) {
     track.accumulated_min_hits = j.at("accumulated_min_hits").get<int>();
     track.accumulated_bounding_box = boundingBoxFromJson(j.at("accumulated_bounding_box"));
   }
+  // Tolerant reads: older saved tracks predate track merging.
+  track.absorbed_track_ids = j.value("absorbed_track_ids", std::set<int>());
+  track.absorbed_instance_ids = j.value("absorbed_instance_ids", std::set<int>());
   track.num_features = j.at("num_features").get<size_t>();
   track.is_dynamic = j.at("is_dynamic").get<bool>();
   track.confidence = j.at("confidence").get<float>();
@@ -263,8 +269,7 @@ void Track::absorb(Track&& other) {
   updateSemantics(other.semantics);
   // Confidence counts observations, so it adds up too.
   confidence = std::min(confidence + other.confidence, 1.0f);
-  if (other.sequence_number &&
-      (!sequence_number || *other.sequence_number > *sequence_number)) {
+  if (other.sequence_number && (!sequence_number || *other.sequence_number > *sequence_number)) {
     sequence_number = other.sequence_number;
   }
 }

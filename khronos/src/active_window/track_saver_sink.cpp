@@ -54,10 +54,10 @@
 namespace khronos {
 namespace {
 
-static const auto registration = config::RegistrationWithConfig<ActiveWindow::KhronosSink,
-                                                                 ActiveWindowTrackSaver,
-                                                                 ActiveWindowTrackSaver::Config>(
-    "ActiveWindowTrackSaver");
+static const auto registration =
+    config::RegistrationWithConfig<ActiveWindow::KhronosSink,
+                                   ActiveWindowTrackSaver,
+                                   ActiveWindowTrackSaver::Config>("ActiveWindowTrackSaver");
 
 }  // namespace
 
@@ -143,10 +143,10 @@ void ActiveWindowTrackSaver::savePointcloud(const std::string& track_dir,
   if (vertex_map.empty()) {
     return;
   }
-  const bool has_color = !data.input.color_image.empty() &&
-                         data.input.color_image.size() == vertex_map.size();
-  const bool has_mask = binary_mask && !binary_mask->empty() &&
-                        binary_mask->size() == vertex_map.size();
+  const bool has_color =
+      !data.input.color_image.empty() && data.input.color_image.size() == vertex_map.size();
+  const bool has_mask =
+      binary_mask && !binary_mask->empty() && binary_mask->size() == vertex_map.size();
 
   // vertex_map is always in world/map frame (ActiveWindow::createData requests
   // vertices_in_world_frame=true). Reference-frame transform to express saved points relative to
@@ -187,16 +187,16 @@ void ActiveWindowTrackSaver::savePointcloud(const std::string& track_dir,
     return;
   }
   ply_stream << "ply\nformat ascii 1.0\n"
-            << "element vertex " << points.size() << "\n"
-            << "property float x\nproperty float y\nproperty float z\n"
-            << "property uchar red\nproperty uchar green\nproperty uchar blue\n"
-            << "end_header\n";
+             << "element vertex " << points.size() << "\n"
+             << "property float x\nproperty float y\nproperty float z\n"
+             << "property uchar red\nproperty uchar green\nproperty uchar blue\n"
+             << "end_header\n";
   ply_stream << std::fixed << std::setprecision(6);
   for (size_t i = 0; i < points.size(); ++i) {
     // color_image is RGB order; write as-is (r, g, b).
     ply_stream << points[i][0] << " " << points[i][1] << " " << points[i][2] << " "
-              << static_cast<int>(colors[i][0]) << " " << static_cast<int>(colors[i][1]) << " "
-              << static_cast<int>(colors[i][2]) << "\n";
+               << static_cast<int>(colors[i][0]) << " " << static_cast<int>(colors[i][1]) << " "
+               << static_cast<int>(colors[i][2]) << "\n";
   }
 }
 
@@ -226,7 +226,7 @@ void ActiveWindowTrackSaver::createTrackSymlinks(const std::string& track_dir,
     fs::create_symlink(target, link_path, ec);
     if (ec) {
       LOG(WARNING) << "[ActiveWindowTrackSaver] Failed to symlink " << link_path << " -> " << target
-                  << ": " << ec.message();
+                   << ": " << ec.message();
     }
   }
 }
@@ -248,8 +248,8 @@ void ActiveWindowTrackSaver::call(const FrameData& data,
   }
 
   for (const auto& track : tracks) {
-    // Re-save track.json once when a track turns inactive, so its final state (including
-    // observations pruned by the vote filter) is on disk before it is extracted and erased.
+    // Re-save track.json once when a track turns inactive, so its final state is on disk before
+    // it is extracted and erased.
     if (track.is_active) {
       saved_inactive_.erase(track.id);
     } else if (config.save_track_json && saved_inactive_.insert(track.id).second) {
