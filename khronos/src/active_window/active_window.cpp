@@ -66,6 +66,8 @@ std::shared_ptr<KhronosObjectAttributes> createObjectAttributes(const Track& tra
                              ? track.accumulated_bounding_box
                              : track.last_bounding_box;
   object->position = object->bounding_box.world_P_center.cast<double>();
+  // Live track; the extracted object replacing it is inactive (see ObjectWorkerPool::runOnce).
+  object->is_active = true;
 
   return object;
 }

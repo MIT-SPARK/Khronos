@@ -143,6 +143,8 @@ void ObjectWorkerPool::runOnce(Request::Ptr req) const {
 
   curr_workers_--;
   if (attrs) {
+    // The track left the active window, so its object is archived from here on.
+    attrs->is_active = false;
     std::lock_guard<std::mutex> lock(output_mutex_);
     output_.emplace_back(
         hydra::NodeUpdate{std::shared_ptr<spark_dsg::NodeAttributes>(std::move(attrs)),
