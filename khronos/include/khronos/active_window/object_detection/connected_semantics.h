@@ -39,15 +39,10 @@
 
 #include <cstdint>
 #include <map>
-#include <memory>
-#include <set>
-#include <string>
-#include <utility>
-#include <vector>
 
-#include <config_utilities/config_utilities.h>
-#include <hydra/common/global_info.h>
+#include <hydra/common/labelspace.h>
 #include <hydra/reconstruction/volumetric_map.h>
+#include <hydra/utils/logging.h>
 #include <spatial_hash/neighbor_utils.h>
 
 #include "khronos/active_window/data/frame_data.h"
@@ -62,9 +57,8 @@ namespace khronos {
  */
 class ConnectedSemantics : public ObjectDetector {
  public:
-  // Config.
-  struct Config {
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+  struct Config : hydra::VerbosityConfig {
+    Config();
 
     // Number of neighbors to consider for region growing. In image space this reflects
     // 8 (if true) and 4 (if false) neighbors. In 3D voxel space this reflects 26 (if
@@ -92,7 +86,7 @@ class ConnectedSemantics : public ObjectDetector {
   using SemanticVoxelPixelMaps = std::map<int, VoxelPixelMap>;
 
   // Construction.
-  explicit ConnectedSemantics(const Config& config);
+  explicit ConnectedSemantics(const Config& config, const hydra::Labelspace* labelspace);
   virtual ~ConnectedSemantics() = default;
 
   // Inputs.
@@ -150,12 +144,7 @@ class ConnectedSemantics : public ObjectDetector {
   void filterClusters(FrameData& data) const;
 
  private:
-  inline static const auto registration_ =
-      config::RegistrationWithConfig<ObjectDetector,
-                                     ConnectedSemantics,
-                                     ConnectedSemantics::Config>("ConnectedSemantics");
-
-  std::function<bool(uint32_t)> is_object_;
+  const std::set<uint32_t> labels_;
   const spatial_hash::NeighborSearch neighbor_search_;
 
   // Variables.

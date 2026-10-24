@@ -41,27 +41,41 @@
 #include <string>
 #include <vector>
 
+#include <config_utilities/config.h>
+
 #include "khronos/utils/geometry_utils.h"
 
 namespace khronos {
 namespace {
 
 static const auto registration =
-    config::RegistrationWithConfig<ObjectDetector, InstanceForwarding, InstanceForwarding::Config>(
-        "InstanceForwarding");
+    config::RegistrationWithConfig<ObjectDetector,
+                                   InstanceForwarding,
+                                   InstanceForwarding::Config,
+                                   const hydra::Labelspace*>("InstanceForwarding");
 
 static const auto open_vocab_registration =
     config::RegistrationWithConfig<InstanceFilter,
                                    OpenVocabBackgroundFilter,
-                                   OpenVocabBackgroundFilter::Config>("OpenVocabBackgroundFilter");
+                                   OpenVocabBackgroundFilter::Config,
+                                   const hydra::Labelspace*>("OpenVocabBackgroundFilter");
 
 static const auto category_registration =
-    config::RegistrationWithConfig<InstanceFilter, CategoryFilter, CategoryFilter::Config>(
-        "CategoryFilter");
+    config::RegistrationWithConfig<InstanceFilter,
+                                   CategoryFilter,
+                                   CategoryFilter::Config,
+                                   const hydra::Labelspace*>("CategoryFilter");
 
-std::vector<int32_t> getDefaultInvalidLabels() {
-  const auto& invalid = hydra::GlobalInfo::instance().labelspace().invalid_labels;
-  return {invalid.begin(), invalid.end()};
+std::unordered_set<int32_t> buildInvalid(const hydra::Labelspace* labelspace,
+                                         const std::vector<int32_t>& extra) {
+  std::unordered_set<int32_t> invalid(extra.begin(), extra.end());
+  if (labelspace) {
+    for (const auto label : labelspace->invalid_labels) {
+      invalid.insert(label);
+    }
+  }
+
+  return invalid;
 }
 
 std::optional<SemanticClusterInfo> extractSemantics(const FrameData& data,
@@ -93,10 +107,8 @@ void declare_config(CategoryFilter::Config& config) {
   field(config.invalid, "invalid");
 }
 
-CategoryFilter::Config::Config() : invalid(getDefaultInvalidLabels()) {}
-
-CategoryFilter::CategoryFilter(const Config& config)
-    : config(config::checkValid(config)), invalid_(config.invalid.begin(), config.invalid.end()) {}
+CategoryFilter::CategoryFilter(const Config& config, const hydra::Labelspace* labelspace)
+    : config(config::checkValid(config)), invalid_(buildInvalid(labelspace, config.invalid)) {}
 
 bool CategoryFilter::valid(const FrameData& data, int32_t, const Pixels& pixels) const {
   if (pixels.empty() || data.input.label_image.empty()) {
@@ -116,7 +128,7 @@ void declare_config(OpenVocabBackgroundFilter::Config& config) {
   field(config.metric, "metric");
 }
 
-OpenVocabBackgroundFilter::OpenVocabBackgroundFilter(const Config& config)
+OpenVocabBackgroundFilter::OpenVocabBackgroundFilter(const Config& config, const hydra::Labelspace*)
     : config(config::checkValid(config)),
       background_(config.background.create()),
       metric_(config.metric.create()) {}
@@ -139,7 +151,7 @@ bool OpenVocabBackgroundFilter::valid(const FrameData& data, int32_t id, const P
 void declare_config(InstanceForwarding::Config& config) {
   using namespace config;
   name("InstanceForwarding");
-  field(config.verbosity, "verbosity");
+  base<hydra::VerbosityConfig>(config);
   field(config.max_range, "max_range", "m");
   field(config.min_range, "min_range", "m");
   field(config.zero_is_unlabeled, "zero_is_unlabeled");
@@ -158,10 +170,13 @@ void declare_config(InstanceForwarding::Config& config) {
   }
 }
 
-InstanceForwarding::InstanceForwarding(const Config& config)
+InstanceForwarding::Config::Config()
+    : hydra::VerbosityConfig(hydra::VerbosityConfig::default_verbosity("instance_forwarding")) {}
+
+InstanceForwarding::InstanceForwarding(const Config& config, const hydra::Labelspace* labelspace)
     : config(config::checkValid(config)),
       filter_by_volume_(config.min_object_volume > 0.0 || config.max_object_volume > 0.0),
-      instance_filter_(config.instance_filter.create()) {}
+      instance_filter_(config.instance_filter.create(labelspace)) {}
 
 void InstanceForwarding::processInput(const VolumetricMap& /* map */, FrameData& data) {
   processing_stamp_ = data.input.timestamp_ns;

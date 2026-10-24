@@ -40,12 +40,33 @@
 #include <string>
 #include <vector>
 
+#include <config_utilities/config.h>
+#include <config_utilities/factory.h>
+#include <config_utilities/validation.h>
+
 namespace khronos {
+namespace {
+
+static const auto registration_ =
+    config::RegistrationWithConfig<ObjectDetector,
+                                   ConnectedSemantics,
+                                   ConnectedSemantics::Config,
+                                   hydra::Labelspace*>("ConnectedSemantics");
+
+std::set<uint32_t> getLabels(const hydra::Labelspace* labelspace) {
+  if (!labelspace) {
+    throw std::invalid_argument("ConnectedSemantics requires labelspace");
+  }
+
+  return labelspace->object_labels;
+}
+
+}  // namespace
 
 void declare_config(ConnectedSemantics::Config& config) {
   using namespace config;
   name("ConnectedSemantics");
-  field(config.verbosity, "verbosity");
+  base<hydra::VerbosityConfig>(config);
   field(config.use_full_connectivity, "use_full_connectivity");
   field(config.min_cluster_size, "min_cluster_size");
   field(config.max_cluster_size, "max_cluster_size");
@@ -55,12 +76,13 @@ void declare_config(ConnectedSemantics::Config& config) {
   check(config.grid_size, GT, 0.0, "grid_size");
 }
 
-ConnectedSemantics::ConnectedSemantics(const Config& config)
-    : config(config::checkValid(config)), neighbor_search_(config.use_full_connectivity ? 26 : 6) {
-  is_object_ = [](uint32_t label) {
-    return hydra::GlobalInfo::instance().labelspace().object_labels.count(label) != 0;
-  };
-}
+ConnectedSemantics::Config::Config()
+    : VerbosityConfig(hydra::VerbosityConfig::default_verbosity("connected_semantics")) {}
+
+ConnectedSemantics::ConnectedSemantics(const Config& config, const hydra::Labelspace* labelspace)
+    : config(config::checkValid(config)),
+      labels_(getLabels(labelspace)),
+      neighbor_search_(config.use_full_connectivity ? 26 : 6) {}
 
 void ConnectedSemantics::processInput(const VolumetricMap& /* map */, FrameData& data) {
   processing_stamp_ = data.input.timestamp_ns;
@@ -136,10 +158,12 @@ ConnectedSemantics::SemanticVoxelPixelMaps ConnectedSemantics::computeCandidateV
           continue;
         }
       }
+
       const int semantic_id = data.input.label_image.at<InputData::LabelType>(v, u);
-      if (!is_object_(semantic_id)) {
+      if (!labels_.count(semantic_id)) {
         continue;
       }
+
       const auto& point = data.input.vertex_map.at<InputData::VertexType>(v, u);
       const auto voxel_index = spatial_hash::indexFromPoint<GlobalIndex>(
           Point(point[0], point[1], point[2]), voxel_size_inv);
@@ -159,10 +183,12 @@ void ConnectedSemantics::semanticClustering2D(FrameData& data) {
       if (id != 0) {
         continue;
       }
+
       const int semantic_id = data.input.label_image.at<InputData::LabelType>(v, u);
-      if (!is_object_(semantic_id)) {
+      if (!labels_.count(semantic_id)) {
         continue;
       }
+
       growCluster2D(u, v, data);
     }
   }
@@ -217,9 +243,10 @@ void ConnectedSemantics::filterClusters(FrameData& data) const {
       it++;
     }
   }
-  CLOG(4) << "[ConnectedSemantics] Identified "
-          << data.semantic_clusters.size() + num_erased_clusters << " clusters, erased "
-          << num_erased_clusters << " (" << data.semantic_clusters.size() << " total).";
+
+  MLOG(4) << "Identified " << data.semantic_clusters.size() + num_erased_clusters
+          << " clusters, erased " << num_erased_clusters << " (" << data.semantic_clusters.size()
+          << " total).";
 }
 
 }  // namespace khronos
