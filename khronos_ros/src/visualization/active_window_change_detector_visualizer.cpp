@@ -37,13 +37,14 @@
 
 #include "khronos_ros/visualization/active_window_change_detector_visualizer.h"
 
+#include <iomanip>
+#include <sstream>
+#include <unordered_map>
+
 #include <config_utilities/config.h>
 #include <config_utilities/types/path.h>
 #include <config_utilities/validation.h>
 #include <glog/logging.h>
-
-#include <iomanip>
-#include <sstream>
 
 #include "khronos_ros/visualization/visualization_utils.h"
 
@@ -115,7 +116,8 @@ void ActiveWindowChangeDetectorVisualizer::call(
   // Throttle visualization redraws to reduce flicker from high-frequency calls.
   if (config.min_draw_period_s > 0.0) {
     const rclcpp::Time now = nh_.now();
-    if (last_draw_time_.has_value() && (now - *last_draw_time_).seconds() < config.min_draw_period_s) {
+    if (last_draw_time_.has_value() &&
+        (now - *last_draw_time_).seconds() < config.min_draw_period_s) {
       return;
     }
     last_draw_time_ = now;
@@ -200,8 +202,10 @@ void ActiveWindowChangeDetectorVisualizer::visualizeChangedObjects(
     if (!khronos_attrs || !khronos_attrs->bounding_box.isValid()) {
       continue;
     }
-    auto& marker = new_markers.markers.emplace_back(setBoundingBox(
-        khronos_attrs->bounding_box, Color(255, 0, 0, 255), header, config.bounding_box_line_width));
+    auto& marker = new_markers.markers.emplace_back(setBoundingBox(khronos_attrs->bounding_box,
+                                                                   Color(255, 0, 0, 255),
+                                                                   header,
+                                                                   config.bounding_box_line_width));
     // Use stable identity-based id (lower 32 bits of NodeId) so the same object
     // always gets the same marker id across frames. Namespace "removed_objects"
     // avoids collision with green added-object markers on the same publisher.
@@ -235,7 +239,7 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedObjects(
   header.stamp = getStamp();
   for (const auto& obj : newly_added_objects) {
     MLOG(2) << "[ActiveWindowChangeDetectorVisualizer] Visualizing newly added object with id "
-            << obj.id << " (" << obj.member_track_ids.size() << " merged track(s))";
+            << obj.id << " (" << obj.absorbed_track_ids.size() + 1 << " merged track(s))";
     BoundingBox bbox = obj.bounding_box;
     if (!bbox.isValid()) {
       continue;
@@ -243,8 +247,9 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedObjects(
     bbox.transform(prior_T_current);
     auto& marker = new_markers.markers.emplace_back(
         setBoundingBox(bbox, Color(0, 255, 0, 255), header, config.bounding_box_line_width));
-    // Use the stable, detector-owned object id (independent of any Track::id) as marker id.
-    // Namespace "added_objects" avoids collision with red removed-object markers on the same publisher.
+    // Use the track id (stable across tracker merges: the earliest track survives) as marker id.
+    // Namespace "added_objects" avoids collision with red removed-object markers on the same
+    // publisher.
     marker.ns = "added_objects";
     marker.id = obj.id;
   }
@@ -259,8 +264,11 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedObjects(
 
 namespace {
 
-using RemovedCandidateStatus = ActiveWindowChangeDetector::RemovedCandidateStatus;
-using AddedCandidateStatus = ActiveWindowChangeDetector::AddedCandidateStatus;
+using RemovedObject = ActiveWindowChangeDetector::RemovedObject;
+using AddedObject = ActiveWindowChangeDetector::AddedObject;
+using RemovedObjectSnapshot = ActiveWindowChangeDetector::RemovedObjectSnapshot;
+using AddedObjectSnapshot = ActiveWindowChangeDetector::AddedObjectSnapshot;
+using ChangeFilter = ActiveWindowChangeDetector::ChangeFilter;
 
 const Color kRemovedColor(255, 0, 0, 255);
 const Color kAddedColor(0, 255, 0, 255);
@@ -278,12 +286,11 @@ int markerId(spark_dsg::NodeId id) { return static_cast<int>(id & 0xffffffff); }
 void transformPose(const Eigen::Isometry3d& T, geometry_msgs::msg::Pose& pose) {
   Eigen::Isometry3d pose_eigen = Eigen::Isometry3d::Identity();
   pose_eigen.translation() << pose.position.x, pose.position.y, pose.position.z;
-  pose_eigen.linear() = Eigen::Quaterniond(pose.orientation.w,
-                                           pose.orientation.x,
-                                           pose.orientation.y,
-                                           pose.orientation.z)
-                            .normalized()
-                            .toRotationMatrix();
+  pose_eigen.linear() =
+      Eigen::Quaterniond(
+          pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z)
+          .normalized()
+          .toRotationMatrix();
   const Eigen::Isometry3d result = T * pose_eigen;
   const Eigen::Quaterniond q(result.linear());
   pose.position.x = result.translation().x();
@@ -295,22 +302,21 @@ void transformPose(const Eigen::Isometry3d& T, geometry_msgs::msg::Pose& pose) {
   pose.orientation.z = q.z();
 }
 
-std::string addedLabel(const AddedCandidateStatus& candidate) {
+std::string addedLabel(const AddedObjectSnapshot& candidate, const ChangeFilter& filter) {
   std::ostringstream ss;
   ss << std::fixed << std::setprecision(2);
-  ss << "T" << candidate.track_id << (candidate.added ? " ADDED" : "")
-     << " p=" << candidate.change_confidence
-     << " n=" << candidate.num_frames_observed;
+  ss << "T" << candidate.track_id << (filter.is_changed ? " ADDED" : "")
+     << " p=" << filter.change_confidence << " n=" << filter.num_frames_observed;
   ss << "\nraw=" << candidate.raw_containment << " cells " << candidate.num_cells_in_free << "/"
      << candidate.num_cells;
   return ss.str();
 }
 
-std::string removedLabel(const RemovedCandidateStatus& candidate) {
+std::string removedLabel(const RemovedObjectSnapshot& candidate, const ChangeFilter& filter) {
   std::ostringstream ss;
   ss << std::fixed << std::setprecision(2);
-  ss << spark_dsg::NodeSymbol(candidate.id).str() << (candidate.removed ? " REMOVED" : "")
-     << " p=" << candidate.free_probability << " n=" << candidate.num_frames_observed;
+  ss << spark_dsg::NodeSymbol(candidate.id).str() << (filter.is_changed ? " REMOVED" : "")
+     << " p=" << filter.change_confidence << " n=" << filter.num_frames_observed;
   if (!candidate.has_geometry) {
     ss << "\nno mesh (centroid in bounds)";
     return ss.str();
@@ -355,8 +361,16 @@ void ActiveWindowChangeDetectorVisualizer::visualizeRemovedStatus(
   header.frame_id = config.global_frame_name;
   header.stamp = getStamp();
 
+  // Candidates never measured have no accumulated state yet: show an empty filter. While detection
+  // is stopped there are no candidates, so the previous markers are cleared.
+  const std::unordered_map<spark_dsg::NodeId, RemovedObject> none;
+  const auto& objects = status.removed_candidates ? *status.removed_candidates : none;
+  const ChangeFilter unmeasured;
+
   MarkerArray new_markers;
-  for (const auto& candidate : status.removed_candidates) {
+  for (const auto& candidate : status.removed_snapshots) {
+    const auto object_it = objects.find(candidate.id);
+    const ChangeFilter& filter = object_it == objects.end() ? unmeasured : object_it->second.filter;
     const auto* node = dsg->findNode(candidate.id);
     const auto* attrs = node ? node->tryAttributes<spark_dsg::SemanticNodeAttributes>() : nullptr;
     if (!attrs || !attrs->bounding_box.isValid()) {
@@ -364,7 +378,7 @@ void ActiveWindowChangeDetectorVisualizer::visualizeRemovedStatus(
     }
     const auto& bbox = attrs->bounding_box;
 
-    Color color = candidate.removed ? kRemovedColor : kCandidateColor;
+    Color color = filter.is_changed ? kRemovedColor : kCandidateColor;
     if (!candidate.in_bounds || (candidate.has_geometry && !candidate.observed)) {
       color.a = kOutOfBoundsAlpha;
     }
@@ -384,10 +398,10 @@ void ActiveWindowChangeDetectorVisualizer::visualizeRemovedStatus(
     label.scale.z = config.label_text_scale;
     label.color = setColor(color);
     label.pose.orientation.w = 1.0;
-    label.pose.position = setPoint(
-        bbox.world_P_center +
-        Point(0, 0, bbox.dimensions.z() / 2.0f + config.label_text_scale * 1.5f));
-    label.text = removedLabel(candidate);
+    label.pose.position =
+        setPoint(bbox.world_P_center +
+                 Point(0, 0, bbox.dimensions.z() / 2.0f + config.label_text_scale * 1.5f));
+    label.text = removedLabel(candidate, filter);
   }
 
   MarkerArray msg;
@@ -416,7 +430,7 @@ void ActiveWindowChangeDetectorVisualizer::visualizeRemovedVoxels(
   const uint8_t alpha = static_cast<uint8_t>(config.voxel_alpha * 255.0f);
 
   MarkerArray new_markers;
-  for (const auto& candidate : status.removed_candidates) {
+  for (const auto& candidate : status.removed_snapshots) {
     auto& marker = new_markers.markers.emplace_back();
     marker.header = header;
     marker.type = Marker::CUBE_LIST;
@@ -470,13 +484,23 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedStatus(
   // prior (map) frame.
   const Eigen::Isometry3d prior_T_current = current_T_prior.inverse();
 
+  // No candidates while detection is stopped: the previous markers are cleared.
+  const std::unordered_map<int, AddedObject> none;
+  const auto& objects = status.added_candidates ? *status.added_candidates : none;
+
   MarkerArray new_markers;
-  for (const auto& candidate : status.added_candidates) {
-    const auto& bbox = candidate.bounding_box;
+  for (const auto& candidate : status.added_snapshots) {
+    // Every measured track has accumulated state, which holds its bounding box.
+    const auto object_it = objects.find(candidate.track_id);
+    if (object_it == objects.end()) {
+      continue;
+    }
+    const AddedObject& object = object_it->second;
+    const auto& bbox = object.bounding_box;
     if (!bbox.isValid()) {
       continue;
     }
-    const Color& color = candidate.added ? kAddedColor : kCandidateColor;
+    const Color& color = object.filter.is_changed ? kAddedColor : kCandidateColor;
 
     auto& box = new_markers.markers.emplace_back(
         setBoundingBox(bbox, color, header, config.bounding_box_line_width));
@@ -493,11 +517,11 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedStatus(
     label.scale.z = config.label_text_scale;
     label.color = setColor(color);
     label.pose.orientation.w = 1.0;
-    label.pose.position = setPoint(
-        bbox.world_P_center +
-        Point(0, 0, bbox.dimensions.z() / 2.0f + config.label_text_scale * 1.5f));
+    label.pose.position =
+        setPoint(bbox.world_P_center +
+                 Point(0, 0, bbox.dimensions.z() / 2.0f + config.label_text_scale * 1.5f));
     transformPose(prior_T_current, label.pose);
-    label.text = addedLabel(candidate);
+    label.text = addedLabel(candidate, object.filter);
   }
 
   MarkerArray msg;
@@ -523,7 +547,7 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedVoxels(
   const uint8_t alpha = static_cast<uint8_t>(config.voxel_alpha * 255.0f);
 
   MarkerArray new_markers;
-  for (const auto& candidate : status.added_candidates) {
+  for (const auto& candidate : status.added_snapshots) {
     auto& marker = new_markers.markers.emplace_back();
     marker.header = header;
     marker.type = Marker::CUBE_LIST;

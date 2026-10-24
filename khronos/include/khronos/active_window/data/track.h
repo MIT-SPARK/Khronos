@@ -42,6 +42,7 @@
 #include <string>
 #include <vector>
 
+#include <nlohmann/json_fwd.hpp>
 #include <spatial_hash/hash.h>
 
 #include "khronos/active_window/data/measurement_clusters.h"
@@ -88,6 +89,9 @@ struct TrackVoxel {
 };
 
 using TrackVoxels = spatial_hash::IndexHashMap<TrackVoxel>;
+
+void to_json(nlohmann::json& j, const Observation& obs);
+void from_json(const nlohmann::json& j, Observation& obs);
 
 /**
  * @brief Data structure to track objects and associations throughout the active window.
@@ -180,8 +184,24 @@ struct Track {
    * @brief Upstream instance id (semantic_cluster_id) of the most recent observation that has one.
    */
   std::optional<int> latestInstanceId() const;
+
+  /**
+   * @brief Save track to filepath
+   * @param filepath Destination path, e.g. ".../track_<id>/track.json".
+   */
+  void save(const std::string& filepath) const;
+
+  /**
+   * @brief Reconstruct a Track from a JSON file written by save().
+   * @param filepath Path to a track.json file.
+   * @return The reconstructed Track.
+   */
+  static Track load(const std::string& filepath);
 };
 
 using Tracks = std::vector<Track>;
+
+void to_json(nlohmann::json& j, const Track& track);
+void from_json(const nlohmann::json& j, Track& track);
 
 }  // namespace khronos
