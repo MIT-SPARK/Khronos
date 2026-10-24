@@ -48,6 +48,7 @@ static const auto registration =
     config::RegistrationWithConfig<hydra::ActiveWindowModule,
                                    ActiveWindow,
                                    ActiveWindow::Config,
+                                   hydra::Labelspace,
                                    hydra::ActiveWindowModule::OutputQueue::Ptr,
                                    std::unique_ptr<hydra::VolumetricWindow>>("ActiveWindow");
 
@@ -105,11 +106,11 @@ void declare_config(ActiveWindow::Config& config) {
   field(config.live_accumulated_bounding_box, "live_accumulated_bounding_box");
 }
 
-SensorProcessor::SensorProcessor(const Config& config)
+SensorProcessor::SensorProcessor(const Config& config, const hydra::Labelspace& labelspace)
     : config(config::checkValid(config)),
       integrator(config.projective_integrator),
       motion_detector(config.motion_detector.create()),
-      object_detector(config.object_detector.create()),
+      object_detector(config.object_detector.create(&labelspace)),
       tracker(config.tracker.create()) {
   if (!tracker && (config.motion_detector || config.object_detector)) {
     LOG(WARNING)
@@ -119,11 +120,12 @@ SensorProcessor::SensorProcessor(const Config& config)
 }
 
 ActiveWindow::ActiveWindow(const Config& config,
+                           const hydra::Labelspace& labelspace,
                            const OutputQueue::Ptr& output_queue,
                            std::unique_ptr<hydra::VolumetricWindow>&& window)
-    : hydra::ActiveWindowModule(config, output_queue, std::move(window)),
+    : hydra::ActiveWindowModule(config, labelspace, output_queue, std::move(window)),
       config(config::checkValid(config)),
-      processors_(config.processors),
+      processors_(config.processors, labelspace),
       tracking_integrator_(config.tracking_integrator, map_window_.get()),
       mesh_integrator_(config.mesh_integrator),
       extraction_worker_(config.extraction_worker, config.object_extractor.create()),

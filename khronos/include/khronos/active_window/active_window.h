@@ -70,7 +70,7 @@ struct SensorProcessor {
     config::VirtualConfig<Tracker> tracker;
   } const config;
 
-  explicit SensorProcessor(const Config& config);
+  explicit SensorProcessor(const Config& config, const hydra::Labelspace& labelspace);
 
   hydra::ProjectiveIntegrator integrator;
   std::unique_ptr<MotionDetector> motion_detector;
@@ -116,6 +116,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
 
   // Construction.
   ActiveWindow(const Config& config,
+               const hydra::Labelspace& labelspace,
                const OutputQueue::Ptr& output_queue,
                std::unique_ptr<hydra::VolumetricWindow>&& window);
   virtual ~ActiveWindow() = default;

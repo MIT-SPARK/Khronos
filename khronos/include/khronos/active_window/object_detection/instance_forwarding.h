@@ -39,12 +39,12 @@
 
 #include <memory>
 
-#include <config_utilities/config_utilities.h>
 #include <config_utilities/virtual_config.h>
-#include <hydra/common/global_info.h>
+#include <hydra/common/labelspace.h>
 #include <hydra/openset/embedding_distances.h>
 #include <hydra/openset/embedding_group.h>
 #include <hydra/reconstruction/volumetric_map.h>
+#include <hydra/utils/logging.h>
 #include <spatial_hash/neighbor_utils.h>
 
 #include "khronos/active_window/data/frame_data.h"
@@ -62,12 +62,11 @@ class InstanceFilter {
 class CategoryFilter : public InstanceFilter {
  public:
   struct Config {
-    Config();
     //! Invalid labels
     std::vector<int32_t> invalid;
   } const config;
 
-  explicit CategoryFilter(const Config& config);
+  explicit CategoryFilter(const Config& config, const hydra::Labelspace* labelspace = nullptr);
   bool valid(const FrameData& data, int32_t id, const Pixels& pixels) const override;
 
  private:
@@ -87,7 +86,8 @@ class OpenVocabBackgroundFilter : public InstanceFilter {
     config::VirtualConfig<hydra::EmbeddingDistance> metric{hydra::CosineDistance::Config()};
   } const config;
 
-  explicit OpenVocabBackgroundFilter(const Config& config);
+  explicit OpenVocabBackgroundFilter(const Config& config,
+                                     const hydra::Labelspace* labelspace = nullptr);
   bool valid(const FrameData& data, int32_t id, const Pixels& pixels) const override;
 
  private:
@@ -97,14 +97,12 @@ class OpenVocabBackgroundFilter : public InstanceFilter {
 
 void declare_config(OpenVocabBackgroundFilter::Config& config);
 
-/**
- * @brief Proxy object detector that forwards already detected object instances.
- */
+//! Proxy object detector that forwards already detected object instances.
 class InstanceForwarding : public ObjectDetector {
  public:
-  // Config.
-  struct Config {
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+  struct Config : hydra::VerbosityConfig {
+    Config();
+
     //! Maximum depth values to consider for object extraction in meters. Use 0 for infinity.
     float max_range = 0.f;
     //! Minimum depth values to consider for object extraction in meters. Use 0 to disable.
@@ -132,7 +130,7 @@ class InstanceForwarding : public ObjectDetector {
   } const config;
 
   // Construction.
-  explicit InstanceForwarding(const Config& config);
+  explicit InstanceForwarding(const Config& config, const hydra::Labelspace* labelspace = nullptr);
   virtual ~InstanceForwarding() = default;
 
   // Inputs.

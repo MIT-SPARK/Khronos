@@ -41,17 +41,6 @@
 namespace khronos {
 namespace {
 
-struct ConfigGuard {
-  ConfigGuard(bool init = true) {
-    if (init) {
-      hydra::PipelineConfig config;
-      hydra::GlobalInfo::init(config);
-    }
-  }
-
-  ~ConfigGuard() { hydra::GlobalInfo::instance().reset(); }
-};
-
 Eigen::VectorXf getOneHot(size_t index, size_t dims = 10) {
   Eigen::VectorXf vec = Eigen::VectorXf::Zero(dims);
   vec(index) = 1.0f;
@@ -67,8 +56,6 @@ void PrintTo(const SemanticClusterInfo& info, std::ostream* os) {
 }
 
 TEST(InstanceForwarding, CategoryFilterCorrect) {
-  ConfigGuard guard;
-
   CategoryFilter::Config config;
   config.invalid = {1, 2, 3};
   CategoryFilter filter(config);
@@ -108,8 +95,6 @@ TEST(InstanceForwarding, CategoryFilterCorrect) {
 }
 
 TEST(InstanceForwarding, OpenVocabFilterCorrect) {
-  ConfigGuard guard;
-
   hydra::EmbeddingGroup group;
   group.embeddings = {getOneHot(0), getOneHot(1), getOneHot(2)};
   OpenVocabBackgroundFilter::Config config;
@@ -319,8 +304,6 @@ TEST(InstanceForwarding, OpenSetFeatures) {
 }
 
 TEST(InstanceForwarding, FilteringCorrect) {
-  ConfigGuard guard;
-
   InstanceForwarding::Config config;
   config.zero_is_unlabeled = false;
   config.min_range = 0.5f;
@@ -370,8 +353,6 @@ TEST(InstanceForwarding, FilteringCorrect) {
 }
 
 TEST(InstanceForwarding, OutlierFilterDropsSpatialOutliers) {
-  ConfigGuard guard;
-
   InstanceForwarding::Config config;
   config.zero_is_unlabeled = true;
   config.outlier_filter_enabled = true;
