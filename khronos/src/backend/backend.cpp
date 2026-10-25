@@ -105,8 +105,7 @@ void Backend::spin() {
   should_shutdown_ = false;
   bool should_shutdown = false;
   while (!should_shutdown) {
-    auto& queue = hydra::PipelineQueues::instance().backend_queue;
-    bool has_data = queue.poll();
+    bool has_data = queue_->poll();
     if (hydra::GlobalInfo::instance().force_shutdown() || !has_data) {
       // copy over shutdown request
       should_shutdown = should_shutdown_;
@@ -116,7 +115,8 @@ void Backend::spin() {
       continue;
     }
 
-    spinCallback(*queue.pop());
+    const auto msg = queue_->pop();
+    spinCallback(*msg);
   }
 }
 
