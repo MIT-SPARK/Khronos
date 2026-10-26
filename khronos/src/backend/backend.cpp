@@ -45,7 +45,6 @@
 #include <glog/logging.h>
 #include <hydra/backend/mst_factors.h>
 #include <hydra/common/global_info.h>
-#include <hydra/common/pipeline_queues.h>
 #include <hydra/utils/pgmo_mesh_traits.h>
 #include <kimera_pgmo/utils/common_functions.h>
 #include <kimera_pgmo/utils/mesh_io.h>
