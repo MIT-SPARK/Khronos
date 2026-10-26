@@ -37,13 +37,11 @@
 
 #include "khronos_ros/khronos_pipeline.h"
 
-#include <filesystem>
 #include <memory>
 
 #include <config_utilities/config_utilities.h>
 #include <config_utilities/parsing/context.h>
 #include <hydra/common/global_info.h>
-#include <hydra/common/pipeline_queues.h>
 #include <hydra_ros/backend/ros_backend_publisher.h>
 #include <hydra_ros/frontend/ros_frontend_publisher.h>
 #include <khronos/active_window/active_window.h>
