@@ -84,7 +84,7 @@ void ActiveWindowChangeDetectorPublisher::call(
     const DynamicSceneGraph::Ptr& /* dsg */,
     const std::vector<RemovedObject>& removed_objects,
     const std::vector<AddedObject>& newly_added_objects,
-    const Eigen::Isometry3d& current_T_prior,
+    const Eigen::Isometry3d& /* current_T_prior */,
     const ActiveWindowChangeDetector::ChangeDetectionStatus& status) const {
   // Stopped: stay silent so the base station keeps the last changes. A reset always publishes
   // (empty while stopped) so the base station clears this robot.
@@ -119,12 +119,10 @@ void ActiveWindowChangeDetectorPublisher::call(
     msg.removed_objects.push_back(makeRemovedInfo(obj));
   }
 
-  // Object bounding boxes / centroids are stored in the current (odom) frame; transform
-  // them into the prior/report frame before publishing, mirroring the visualizer.
-  const Eigen::Isometry3d prior_T_current = current_T_prior.inverse();
+  // Added objects are reported with their prior-frame bounding box (placed by the detector).
   msg.added_objects.reserve(newly_added_objects.size());
   for (const auto& obj : newly_added_objects) {
-    msg.added_objects.push_back(makeAddedInfo(obj, prior_T_current));
+    msg.added_objects.push_back(makeAddedInfo(obj));
   }
 
   changes_pub_->publish(msg);
@@ -144,17 +142,14 @@ ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeRemovedInfo(
   return info;
 }
 
-ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeAddedInfo(
-    const AddedObject& obj,
-    const Eigen::Isometry3d& prior_T_current) const {
+ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeAddedInfo(const AddedObject& obj) const {
   ChangedObjectInfo info;
   info.id = static_cast<int64_t>(obj.id);
   info.stamp = static_cast<builtin_interfaces::msg::Time>(
       rclcpp::Time(static_cast<int64_t>(obj.first_seen)));
 
-  BoundingBox bbox = obj.bounding_box;
+  const BoundingBox& bbox = obj.prior_bounding_box;
   if (bbox.isValid()) {
-    bbox.transform(prior_T_current);
     info.centroid.x = bbox.world_P_center.x();
     info.centroid.y = bbox.world_P_center.y();
     info.centroid.z = bbox.world_P_center.z();

@@ -77,6 +77,7 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
              "added_detection_method",
              std::vector<std::string>{"graph", "mesh"});
   field(config.added_mesh_collision_radius, "added_mesh_collision_radius");
+  field(config.global_added_object_deform, "global_added_object_deform");
   field<Path::Absolute>(config.prior_map_path, "prior_map_path");
   field(config.awcd_sinks, "awcd_sinks");
   field(config.transformation_getter, "transformation_getter");
@@ -137,6 +138,14 @@ void ActiveWindowChangeDetector::ChangeFilter::takeOver(const ChangeFilter& abso
     first_changed_ns = absorbed.first_changed_ns;
   }
   is_changed = is_changed || absorbed.is_changed;
+}
+
+void ActiveWindowChangeDetector::AddedObject::updatePriorBoundingBox(
+    const Eigen::Isometry3d& prior_T_current) {
+  prior_bounding_box = bounding_box;
+  if (prior_bounding_box.isValid()) {
+    prior_bounding_box.transform(prior_T_current);
+  }
 }
 
 void ActiveWindowChangeDetector::addKhronosSink(const ActiveWindowCDSink::Ptr& sink) {
@@ -562,7 +571,9 @@ void ActiveWindowChangeDetector::updateAddedFilter(
     }
   }
 
-  // 2. EMA-update and snapshot each measured track.
+  // 2. EMA-update and snapshot each measured track. Measured tracks are in the active window, so
+  // the current transform is the local one to place them in the prior frame.
+  const Eigen::Isometry3d prior_T_current = current_T_prior_.inverse();
   std::unordered_map<int, const Track*> track_lookup;
   track_lookup.reserve(tracks.size());
   for (const Track& t : tracks) {
@@ -583,6 +594,7 @@ void ActiveWindowChangeDetector::updateAddedFilter(
     object.first_seen = track.first_seen;
     object.last_seen = track.last_seen;
     object.bounding_box = track.accumulated_bounding_box;
+    object.updatePriorBoundingBox(prior_T_current);
     object.semantics = track.semantics;
     object.confidence = track.confidence;
 
@@ -591,9 +603,13 @@ void ActiveWindowChangeDetector::updateAddedFilter(
             << " frames=" << object.filter.num_frames_observed;
   }
 
-  // 3. Gate & prune.
+  // 3. Gate & prune. Unmeasured entries keep the prior pose of their last measurement unless
+  // global_added_object_deform re-projects them with the current transform.
   size_t num_added = 0;
   for (auto it = added_candidates_.begin(); it != added_candidates_.end();) {
+    if (config.global_added_object_deform) {
+      it->second.updatePriorBoundingBox(prior_T_current);
+    }
     const auto& object = it->second;
     auto& filter = it->second.filter;
     filter.updateGate(config.added_probability_threshold, config.added_min_frames_observed, stamp);

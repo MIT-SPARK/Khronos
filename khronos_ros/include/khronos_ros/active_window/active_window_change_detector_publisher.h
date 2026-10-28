@@ -44,9 +44,8 @@
 #include <hydra/common/global_info.h>
 #include <hydra/utils/logging.h>
 #include <ianvs/node_handle.h>
-#include <spark_dsg/dynamic_scene_graph.h>
-
 #include <khronos_msgs/msg/awcd_changes.hpp>
+#include <spark_dsg/dynamic_scene_graph.h>
 
 #include "khronos/active_window/change_detection/active_window_change_detector.h"
 #include "khronos/active_window/data/track.h"
@@ -96,10 +95,10 @@ class ActiveWindowChangeDetectorPublisher : public ActiveWindowChangeDetector::A
   khronos_msgs::msg::ChangedObjectInfo makeRemovedInfo(
       const ActiveWindowChangeDetector::RemovedObject& obj) const;
 
-  //! Fills in a ChangedObjectInfo entry (full attributes) for a newly-added (possibly merged) object.
+  //! Fills in a ChangedObjectInfo entry (full attributes) for a newly-added (possibly merged)
+  //! object.
   khronos_msgs::msg::ChangedObjectInfo makeAddedInfo(
-      const ActiveWindowChangeDetector::AddedObject& obj,
-      const Eigen::Isometry3d& prior_T_current) const;
+      const ActiveWindowChangeDetector::AddedObject& obj) const;
 
   // ROS
   ianvs::NodeHandle nh_;

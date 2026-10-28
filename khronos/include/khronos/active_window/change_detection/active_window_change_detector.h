@@ -112,9 +112,15 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     TimeStamp last_seen = 0;
     //! Track::accumulated_bounding_box, in the current map frame.
     BoundingBox bounding_box;
+    //! bounding_box in the prior map frame: transformed with current_T_prior at the track's last
+    //! measurement, or every frame if global_added_object_deform.
+    BoundingBox prior_bounding_box;
     std::optional<SemanticClusterInfo> semantics;
     //! Track::confidence: tracking quality, i.e. how well-observed the object is.
     float confidence = 0.0f;
+
+    //! Sets prior_bounding_box to bounding_box placed in the prior frame by prior_T_current.
+    void updatePriorBoundingBox(const Eigen::Isometry3d& prior_T_current);
   };
 
   /**
@@ -260,6 +266,12 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! kMesh: a track voxel collides if a prior mesh voxel lies within this many voxels
     //! (Chebyshev distance). 0 = same voxel only.
     int added_mesh_collision_radius = 0;
+
+    //! false: an added object's prior-frame pose is fixed at its last measurement (last frame in
+    //! the active window), where the local transform is trustworthy. true: re-project every
+    //! object with the current transform each frame, so loop closures also move objects seen
+    //! long ago.
+    bool global_added_object_deform = false;
 
     //! Sinks for the change detector output.
     std::vector<ActiveWindowCDSink::Factory> awcd_sinks;
@@ -422,7 +434,8 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
 
   /**
    * @brief Newly-added filter. Takes over the state of absorbed tracks, EMA-updates and snapshots
-   * each measured track, and re-evaluates the added gate of every entry. Entries that never passed
+   * each measured track (including its prior-frame bounding box; see global_added_object_deform for
+   * unmeasured entries), and re-evaluates the added gate of every entry. Entries that never passed
    * the gate and were not measured for added_prune_after_frames frames are pruned.
    * @param stamp Sensor frame time (ns) of this call, used to latch first_changed_ns.
    */

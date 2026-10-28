@@ -137,7 +137,7 @@ void ActiveWindowChangeDetectorVisualizer::call(
 
   // Visualize removed objects
   visualizeChangedObjects(dsg, removed_objects);
-  visualizeAddedObjects(newly_added_objects, current_T_prior);
+  visualizeAddedObjects(newly_added_objects);
   if (config.draw_status) {
     visualizeRemovedStatus(dsg, status);
     visualizeAddedStatus(status, current_T_prior);
@@ -222,15 +222,12 @@ void ActiveWindowChangeDetectorVisualizer::visualizeChangedObjects(
 }
 
 void ActiveWindowChangeDetectorVisualizer::visualizeAddedObjects(
-    const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects,
-    const Eigen::Isometry3d& current_T_prior) const {
+    const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects) const {
   if (object_bbox_pub_->get_subscription_count() == 0u) {
     return;
   }
 
-  // Transform object bounding boxes (in current/odom frame) into map frame for RViz.
-  const Eigen::Isometry3d prior_T_current = current_T_prior.inverse();
-
+  // Added objects are drawn with their prior-frame bounding box (placed by the detector).
   MarkerArray new_markers;
   new_markers.markers.reserve(newly_added_objects.size());
 
@@ -240,11 +237,10 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedObjects(
   for (const auto& obj : newly_added_objects) {
     MLOG(2) << "[ActiveWindowChangeDetectorVisualizer] Visualizing newly added object with id "
             << obj.id << " (" << obj.absorbed_track_ids.size() + 1 << " merged track(s))";
-    BoundingBox bbox = obj.bounding_box;
+    const BoundingBox& bbox = obj.prior_bounding_box;
     if (!bbox.isValid()) {
       continue;
     }
-    bbox.transform(prior_T_current);
     auto& marker = new_markers.markers.emplace_back(
         setBoundingBox(bbox, Color(0, 255, 0, 255), header, config.bounding_box_line_width));
     // Use the track id (stable across tracker merges: the earliest track survives) as marker id.
