@@ -39,6 +39,7 @@
 
 #include <atomic>
 #include <memory>
+#include <string>
 
 #include <config_utilities/config_utilities.h>
 
@@ -55,25 +56,33 @@ class ChangeDetectionController {
 
   struct Config {};
 
+  //! kReset: stopped with no history (since a reset or startup); kPaused: stopped, history kept.
+  enum class State { kRunning, kPaused, kReset };
+  static std::string toString(State state);
+
   explicit ChangeDetectionController(const Config& config);
   virtual ~ChangeDetectionController() = default;
 
   //! Enable or disable detection. Returns false if it already was in that state.
   bool setEnabled(bool enabled);
   bool isEnabled() const { return enabled_; }
+  State state() const;
 
   //! Request a history reset, applied by the detector at its next frame.
-  void requestReset() { reset_requested_ = true; }
+  void requestReset();
   //! Returns whether a reset was requested and clears the request.
   bool consumeReset() { return reset_requested_.exchange(false); }
 
  protected:
-  //! Called after every setEnabled, e.g. to publish the state.
-  virtual void onStateChanged(bool /* enabled */) {}
+  //! Called after every setEnabled and requestReset, e.g. to publish the state.
+  virtual void onStateChanged(State /* state */) {}
 
  private:
   std::atomic<bool> enabled_{true};
   std::atomic<bool> reset_requested_{false};
+  // No detection ran since the last reset (or startup): cleared on start, set on a reset while
+  // stopped. A reset while running is followed by new detections, so it doesn't set it.
+  std::atomic<bool> history_empty_{true};
 };
 
 void declare_config(ChangeDetectionController::Config& config);

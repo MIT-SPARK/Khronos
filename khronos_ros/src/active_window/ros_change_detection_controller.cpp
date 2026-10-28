@@ -60,8 +60,8 @@ RosChangeDetectionController::RosChangeDetectionController(const Config& config)
     : ChangeDetectionController(ChangeDetectionController::Config{}),
       config(config::checkValid(config)),
       nh_(ianvs::NodeHandle::this_node(config.ns)) {
-  state_pub_ = nh_.create_publisher<std_msgs::msg::Bool>(
-      "enabled", rclcpp::QoS(1).transient_local().reliable());
+  state_pub_ = nh_.create_publisher<std_msgs::msg::String>(
+      "state", rclcpp::QoS(1).transient_local().reliable());
 
   // Requests only flip atomics; the detector applies them at its next frame.
   start_srv_ = nh_.create_service<Trigger>(
@@ -85,9 +85,9 @@ RosChangeDetectionController::RosChangeDetectionController(const Config& config)
       });
 }
 
-void RosChangeDetectionController::onStateChanged(bool enabled) {
-  std_msgs::msg::Bool msg;
-  msg.data = enabled;
+void RosChangeDetectionController::onStateChanged(State state) {
+  std_msgs::msg::String msg;
+  msg.data = toString(state);
   state_pub_->publish(msg);
 }
 

@@ -66,7 +66,6 @@ void declare_config(ActiveWindowChangeDetectorPublisher::Config& config) {
   field(config.global_frame_name, "global_frame_name");
   field(config.robot_name, "robot_name");
   field(config.topic, "topic");
-  field(config.queue_size, "queue_size");
 }
 
 ActiveWindowChangeDetectorPublisher::ActiveWindowChangeDetectorPublisher(
@@ -75,8 +74,10 @@ ActiveWindowChangeDetectorPublisher::ActiveWindowChangeDetectorPublisher(
     : config(config::checkValid(config)),
       nh_(nh ? *nh / "change_detector_publisher"
              : ianvs::NodeHandle::this_node("change_detector_publisher")) {
-  changes_pub_ =
-      nh_.create_publisher<khronos_msgs::msg::AwcdChanges>(config.topic, config.queue_size);
+  // Latched: a base station that cleared this robot or lost the link gets the last message again
+  // once the robot is rediscovered, even though the robot only publishes on change.
+  changes_pub_ = nh_.create_publisher<khronos_msgs::msg::AwcdChanges>(
+      config.topic, rclcpp::QoS(1).transient_local().reliable());
   MLOG(1) << "[ActiveWindowChangeDetectorPublisher] Initialized.";
 }
 

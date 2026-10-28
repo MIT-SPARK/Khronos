@@ -41,7 +41,7 @@
 
 #include <config_utilities/config_utilities.h>
 #include <ianvs/node_handle.h>
-#include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
 #include "khronos/active_window/change_detection/change_detection_controller.h"
@@ -50,7 +50,8 @@ namespace khronos {
 
 /**
  * @brief Change detection run control via std_srvs/Trigger services <ns>/{start,stop,reset} and a
- * latched std_msgs/Bool state topic <ns>/enabled, relative to the node namespace.
+ * latched std_msgs/String state topic <ns>/state ("running", "paused" or "reset"), relative to the
+ * node namespace.
  */
 class RosChangeDetectionController : public ChangeDetectionController {
  public:
@@ -62,12 +63,12 @@ class RosChangeDetectionController : public ChangeDetectionController {
   explicit RosChangeDetectionController(const Config& config);
 
  protected:
-  void onStateChanged(bool enabled) override;
+  void onStateChanged(State state) override;
 
  private:
   using Trigger = std_srvs::srv::Trigger;
   ianvs::NodeHandle nh_;
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr state_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr state_pub_;
   rclcpp::Service<Trigger>::SharedPtr start_srv_;
   rclcpp::Service<Trigger>::SharedPtr stop_srv_;
   rclcpp::Service<Trigger>::SharedPtr reset_srv_;

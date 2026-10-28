@@ -40,6 +40,8 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <string>
+#include <vector>
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/global_info.h>
@@ -74,9 +76,6 @@ class ActiveWindowChangeDetectorPublisher : public ActiveWindowChangeDetector::A
     //! topic so all robots' change detectors publish to the same topic; the base station
     //! distinguishes robots via AwcdChanges::robot_name.
     std::string topic = "/awcd_changes";
-
-    //! Publisher queue size.
-    int queue_size = 10;
   } const config;
 
   explicit ActiveWindowChangeDetectorPublisher(const Config& config,

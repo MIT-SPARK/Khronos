@@ -54,10 +54,40 @@ void declare_config(ChangeDetectionController::Config&) {
 
 ChangeDetectionController::ChangeDetectionController(const Config&) {}
 
+std::string ChangeDetectionController::toString(State state) {
+  switch (state) {
+    case State::kRunning:
+      return "running";
+    case State::kPaused:
+      return "paused";
+    case State::kReset:
+      return "reset";
+  }
+  return "unknown";
+}
+
 bool ChangeDetectionController::setEnabled(bool enabled) {
   const bool changed = enabled_.exchange(enabled) != enabled;
-  onStateChanged(enabled);
+  if (enabled) {
+    history_empty_ = false;
+  }
+  onStateChanged(state());
   return changed;
+}
+
+ChangeDetectionController::State ChangeDetectionController::state() const {
+  if (enabled_) {
+    return State::kRunning;
+  }
+  return history_empty_ ? State::kReset : State::kPaused;
+}
+
+void ChangeDetectionController::requestReset() {
+  reset_requested_ = true;
+  if (!enabled_) {
+    history_empty_ = true;
+  }
+  onStateChanged(state());
 }
 
 }  // namespace khronos
