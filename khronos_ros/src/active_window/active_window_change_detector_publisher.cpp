@@ -92,20 +92,21 @@ void ActiveWindowChangeDetectorPublisher::call(
     return;
   }
 
-  // Gate publishing on set-membership change: only publish if the set of removed and/or added
-  // object ids differs from the last message actually published (not just from last frame's
-  // detector output), so an unchanged scene does not keep re-publishing every frame.
+  // Gate publishing on change: only publish if the removed ids, or the added objects' ids or
+  // prior-frame boxes, differ from the last message actually published (not just from last
+  // frame's detector output), so an unchanged scene does not keep re-publishing every frame.
+  // Confidences are not compared: they change every frame.
   std::set<int64_t> cur_removed_ids;
   for (const auto& obj : removed_objects) {
     cur_removed_ids.insert(static_cast<int64_t>(obj.id));
   }
-  std::set<int64_t> cur_added_ids;
+  std::map<int64_t, BoundingBox> cur_added_boxes;
   for (const auto& obj : newly_added_objects) {
-    cur_added_ids.insert(static_cast<int64_t>(obj.id));
+    cur_added_boxes.emplace(static_cast<int64_t>(obj.id), obj.prior_bounding_box);
   }
 
-  if (!status.history_reset && last_removed_ids_.has_value() && last_added_ids_.has_value() &&
-      *last_removed_ids_ == cur_removed_ids && *last_added_ids_ == cur_added_ids) {
+  if (!status.history_reset && last_removed_ids_.has_value() && last_added_boxes_.has_value() &&
+      *last_removed_ids_ == cur_removed_ids && *last_added_boxes_ == cur_added_boxes) {
     return;
   }
 
@@ -127,7 +128,7 @@ void ActiveWindowChangeDetectorPublisher::call(
 
   changes_pub_->publish(msg);
   last_removed_ids_ = std::move(cur_removed_ids);
-  last_added_ids_ = std::move(cur_added_ids);
+  last_added_boxes_ = std::move(cur_added_boxes);
 }
 
 ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeRemovedInfo(

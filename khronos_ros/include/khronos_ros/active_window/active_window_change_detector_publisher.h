@@ -37,6 +37,7 @@
 
 #pragma once
 
+#include <map>
 #include <optional>
 #include <set>
 
@@ -82,8 +83,9 @@ class ActiveWindowChangeDetectorPublisher : public ActiveWindowChangeDetector::A
                                                const ianvs::NodeHandle* nh = nullptr);
   virtual ~ActiveWindowChangeDetectorPublisher() = default;
 
-  // KhronosSink callback - called each frame. Only publishes when the set of removed and/or
-  // added object ids differs from the last published sets (see last_removed_ids_/last_added_ids_).
+  // KhronosSink callback - called each frame. Only publishes when the removed ids or the added
+  // objects' ids / prior-frame boxes differ from the last published ones (see
+  // last_removed_ids_/last_added_boxes_).
   void call(const DynamicSceneGraph::Ptr& dsg,
             const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects,
             const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects,
@@ -104,10 +106,12 @@ class ActiveWindowChangeDetectorPublisher : public ActiveWindowChangeDetector::A
   ianvs::NodeHandle nh_;
   rclcpp::Publisher<khronos_msgs::msg::AwcdChanges>::SharedPtr changes_pub_;
 
-  // Set-membership of the last *published* removed/added ids, used to gate publishing to only
-  // when the reported set of changes actually changed (rather than every frame).
+  // Last *published* removed ids and added id -> prior_bounding_box, used to gate publishing to
+  // only when the reported changes actually changed (rather than every frame). Added boxes are
+  // compared exactly: they are recomputed deterministically, so they only differ when the track
+  // grew or current_T_prior moved.
   mutable std::optional<std::set<int64_t>> last_removed_ids_;
-  mutable std::optional<std::set<int64_t>> last_added_ids_;
+  mutable std::optional<std::map<int64_t, BoundingBox>> last_added_boxes_;
 };
 
 void declare_config(ActiveWindowChangeDetectorPublisher::Config& config);
