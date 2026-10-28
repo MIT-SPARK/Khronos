@@ -92,10 +92,8 @@ void ActiveWindowChangeDetectorPublisher::call(
     return;
   }
 
-  // Gate publishing on change: only publish if the removed ids, or the added objects' ids or
-  // prior-frame boxes, differ from the last message actually published (not just from last
-  // frame's detector output), so an unchanged scene does not keep re-publishing every frame.
-  // Confidences are not compared: they change every frame.
+  // Only publish if the removed ids or the added ids / prior boxes differ from the last published
+  // message. Confidences are not compared: they change every frame.
   std::set<int64_t> cur_removed_ids;
   for (const auto& obj : removed_objects) {
     cur_removed_ids.insert(static_cast<int64_t>(obj.id));

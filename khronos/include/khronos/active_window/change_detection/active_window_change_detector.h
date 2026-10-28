@@ -267,10 +267,8 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! (Chebyshev distance). 0 = same voxel only.
     int added_mesh_collision_radius = 0;
 
-    //! false: an added object's prior-frame pose is fixed at its last measurement (last frame in
-    //! the active window), where the local transform is trustworthy. true: re-project every
-    //! object with the current transform each frame, so loop closures also move objects seen
-    //! long ago.
+    //! false: an added object's prior-frame pose is fixed at its last measurement (local
+    //! transform). true: re-projected with the current transform every frame.
     bool global_added_object_deform = false;
 
     //! Sinks for the change detector output.

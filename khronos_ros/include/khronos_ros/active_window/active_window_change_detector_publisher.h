@@ -106,10 +106,8 @@ class ActiveWindowChangeDetectorPublisher : public ActiveWindowChangeDetector::A
   ianvs::NodeHandle nh_;
   rclcpp::Publisher<khronos_msgs::msg::AwcdChanges>::SharedPtr changes_pub_;
 
-  // Last *published* removed ids and added id -> prior_bounding_box, used to gate publishing to
-  // only when the reported changes actually changed (rather than every frame). Added boxes are
-  // compared exactly: they are recomputed deterministically, so they only differ when the track
-  // grew or current_T_prior moved.
+  // Last *published* removed ids and added id -> prior_bounding_box. Boxes are compared exactly:
+  // they are deterministic, so they only differ when the track grew or current_T_prior moved.
   mutable std::optional<std::set<int64_t>> last_removed_ids_;
   mutable std::optional<std::map<int64_t, BoundingBox>> last_added_boxes_;
 };
