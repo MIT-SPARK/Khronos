@@ -46,6 +46,7 @@
 #include <hydra/common/global_info.h>
 #include <hydra/input/sensor_map.h>
 #include <hydra/reconstruction/mesh_integrator.h>
+#include <hydra/utils/image_store.h>
 
 #include "khronos/active_window/integration/object_integrator.h"
 #include "khronos/active_window/object_extraction/object_extractor.h"
@@ -99,6 +100,18 @@ class MeshObjectExtractor : public ObjectExtractor {
     // Bounding box type used for extracted (persistent) static objects.
     enum class BBoxType { kAABB, kRAABB } bbox_type = BBoxType::kAABB;
 
+    // Score that ranks the observations of an object: the volume of its 3D bounding box or
+    // its number of segmented pixels. `all` scores by pixels and keeps every image. The
+    // observations of extracted objects are recorded in the image store of the pipeline if
+    // one is configured (see hydra::GlobalInfo::imageStore). Every observation is recorded;
+    // the images of the best max_images_per_object observations of the store are kept.
+    // Hydra's graph updater records which node each track becomes.
+    enum class ImageSelection {
+      kLargestBBox,
+      kSegmentSize,
+      kAll
+    } image_selection_criteria = ImageSelection::kLargestBBox;
+
     hydra::SensorMap<ObjectIntegrator>::Config projective_integrator;
     hydra::MeshIntegratorConfig mesh_integrator;
   } const config;
@@ -133,6 +146,12 @@ class MeshObjectExtractor : public ObjectExtractor {
   bool trackIsValid(const Track& track) const;
 
   /**
+   * @brief Record the observations of an extracted object in the image store.
+   */
+  void saveObjectImages(const Track& track,
+                        const std::vector<std::pair<FrameData::Ptr, int>>& frames) const;
+
+  /**
    * @brief Get a human readable name for the given track for printing.
    */
   static std::string getTrackName(const Track& track);
@@ -162,6 +181,7 @@ class MeshObjectExtractor : public ObjectExtractor {
 
  private:
   hydra::MeshIntegrator mesh_integrator_;
+  hydra::ImageStore::Ptr image_store_;
 
   inline static const auto registration_ =
       config::RegistrationWithConfig<ObjectExtractor,
