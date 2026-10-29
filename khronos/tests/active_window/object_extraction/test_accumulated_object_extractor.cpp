@@ -10,7 +10,11 @@
 #include <khronos/active_window/object_extraction/accumulated_object_extractor.h>
 #include <opencv2/core.hpp>
 #include <spatial_hash/grid.h>
+
+#ifdef HYDRA_ENABLE_IMAGE_STORE
+#include <hydra/utils/image_store.h>
 #include <sqlite3.h>
+#endif
 
 namespace khronos {
 namespace {
@@ -35,6 +39,7 @@ AccumulatedObjectExtractor makeExtractor(float min_volume = 0.0f, float max_volu
   return AccumulatedObjectExtractor(config);
 }
 
+#ifdef HYDRA_ENABLE_IMAGE_STORE
 std::shared_ptr<hydra::Camera> makeCamera() {
   hydra::Camera::Config config;
   config.min_range = 0.01;
@@ -95,9 +100,11 @@ std::vector<std::pair<int64_t, int>> queryObservations(const std::filesystem::pa
   sqlite3_close(db);
   return rows;
 }
+#endif
 
 }  // namespace
 
+#ifdef HYDRA_ENABLE_IMAGE_STORE
 TEST(AccumulatedObjectExtractor, RecordsObservationsInImageStore) {
   const auto store = std::filesystem::temp_directory_path() /
                      ("khronos_accumulated_store_" + std::to_string(::getpid()));
@@ -146,6 +153,7 @@ TEST(AccumulatedObjectExtractor, RecordsObservationsInImageStore) {
   EXPECT_TRUE(queryObservations(store, 4).empty());
   std::filesystem::remove_all(store);
 }
+#endif
 
 TEST(AccumulatedObjectExtractor, CopiesConfirmedVoxelsAsPoints) {
   const GlobalIndexSet voxels{GlobalIndex(0, 0, 0), GlobalIndex(1, 0, 0), GlobalIndex(1, 1, 0)};

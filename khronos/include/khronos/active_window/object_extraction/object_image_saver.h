@@ -37,14 +37,17 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include <hydra/utils/image_store.h>
-
 #include "khronos/active_window/data/frame_data_buffer.h"
 #include "khronos/active_window/data/track.h"
+
+namespace hydra {
+class ImageStore;
+}  // namespace hydra
 
 namespace khronos {
 
@@ -93,7 +96,7 @@ class ObjectImageSaver {
 
   const Selection selection_;
   const std::string owner_;
-  hydra::ImageStore::Ptr image_store_;
+  std::shared_ptr<hydra::ImageStore> image_store_;
 };
 
 }  // namespace khronos

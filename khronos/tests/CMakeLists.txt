@@ -1,5 +1,4 @@
 find_package(GTest REQUIRED)
-find_package(SQLite3 REQUIRED)
 
 include(GoogleTest)
 enable_testing()
@@ -12,6 +11,10 @@ add_executable(
   active_window/object_extraction/test_accumulated_object_extractor.cpp
   active_window/object_extraction/test_object_worker_pool.cpp
   active_window/object_detection/test_instance_forwarding.cpp)
-target_link_libraries(test_${PROJECT_NAME} ${PROJECT_NAME} GTest::gtest_main
-                      SQLite::SQLite3)
+target_link_libraries(test_${PROJECT_NAME} ${PROJECT_NAME} GTest::gtest_main)
+if(hydra_IMAGE_STORE_ENABLED)
+  find_package(SQLite3 REQUIRED)
+  target_compile_definitions(test_${PROJECT_NAME} PRIVATE HYDRA_ENABLE_IMAGE_STORE)
+  target_link_libraries(test_${PROJECT_NAME} SQLite::SQLite3)
+endif()
 gtest_add_tests(TARGET test_${PROJECT_NAME})

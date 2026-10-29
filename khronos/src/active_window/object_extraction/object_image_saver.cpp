@@ -43,6 +43,7 @@
 #include <glog/logging.h>
 #include <hydra/common/global_info.h>
 #include <hydra/input/camera.h>
+#include <hydra/utils/image_store.h>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
