@@ -1,7 +1,16 @@
+#include <unistd.h>
+
+#include <filesystem>
+
 #include <config_utilities/parsing/yaml.h>
 #include <gtest/gtest.h>
+#include <hydra/common/global_info.h>
+#include <hydra/input/camera.h>
+#include <hydra/input/sensor_extrinsics.h>
 #include <khronos/active_window/object_extraction/accumulated_object_extractor.h>
+#include <opencv2/core.hpp>
 #include <spatial_hash/grid.h>
+#include <sqlite3.h>
 
 namespace khronos {
 namespace {
@@ -26,7 +35,117 @@ AccumulatedObjectExtractor makeExtractor(float min_volume = 0.0f, float max_volu
   return AccumulatedObjectExtractor(config);
 }
 
+std::shared_ptr<hydra::Camera> makeCamera() {
+  hydra::Camera::Config config;
+  config.min_range = 0.01;
+  config.max_range = 100.0;
+  config.fx = 10.0f;
+  config.fy = 10.0f;
+  config.cx = 2.0f;
+  config.cy = 2.0f;
+  config.width = 4;
+  config.height = 4;
+  config.extrinsics = hydra::IdentitySensorExtrinsics::Config{};
+  return std::make_shared<hydra::Camera>(config, "test_camera");
+}
+
+// Frame at the stamp in which the semantic cluster `cluster_id` covers `num_pixels` pixels.
+FrameData::Ptr makeFrame(const std::shared_ptr<hydra::Camera>& camera,
+                         TimeStamp stamp,
+                         int cluster_id,
+                         int num_pixels) {
+  hydra::InputData input(camera);
+  input.timestamp_ns = stamp;
+  input.color_image = cv::Mat(4, 4, CV_8UC3, cv::Scalar(10, 20, 30));
+  input.depth_image = cv::Mat(4, 4, CV_32FC1, cv::Scalar(1.5f));
+  auto frame = std::make_shared<FrameData>(input);
+  MeasurementCluster cluster;
+  cluster.id = cluster_id;
+  for (int i = 0; i < num_pixels; ++i) {
+    cluster.pixels.emplace_back(i % 4, i / 4);
+  }
+  cluster.bounding_box = BoundingBox(Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
+  frame->semantic_clusters.push_back(cluster);
+  return frame;
+}
+
+// Rows of (timestamp_ns, kept) recorded for the track.
+std::vector<std::pair<int64_t, int>> queryObservations(const std::filesystem::path& store,
+                                                       uint64_t track_id) {
+  sqlite3* db = nullptr;
+  std::vector<std::pair<int64_t, int>> rows;
+  if (sqlite3_open_v2((store / "store.sqlite").c_str(), &db, SQLITE_OPEN_READONLY, nullptr) !=
+      SQLITE_OK) {
+    sqlite3_close(db);
+    return rows;
+  }
+
+  sqlite3_stmt* stmt = nullptr;
+  sqlite3_prepare_v2(db,
+                     "SELECT timestamp_ns, kept FROM observations WHERE track_id = ? "
+                     "ORDER BY timestamp_ns",
+                     -1,
+                     &stmt,
+                     nullptr);
+  sqlite3_bind_int64(stmt, 1, static_cast<sqlite3_int64>(track_id));
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    rows.emplace_back(sqlite3_column_int64(stmt, 0), sqlite3_column_int(stmt, 1));
+  }
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return rows;
+}
+
 }  // namespace
+
+TEST(AccumulatedObjectExtractor, RecordsObservationsInImageStore) {
+  const auto store = std::filesystem::temp_directory_path() /
+                     ("khronos_accumulated_store_" + std::to_string(::getpid()));
+  std::filesystem::remove_all(store);
+
+  const auto camera = makeCamera();
+  FrameDataBuffer frame_data(FrameDataBuffer::Config{});
+  frame_data.storeData(makeFrame(camera, 10, 4, 3));
+  frame_data.storeData(makeFrame(camera, 20, 4, 9));
+
+  Track track = makeStaticTrack({GlobalIndex(0, 0, 0), GlobalIndex(1, 0, 0)});
+  track.observations.emplace_back(10, 4, -1, "test_camera");
+  track.observations.emplace_back(20, 4, -1, "test_camera");
+  // Observations without a semantic cluster or a buffered frame are skipped.
+  track.observations.emplace_back(15, -1, -1, "test_camera");
+  track.observations.emplace_back(30, 4, -1, "test_camera");
+
+  {
+    // The extractor records observations in the image store of the pipeline.
+    hydra::PipelineConfig pipeline_config;
+    pipeline_config.image_store.path = store;
+    hydra::GlobalInfo::init(pipeline_config);
+
+    AccumulatedObjectExtractor::Config config;
+    config.min_object_volume = 0.0f;
+    config.image_selection_criteria =
+        AccumulatedObjectExtractor::Config::ImageSelection::kSegmentSize;
+    AccumulatedObjectExtractor extractor(config);
+    ASSERT_TRUE(extractor.extractObject(track, frame_data));
+
+    // Dynamic objects are not recorded.
+    Track dynamic = track;
+    dynamic.id = 4;
+    dynamic.is_dynamic = true;
+    ASSERT_TRUE(extractor.extractObject(dynamic, frame_data));
+    hydra::ImageStore::open(store)->flush();
+  }
+
+  hydra::GlobalInfo::reset();
+
+  // Both observations are recorded, only the one with the larger segment keeps its images.
+  const auto rows = queryObservations(store, track.id);
+  ASSERT_EQ(rows.size(), 2u);
+  EXPECT_EQ(rows[0], std::make_pair(int64_t(10), 0));
+  EXPECT_EQ(rows[1], std::make_pair(int64_t(20), 1));
+  EXPECT_TRUE(queryObservations(store, 4).empty());
+  std::filesystem::remove_all(store);
+}
 
 TEST(AccumulatedObjectExtractor, CopiesConfirmedVoxelsAsPoints) {
   const GlobalIndexSet voxels{GlobalIndex(0, 0, 0), GlobalIndex(1, 0, 0), GlobalIndex(1, 1, 0)};
@@ -38,8 +157,8 @@ TEST(AccumulatedObjectExtractor, CopiesConfirmedVoxelsAsPoints) {
   const auto object = extractor.extractObject(track, FrameDataBuffer({}));
   ASSERT_TRUE(object);
   EXPECT_TRUE(object->bounding_box.dimensions.isApprox(track.accumulated_bounding_box.dimensions));
-  EXPECT_TRUE(object->bounding_box.world_P_center.isApprox(
-      track.accumulated_bounding_box.world_P_center));
+  EXPECT_TRUE(
+      object->bounding_box.world_P_center.isApprox(track.accumulated_bounding_box.world_P_center));
   EXPECT_TRUE(object->position.isApprox(object->bounding_box.world_P_center.cast<double>()));
   EXPECT_EQ(object->mesh.numVertices(), voxels.size());
   EXPECT_EQ(object->mesh.numFaces(), 0u);

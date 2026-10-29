@@ -60,6 +60,9 @@ void declare_config(MeshObjectExtractor::Config& config) {
   field(config.object_reconstruction_resolution, "object_reconstruction_resolution");
   field(config.min_reconstruction_resolution, "min_reconstruction_resolution");
   field(config.visualize_classification, "visualize_classification");
+  enum_field(config.image_selection_criteria,
+             "image_selection_criteria",
+             std::vector<std::string>{"largest_bbox", "segment_size", "all"});
   field(config.projective_integrator, "projective_integrator");
   field(config.mesh_integrator, "mesh_integrator");
   enum_field(config.bbox_type, "bbox_type", std::vector<std::string>{"aabb", "raabb"});
@@ -77,7 +80,9 @@ void declare_config(MeshObjectExtractor::Config& config) {
 }
 
 MeshObjectExtractor::MeshObjectExtractor(const Config& config)
-    : config(config), mesh_integrator_(config.mesh_integrator) {}
+    : config(config),
+      mesh_integrator_(config.mesh_integrator),
+      image_saver_(this->config.image_selection_criteria, "MeshObjectExtractor") {}
 
 KhronosObjectAttributes::Ptr MeshObjectExtractor::extractObject(const Track& track,
                                                                 const FrameDataBuffer& frame_data) {
@@ -181,7 +186,7 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
     return nullptr;
   }
 
-  const auto frames = collectSemanticFrames(track, frame_data);
+  const auto frames = ObjectImageSaver::collectSemanticFrames(track, frame_data);
   if (frames.empty()) {
     CLOG(5) << "[MeshObjectExtractor] Dropping " << getTrackName(track)
             << ": no semantic observations.";
@@ -313,25 +318,9 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
   for (Point& point : object->mesh.points) {
     point -= offset;
   }
-  return object;
-}
 
-std::vector<std::pair<FrameData::Ptr, int>> MeshObjectExtractor::collectSemanticFrames(
-    const Track& track,
-    const FrameDataBuffer& frame_data) {
-  std::vector<std::pair<FrameData::Ptr, int>> result;
-  for (const Observation& observation : track.observations) {
-    if (observation.semantic_cluster_id == -1) {
-      // TODO(nathan) this might need to be relaxed
-      continue;
-    }
-    const auto frame = frame_data.getData(observation.stamp, observation.sensor);
-    if (!frame) {
-      continue;
-    }
-    result.emplace_back(frame, observation.semantic_cluster_id);
-  }
-  return result;
+  image_saver_.save(track, frames);
+  return object;
 }
 
 BoundingBox MeshObjectExtractor::computeExtent(

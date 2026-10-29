@@ -49,6 +49,7 @@
 
 #include "khronos/active_window/integration/object_integrator.h"
 #include "khronos/active_window/object_extraction/object_extractor.h"
+#include "khronos/active_window/object_extraction/object_image_saver.h"
 
 namespace khronos {
 
@@ -99,6 +100,14 @@ class MeshObjectExtractor : public ObjectExtractor {
     // Bounding box type used for extracted (persistent) static objects.
     enum class BBoxType { kAABB, kRAABB } bbox_type = BBoxType::kAABB;
 
+    // Score that ranks the observations of an object (see ObjectImageSaver). The
+    // observations of extracted objects are recorded in the image store of the pipeline if
+    // one is configured (see hydra::GlobalInfo::imageStore). Every observation is recorded;
+    // the images of the best max_images_per_object observations of the store are kept.
+    // Hydra's graph updater records which node each track becomes.
+    using ImageSelection = ObjectImageSaver::Selection;
+    ImageSelection image_selection_criteria = ImageSelection::kLargestBBox;
+
     hydra::SensorMap<ObjectIntegrator>::Config projective_integrator;
     hydra::MeshIntegratorConfig mesh_integrator;
   } const config;
@@ -138,16 +147,6 @@ class MeshObjectExtractor : public ObjectExtractor {
   static std::string getTrackName(const Track& track);
 
   /**
-   * @brief Collect all frames that have a semantic measurement for the given track.
-   * @param track The track to collect frames for.
-   * @param frame_data The frame data buffer to collect frames from.
-   * @returns A list of frames and the corresponding semantic cluster ID.
-   */
-  static std::vector<std::pair<FrameData::Ptr, int>> collectSemanticFrames(
-      const Track& track,
-      const FrameDataBuffer& frame_data);
-
-  /**
    * @brief Compute tje maximal spatial extent covered by all frames.
    * @param frames  A list of frames and the corresponding semantic cluster ID to get the extent
    * for.
@@ -162,6 +161,7 @@ class MeshObjectExtractor : public ObjectExtractor {
 
  private:
   hydra::MeshIntegrator mesh_integrator_;
+  ObjectImageSaver image_saver_;
 
   inline static const auto registration_ =
       config::RegistrationWithConfig<ObjectExtractor,
