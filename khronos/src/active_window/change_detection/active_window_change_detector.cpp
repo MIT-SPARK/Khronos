@@ -38,7 +38,6 @@
 #include "khronos/active_window/change_detection/active_window_change_detector.h"
 
 #include <algorithm>
-#include <unordered_set>
 
 #include <config_utilities/types/enum.h>
 #include <config_utilities/types/path.h>
@@ -74,9 +73,16 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.added_probability_threshold, "added_probability_threshold");
   field(config.added_min_frames_observed, "added_min_frames_observed");
   field(config.added_prune_after_frames, "added_prune_after_frames");
+  enum_field(config.added_detection_method,
+             "added_detection_method",
+             std::vector<std::string>{"graph", "mesh"});
+  field(config.added_mesh_collision_radius, "added_mesh_collision_radius");
+  field(config.global_added_object_deform, "global_added_object_deform");
   field<Path::Absolute>(config.prior_map_path, "prior_map_path");
   field(config.awcd_sinks, "awcd_sinks");
   field(config.transformation_getter, "transformation_getter");
+  field(config.start_enabled, "start_enabled");
+  field(config.controller, "controller");
   field(config.enable_icp_refinement, "enable_icp_refinement");
   field(config.icp_crop_radius, "icp_crop_radius");
   field(config.icp_num_threads, "icp_num_threads");
@@ -84,17 +90,18 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   field(config.icp_max_correspondence_distance, "icp_max_correspondence_distance");
   field(config.icp_max_iterations, "icp_max_iterations");
   field(config.icp_min_inliers, "icp_min_inliers");
-  checkInRange(
-      config.removal_min_in_bounds_fraction, 0.0f, 1.0f, "removal_min_in_bounds_fraction");
-  checkInRange(
-      config.removal_min_observed_fraction, 0.0f, 1.0f, "removal_min_observed_fraction");
+  checkInRange(config.removal_min_in_bounds_fraction, 0.0f, 1.0f, "removal_min_in_bounds_fraction");
+  checkInRange(config.removal_min_observed_fraction, 0.0f, 1.0f, "removal_min_observed_fraction");
+  check(config.added_mesh_collision_radius, GE, 0, "added_mesh_collision_radius");
   check<Path::Exists>(config.prior_map_path, "prior_map_path");
 }
 
 ActiveWindowChangeDetector::ActiveWindowChangeDetector(const Config& config)
     : config(config::checkValid(config)),
       transformation_getter_(config.transformation_getter.create()),
+      controller_(config.controller.create()),
       sinks_(ActiveWindowCDSink::instantiate(config.awcd_sinks)) {
+  controller_->setEnabled(config.start_enabled);
   MLOG(1) << "[Khronos Active Window Change Detector] Initialized with prior map path: "
           << config.prior_map_path;
   loadPriorMap();
@@ -102,6 +109,43 @@ ActiveWindowChangeDetector::ActiveWindowChangeDetector(const Config& config)
           << (prior_graph_ ? std::to_string(prior_graph_->numNodes()) + " nodes." : "0 nodes.");
   // print out the config
   MLOG(1) << "[Khronos Active Window Change Detector] Config: " << config;
+}
+
+void ActiveWindowChangeDetector::ChangeFilter::update(float measurement, float alpha, int frame) {
+  change_confidence = num_frames_observed == 0
+                          ? measurement
+                          : alpha * measurement + (1.0f - alpha) * change_confidence;
+  ++num_frames_observed;
+  last_updated_frame = frame;
+}
+
+void ActiveWindowChangeDetector::ChangeFilter::updateGate(float threshold,
+                                                          int min_frames,
+                                                          TimeStamp stamp) {
+  is_changed = change_confidence >= threshold && num_frames_observed >= min_frames;
+  if (is_changed && first_changed_ns == 0) {
+    first_changed_ns = stamp;
+  }
+}
+
+void ActiveWindowChangeDetector::ChangeFilter::takeOver(const ChangeFilter& absorbed) {
+  change_confidence = num_frames_observed == 0
+                          ? absorbed.change_confidence
+                          : std::max(change_confidence, absorbed.change_confidence);
+  num_frames_observed = std::max(num_frames_observed, absorbed.num_frames_observed);
+  last_updated_frame = std::max(last_updated_frame, absorbed.last_updated_frame);
+  if (absorbed.everChanged() && (!everChanged() || absorbed.first_changed_ns < first_changed_ns)) {
+    first_changed_ns = absorbed.first_changed_ns;
+  }
+  is_changed = is_changed || absorbed.is_changed;
+}
+
+void ActiveWindowChangeDetector::AddedObject::updatePriorBoundingBox(
+    const Eigen::Isometry3d& prior_T_current) {
+  prior_bounding_box = bounding_box;
+  if (prior_bounding_box.isValid()) {
+    prior_bounding_box.transform(prior_T_current);
+  }
 }
 
 void ActiveWindowChangeDetector::addKhronosSink(const ActiveWindowCDSink::Ptr& sink) {
@@ -116,9 +160,9 @@ std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::compute
     ChangeDetectionStatus* status) const {
   std::unordered_map<spark_dsg::NodeId, float> measurements;
 
-  std::unordered_map<spark_dsg::NodeId, RemovedCandidateStatus*> candidates;
+  std::unordered_map<spark_dsg::NodeId, RemovedObjectSnapshot*> candidates;
   if (status) {
-    for (auto& candidate : status->removed_candidates) {
+    for (auto& candidate : status->removed_snapshots) {
       candidates[candidate.id] = &candidate;
     }
   }
@@ -137,10 +181,10 @@ std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::compute
     }
 
     const auto candidate_it = candidates.find(object_id);
-    RemovedCandidateStatus* candidate =
+    RemovedObjectSnapshot* candidate =
         candidate_it == candidates.end() ? nullptr : candidate_it->second;
     const bool collect_voxels = candidate && config.collect_debug_voxels;
-    
+
     // TODO (multy): need to clean this once we settled on the full voxel representation
     int num_free = 0;
     int num_known = 0;
@@ -181,9 +225,9 @@ std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::compute
     // Too little of the object has been observed for its free ratio to be meaningful.
     if (!observed) {
       MLOG(5) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
-              << " observed fraction " << observed_fraction << " ("
-              << num_voxels_observed << "/" << num_voxels << " voxels) below "
-              << config.removal_min_observed_fraction << ", skipping measurement";
+              << " observed fraction " << observed_fraction << " (" << num_voxels_observed << "/"
+              << num_voxels << " voxels) below " << config.removal_min_observed_fraction
+              << ", skipping measurement";
       continue;
     }
 
@@ -209,61 +253,41 @@ std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::compute
   return measurements;
 }
 
-std::vector<ActiveWindowChangeDetector::RemovedObject>
-ActiveWindowChangeDetector::updateRemovedFilter(
+void ActiveWindowChangeDetector::updateRemovedFilter(
     const std::unordered_map<spark_dsg::NodeId, float>& measurements,
     TimeStamp stamp) const {
-  // Update EMA state for each object that has a measurement this frame.
-  // Objects absent from measurements are left untouched (freeze-last policy).
+  // Update the filter of each object that has a measurement this frame. Objects absent from
+  // measurements are left untouched (freeze-last policy).
   for (const auto& [object_id, free_ratio] : measurements) {
-    auto& state = removed_object_states_[object_id];
-
-    if (state.num_frames_observed == 0) {
-      // First observation: initialize the filter to the raw measurement.
-      state.free_probability = free_ratio;
-    } else {
-      // EMA update: p = alpha * free_ratio + (1 - alpha) * p
-      state.free_probability = config.removal_ema_alpha * free_ratio +
-                               (1.0 - config.removal_ema_alpha) * state.free_probability;
-    }
-    ++state.num_frames_observed;
-    state.last_free_ratio = free_ratio;
-
+    auto& object = removed_candidates_[object_id];
+    object.id = object_id;
+    object.filter.update(free_ratio, config.removal_ema_alpha, frame_index_);
     MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
-            << " EMA update: raw=" << free_ratio << " smoothed=" << state.free_probability
-            << " frames=" << state.num_frames_observed;
+            << " EMA update: raw=" << free_ratio << " smoothed=" << object.filter.change_confidence
+            << " frames=" << object.filter.num_frames_observed;
   }
 
-  // Threshold the full state map (not just this frame's measurements) to build the removed set.
-  // This means objects that leave the map temporarily retain their last smoothed probability.
-  std::vector<RemovedObject> removed_objects;
-  for (auto& [object_id, state] : removed_object_states_) {
-    const bool above_prob = state.free_probability >= config.removal_probability_threshold;
-    const bool enough_frames = state.num_frames_observed >= config.removal_min_frames_observed;
-    if (above_prob && enough_frames) {
-      // Latch the first sensor time this object was declared removed. Never reset, even if
-      // the object later drops out of the removed set and returns.
-      if (state.first_removed_ns == 0) {
-        state.first_removed_ns = stamp;
-      }
-      removed_objects.push_back(RemovedObject{object_id,
-                                              state.first_removed_ns,
-                                              static_cast<float>(state.free_probability),
-                                              state.num_frames_observed});
+  // Gate the full state map (not just this frame's measurements), so objects that leave the map
+  // temporarily keep their last decision.
+  size_t num_removed = 0;
+  for (auto& [object_id, object] : removed_candidates_) {
+    auto& filter = object.filter;
+    filter.updateGate(
+        config.removal_probability_threshold, config.removal_min_frames_observed, stamp);
+    if (filter.is_changed) {
+      ++num_removed;
       MLOG(3) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
-              << " REMOVED (p=" << state.free_probability
-              << ", frames=" << state.num_frames_observed << ")";
+              << " REMOVED (p=" << filter.change_confidence
+              << ", frames=" << filter.num_frames_observed << ")";
     } else {
       MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
-              << " not removed (p=" << state.free_probability
-              << ", frames=" << state.num_frames_observed << ")";
+              << " not removed (p=" << filter.change_confidence
+              << ", frames=" << filter.num_frames_observed << ")";
     }
   }
 
-  MLOG(2) << "[ActiveWindowChangeDetector] Removed-object filter: " << removed_objects.size()
-          << " removed out of " << removed_object_states_.size() << " tracked candidates";
-
-  return removed_objects;
+  MLOG(2) << "[ActiveWindowChangeDetector] Removed-object filter: " << num_removed
+          << " removed out of " << removed_candidates_.size() << " tracked candidates";
 }
 
 GlobalIndex ActiveWindowChangeDetector::to2DIndex(const Point& point, float voxel_size_inv) {
@@ -273,7 +297,8 @@ GlobalIndex ActiveWindowChangeDetector::to2DIndex(const Point& point, float voxe
 }
 
 GlobalIndexSet ActiveWindowChangeDetector::getPriorFreeFootprint2D(
-    const VolumetricMap& map, spatial_hash::IndexHashMap<float>* cell_heights) const {
+    const VolumetricMap& map,
+    spatial_hash::IndexHashMap<float>* cell_heights) const {
   GlobalIndexSet free_footprint;
 
   if (!prior_graph_ || !prior_graph_->hasLayer(DsgLayers::MESH_PLACES)) {
@@ -354,19 +379,6 @@ std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRat
     ChangeDetectionStatus* status) const {
   std::unordered_map<int, float> measurements;
 
-  // Tracks are measured on their accumulated geometry, which the tracker must provide.
-  const bool has_static_tracks = std::any_of(tracks.begin(), tracks.end(), [](const Track& t) {
-    return !t.is_dynamic && !t.observations.empty();
-  });
-  const bool has_accumulation = std::any_of(tracks.begin(), tracks.end(), [](const Track& t) {
-    return !t.accumulated_voxels.empty();
-  });
-  if (has_static_tracks && !has_accumulation) {
-    LOG_FIRST_N(WARNING, 1) << "[ActiveWindowChangeDetector] Tracks have no accumulated voxels: run "
-                               "the tracker with accumulate_voxels: true. No added objects will be "
-                               "detected.";
-  }
-
   // Build the 2D free-space footprint from prior traversability places.
   const bool collect_cells = status && config.collect_debug_voxels;
   spatial_hash::IndexHashMap<float> cell_heights;
@@ -390,8 +402,10 @@ std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRat
       continue;
     }
 
-    // TODO(multy): what if some of the track points are outside the prior map bounds? Should we skip those points or count them as unknown? For now, we will just count the points that are in the prior map bounds and known.
-    // Containment ratio: fraction of the track's 2D footprint that falls in prior free space.
+    // TODO(multy): what if some of the track points are outside the prior map bounds? Should we
+    // skip those points or count them as unknown? For now, we will just count the points that are
+    // in the prior map bounds and known. Containment ratio: fraction of the track's 2D footprint
+    // that falls in prior free space.
     int intersection = 0;
     for (const GlobalIndex& idx : track2D) {
       if (prior_free.count(idx)) {
@@ -401,24 +415,23 @@ std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRat
     const float containment = static_cast<float>(intersection) / static_cast<float>(track2D.size());
 
     if (status) {
-      auto& candidate = status->added_candidates.emplace_back();
-      candidate.track_id = track.id;
-      candidate.bounding_box = track.accumulated_bounding_box;
-      candidate.raw_containment = containment;
-      candidate.num_cells = track2D.size();
-      candidate.num_cells_in_free = intersection;
+      auto& snapshot = status->added_snapshots.emplace_back();
+      snapshot.track_id = track.id;
+      snapshot.raw_containment = containment;
+      snapshot.num_cells = track2D.size();
+      snapshot.num_cells_in_free = intersection;
       if (collect_cells) {
         // Cells in prior free space sit at their place's height, the others at the track centroid.
-        const float centroid_z = candidate.bounding_box.world_P_center.z();
+        const float centroid_z = track.accumulated_bounding_box.world_P_center.z();
         for (const GlobalIndex& idx : track2D) {
           Point center = spatial_hash::centerPointFromIndex(idx, voxel_size);
           const auto height_it = cell_heights.find(idx);
           if (height_it != cell_heights.end()) {
             center.z() = height_it->second;
-            candidate.in_free_cells.push_back(center);
+            snapshot.in_free_cells.push_back(center);
           } else {
             center.z() = centroid_z;
-            candidate.out_cells.push_back(center);
+            snapshot.out_cells.push_back(center);
           }
         }
       }
@@ -432,47 +445,135 @@ std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRat
   return measurements;
 }
 
-void ActiveWindowChangeDetector::updateTrackChangeConfidence(TrackAddedState& state,
-                                                             float containment) const {
-  if (state.num_frames_observed == 0) {
-    state.change_confidence = containment;
-  } else {
-    state.change_confidence = config.added_ema_alpha * containment +
-                              (1.0 - config.added_ema_alpha) * state.change_confidence;
+std::unordered_map<int, float> ActiveWindowChangeDetector::computeMeshFreeRatios(
+    const Tracks& tracks,
+    const VolumetricMap& map,
+    ChangeDetectionStatus* status) const {
+  std::unordered_map<int, float> measurements;
+  const float voxel_size = map.config.voxel_size;
+  updatePriorMeshVoxels(voxel_size);
+  if (prior_mesh_voxels_.empty()) {
+    LOG_FIRST_N(WARNING, 1) << "[ActiveWindowChangeDetector] Prior graph has no background or "
+                               "object mesh; mesh-based added-object detection is a no-op.";
+    return measurements;
   }
-  ++state.num_frames_observed;
-  state.last_containment = containment;
-  state.last_updated_frame = frame_index_;
+
+  const bool collect_cells = status && config.collect_debug_voxels;
+  const float voxel_size_inv = 1.0f / voxel_size;
+  const Eigen::Isometry3d prior_T_current = current_T_prior_.inverse();
+  const int r = config.added_mesh_collision_radius;
+  const auto collides = [&](const GlobalIndex& index) {
+    for (int dx = -r; dx <= r; ++dx) {
+      for (int dy = -r; dy <= r; ++dy) {
+        for (int dz = -r; dz <= r; ++dz) {
+          if (prior_mesh_voxels_.count(index + GlobalIndex(dx, dy, dz))) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+
+  for (const Track& track : tracks) {
+    // Same eligibility as computeContainmentRatios.
+    if (track.is_dynamic || !track.accumulated_bounding_box.isValid()) {
+      continue;
+    }
+
+    const GlobalIndexSet voxels = track.confirmedVoxels();
+    if (voxels.empty()) {
+      continue;
+    }
+
+    int num_free = 0;
+    std::vector<Point> free_cells, collided_cells;
+    for (const GlobalIndex& index : voxels) {
+      const Point center = spatial_hash::centerPointFromIndex(index, track.accumulated_voxel_size);
+      const Point center_prior = (prior_T_current * center.cast<double>()).cast<float>();
+      const bool is_free =
+          !collides(spatial_hash::indexFromPoint<GlobalIndex>(center_prior, voxel_size_inv));
+      num_free += is_free ? 1 : 0;
+      if (collect_cells) {
+        (is_free ? free_cells : collided_cells).push_back(center);
+      }
+    }
+    const float free_ratio = static_cast<float>(num_free) / static_cast<float>(voxels.size());
+
+    if (status) {
+      auto& snapshot = status->added_snapshots.emplace_back();
+      snapshot.track_id = track.id;
+      snapshot.raw_containment = free_ratio;
+      snapshot.num_cells = voxels.size();
+      snapshot.num_cells_in_free = num_free;
+      snapshot.in_free_cells = std::move(free_cells);
+      snapshot.out_cells = std::move(collided_cells);
+    }
+
+    measurements[track.id] = free_ratio;
+    MLOG(4) << "[ActiveWindowChangeDetector] Track " << track.id
+            << " raw mesh free ratio: " << free_ratio;
+  }
+
+  return measurements;
 }
 
-std::vector<ActiveWindowChangeDetector::AddedObject> ActiveWindowChangeDetector::updateAddedFilter(
-    const std::unordered_map<int, float>& measurements, const Tracks& tracks) const {
-  ++frame_index_;
+void ActiveWindowChangeDetector::updatePriorMeshVoxels(float voxel_size) const {
+  if (!prior_graph_ || voxel_size == prior_mesh_voxel_size_) {
+    return;
+  }
 
-  // 1. Take over the state of tracks absorbed by other tracks, so an absorbed track that was
-  // already added is not latched as a duplicate of its survivor.
-  for (const Track& track : tracks) {
-    for (const int absorbed_id : track.absorbed_track_ids) {
-      const auto absorbed_it = track_added_states_.find(absorbed_id);
-      if (absorbed_it == track_added_states_.end()) {
+  prior_mesh_voxels_.clear();
+  prior_mesh_voxel_size_ = voxel_size;
+  const float voxel_size_inv = 1.0f / voxel_size;
+  if (prior_graph_->mesh()) {
+    for (const auto& point : prior_graph_->mesh()->points) {
+      prior_mesh_voxels_.insert(spatial_hash::indexFromPoint<GlobalIndex>(point, voxel_size_inv));
+    }
+  }
+  if (prior_graph_->hasLayer(DsgLayers::OBJECTS)) {
+    for (const auto& node : prior_graph_->getLayer(DsgLayers::OBJECTS).nodes()) {
+      const auto* attrs = node.tryAttributes<KhronosObjectAttributes>();
+      if (!attrs) {
         continue;
       }
-      const TrackAddedState absorbed = std::move(absorbed_it->second);
-      track_added_states_.erase(absorbed_it);
+      for (size_t i = 0; i < attrs->mesh.numVertices(); ++i) {
+        prior_mesh_voxels_.insert(spatial_hash::indexFromPoint<GlobalIndex>(
+            attrs->bounding_box.pointToWorldFrame(attrs->mesh.pos(i)), voxel_size_inv));
+      }
+    }
+  }
 
-      auto& state = track_added_states_[track.id];
-      state.change_confidence = state.num_frames_observed == 0
-                                    ? absorbed.change_confidence
-                                    : std::max(state.change_confidence, absorbed.change_confidence);
-      state.num_frames_observed = std::max(state.num_frames_observed, absorbed.num_frames_observed);
-      state.ever_added = state.ever_added || absorbed.ever_added;
-      state.last_updated_frame = std::max(state.last_updated_frame, absorbed.last_updated_frame);
+  MLOG(1) << "[ActiveWindowChangeDetector] Prior mesh occupancy: " << prior_mesh_voxels_.size()
+          << " voxels.";
+}
+
+void ActiveWindowChangeDetector::updateAddedFilter(
+    const std::unordered_map<int, float>& measurements,
+    const Tracks& tracks,
+    TimeStamp stamp) const {
+  // 1. Take over the state of tracks absorbed by other tracks, so an absorbed track that was
+  // already added is not reported as a duplicate of its survivor.
+  for (const Track& track : tracks) {
+    for (const int absorbed_id : track.absorbed_track_ids) {
+      const auto absorbed_it = added_candidates_.find(absorbed_id);
+      if (absorbed_it == added_candidates_.end()) {
+        continue;
+      }
+      const ChangeFilter absorbed = absorbed_it->second.filter;
+      added_candidates_.erase(absorbed_it);
+
+      auto& object = added_candidates_[track.id];
+      object.id = track.id;
+      object.filter.takeOver(absorbed);
       MLOG(3) << "[ActiveWindowChangeDetector] Track " << track.id << " took over absorbed track "
               << absorbed_id;
     }
   }
 
-  // 2. EMA-update and snapshot each measured track.
+  // 2. EMA-update and snapshot each measured track. Measured tracks are in the active window, so
+  // the current transform is the local one to place them in the prior frame.
+  const Eigen::Isometry3d prior_T_current = current_T_prior_.inverse();
   std::unordered_map<int, const Track*> track_lookup;
   track_lookup.reserve(tracks.size());
   for (const Track& t : tracks) {
@@ -486,70 +587,63 @@ std::vector<ActiveWindowChangeDetector::AddedObject> ActiveWindowChangeDetector:
     }
     const Track& track = *lookup_it->second;
 
-    auto& state = track_added_states_[track_id];
-    updateTrackChangeConfidence(state, containment);
-    state.bounding_box = track.accumulated_bounding_box;
-    state.semantics = track.semantics;
-    state.first_seen = track.first_seen;
-    state.last_seen = track.last_seen;
-    state.confidence = track.confidence;
-    state.member_track_ids = track.absorbed_track_ids;
-    state.member_track_ids.insert(track_id);
+    auto& object = added_candidates_[track_id];
+    object.id = track_id;
+    object.filter.update(containment, config.added_ema_alpha, frame_index_);
+    object.absorbed_track_ids = track.absorbed_track_ids;
+    object.first_seen = track.first_seen;
+    object.last_seen = track.last_seen;
+    object.bounding_box = track.accumulated_bounding_box;
+    object.updatePriorBoundingBox(prior_T_current);
+    object.semantics = track.semantics;
+    object.confidence = track.confidence;
 
     MLOG(4) << "[ActiveWindowChangeDetector] Track " << track_id
-            << " EMA update: raw=" << containment
-            << " smoothed=" << state.change_confidence
-            << " frames=" << state.num_frames_observed;
+            << " EMA update: raw=" << containment << " smoothed=" << object.filter.change_confidence
+            << " frames=" << object.filter.num_frames_observed;
   }
 
-  // 3. Gate, latch & prune.
-  std::vector<AddedObject> newly_added_objects;
-  for (auto it = track_added_states_.begin(); it != track_added_states_.end();) {
-    const int track_id = it->first;
-    auto& state = it->second;
-
-    const bool above_prob = state.change_confidence >= config.added_probability_threshold;
-    const bool enough_frames = state.num_frames_observed >= config.added_min_frames_observed;
-    if (above_prob && enough_frames) {
-      state.ever_added = true;
-
-      AddedObject obj;
-      obj.id = track_id;
-      obj.member_track_ids = state.member_track_ids;
-      obj.first_seen = state.first_seen;
-      obj.last_seen = state.last_seen;
-      obj.bounding_box = state.bounding_box;
-      obj.centroid = state.bounding_box.isValid() ? state.bounding_box.world_P_center : Point::Zero();
-      obj.semantics = state.semantics;
-      obj.confidence = state.confidence;
-      obj.change_confidence = static_cast<float>(state.change_confidence);
-      obj.num_frames_observed = state.num_frames_observed;
-      newly_added_objects.push_back(std::move(obj));
-
-      MLOG(3) << "[ActiveWindowChangeDetector] Track " << track_id
-              << " ADDED (confidence=" << state.confidence
-              << ", change_confidence=" << state.change_confidence
-              << ", frames=" << state.num_frames_observed
-              << ", members=" << state.member_track_ids.size() << ")";
-      ++it;
-    } else if (!state.ever_added &&
-               (frame_index_ - state.last_updated_frame) > config.added_prune_after_frames) {
-      MLOG(4) << "[ActiveWindowChangeDetector] Pruning stale non-added track " << track_id;
-      it = track_added_states_.erase(it);
-    } else {
-      ++it;
+  // 3. Gate & prune. Unmeasured entries keep the prior pose of their last measurement unless
+  // global_added_object_deform re-projects them with the current transform.
+  size_t num_added = 0;
+  for (auto it = added_candidates_.begin(); it != added_candidates_.end();) {
+    if (config.global_added_object_deform) {
+      it->second.updatePriorBoundingBox(prior_T_current);
     }
+    const auto& object = it->second;
+    auto& filter = it->second.filter;
+    filter.updateGate(config.added_probability_threshold, config.added_min_frames_observed, stamp);
+    if (filter.is_changed) {
+      ++num_added;
+      MLOG(3) << "[ActiveWindowChangeDetector] Track " << object.id
+              << " ADDED (confidence=" << object.confidence
+              << ", change_confidence=" << filter.change_confidence
+              << ", frames=" << filter.num_frames_observed
+              << ", absorbed=" << object.absorbed_track_ids.size() << ")";
+    } else if (!filter.everChanged() &&
+               (frame_index_ - filter.last_updated_frame) > config.added_prune_after_frames) {
+      MLOG(4) << "[ActiveWindowChangeDetector] Pruning stale non-added track " << object.id;
+      it = added_candidates_.erase(it);
+      // TODO (multy): rethink if ever_changed is need and the prune strategy
+      continue;
+    }
+    ++it;
   }
 
-  MLOG(2) << "[ActiveWindowChangeDetector] Added-object filter: " << newly_added_objects.size()
-          << " added out of " << track_added_states_.size() << " tracked candidates";
-
-  return newly_added_objects;
+  MLOG(2) << "[ActiveWindowChangeDetector] Added-object filter: " << num_added << " added out of "
+          << added_candidates_.size() << " tracked candidates";
 }
 
 void ActiveWindowChangeDetector::call(const FrameData& data,
                                       const VolumetricMap& map,
                                       const Tracks& tracks) const {
+  ChangeDetectionStatus status;
+  status.voxel_size = map.config.voxel_size;
+  if (controller_->consumeReset()) {
+    resetHistory();
+    status.history_reset = true;
+  }
+
   // Poll the transformation getter and update current_T_prior_ if a new transform is available.
   const auto tf = transformation_getter_->getTransformation();
   if (tf.has_value()) {
@@ -569,52 +663,62 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
     }
   }
 
+  // While stopped only the transform is updated; sinks still get it (TfIcpPublisher closes the
+  // loop).
+  if (!controller_->isEnabled()) {
+    status.detection_enabled = false;
+    ActiveWindowCDSink::callAll(sinks_, prior_graph_, {}, {}, current_T_prior_, status);
+    return;
+  }
+
+  ++frame_index_;
+
   // 1. Find all object nodes in the prior graph within current volumetric map bounds.
-  ChangeDetectionStatus status;
-  status.voxel_size = map.config.voxel_size;
   const auto objects_id_in_bounds = findPriorObjectsInMapBounds(map, &status);
 
   // 2. Compute per-frame free ratios for objects with valid measurements.
   const auto free_ratio_measurements = computeFreeRatios(objects_id_in_bounds, map, &status);
 
-  // 3. Update EMA filter and threshold to obtain the temporally-filtered removed set.
-  const auto removed_objects =
-      updateRemovedFilter(free_ratio_measurements, data.input.timestamp_ns);
+  // 3. Update the removal filters and gates.
+  updateRemovedFilter(free_ratio_measurements, data.input.timestamp_ns);
 
-  // Report the filter state of this frame's removal candidates.
-  std::unordered_set<spark_dsg::NodeId> removed_ids;
-  for (const auto& obj : removed_objects) {
-    removed_ids.insert(obj.id);
+  // 4. Compute per-frame added measurements for newly-added-object detection. Known limitation
+  // of kGraph: objects on tables cannot be detected (footprint-on-ground heuristic).
+  // Tracks are measured on their accumulated geometry, which the tracker must provide.
+  const bool has_static_tracks = std::any_of(tracks.begin(), tracks.end(), [](const Track& t) {
+    return !t.is_dynamic && !t.observations.empty();
+  });
+  const bool has_accumulation = std::any_of(
+      tracks.begin(), tracks.end(), [](const Track& t) { return !t.accumulated_voxels.empty(); });
+  if (has_static_tracks && !has_accumulation) {
+    LOG_FIRST_N(WARNING, 1)
+        << "[ActiveWindowChangeDetector] Tracks have no accumulated voxels: run "
+           "the tracker with accumulate_voxels: true. No added objects will be "
+           "detected.";
   }
-  for (auto& candidate : status.removed_candidates) {
-    const auto state_it = removed_object_states_.find(candidate.id);
-    if (state_it != removed_object_states_.end()) {
-      candidate.free_probability = state_it->second.free_probability;
-      candidate.num_frames_observed = state_it->second.num_frames_observed;
+
+  const auto added_measurements =
+      config.added_detection_method == Config::AddedDetectionMethod::kMesh
+          ? computeMeshFreeRatios(tracks, map, &status)
+          : computeContainmentRatios(tracks, map, &status);
+
+  // 5. Update the per-track filters and gates, and prune stale records.
+  updateAddedFilter(added_measurements, tracks, data.input.timestamp_ns);
+
+  // Sinks get the changed objects; the status points to all accumulated state for debugging.
+  status.removed_candidates = &removed_candidates_;
+  status.added_candidates = &added_candidates_;
+  std::vector<RemovedObject> removed_objects;
+  for (const auto& [object_id, object] : removed_candidates_) {
+    if (object.filter.is_changed) {
+      removed_objects.push_back(object);
     }
-    candidate.removed = removed_ids.count(candidate.id) > 0;
   }
-
-  // 4. Compute per-frame containment ratios for newly-added-object detection.
-  // Known limitation: objects on tables cannot be detected this way (footprint-on-ground heuristic).
-  const auto containment_measurements = computeContainmentRatios(tracks, map, &status);
-
-  // 5. Update the per-track EMA filter, prune stale records, and return the added tracks.
-  const auto newly_added_objects = updateAddedFilter(containment_measurements, tracks);
-
-  // Report the filter state of this frame's added candidates.
-  std::unordered_set<int> added_ids;
-  for (const auto& obj : newly_added_objects) {
-    added_ids.insert(obj.id);
-  }
-  for (auto& candidate : status.added_candidates) {
-    const auto state_it = track_added_states_.find(candidate.track_id);
-    if (state_it == track_added_states_.end()) {
-      continue;
+  std::vector<AddedObject> newly_added_objects;
+  for (const auto& [track_id, object] : added_candidates_) {
+    if (object.filter.is_changed) {
+      newly_added_objects.push_back(object);
     }
-    candidate.change_confidence = state_it->second.change_confidence;
-    candidate.num_frames_observed = state_it->second.num_frames_observed;
-    candidate.added = added_ids.count(candidate.track_id) > 0;
   }
 
   MLOG(2) << "[ActiveWindowChangeDetector] Detected " << removed_objects.size()
@@ -623,6 +727,14 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   // Call all sinks with removed objects, newly-added objects, and the prior-to-current transform.
   ActiveWindowCDSink::callAll(
       sinks_, prior_graph_, removed_objects, newly_added_objects, current_T_prior_, status);
+}
+
+void ActiveWindowChangeDetector::resetHistory() const {
+  MLOG(1) << "[ActiveWindowChangeDetector] Resetting change detection history ("
+          << removed_candidates_.size() << " removal and " << added_candidates_.size()
+          << " added candidates).";
+  removed_candidates_.clear();
+  added_candidates_.clear();
 }
 
 void ActiveWindowChangeDetector::loadPriorMap() {
@@ -655,7 +767,8 @@ bool ActiveWindowChangeDetector::isPointKnown(const Point& point_in_map,
 }
 
 std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMapBounds(
-    const VolumetricMap& map, ChangeDetectionStatus* status) const {
+    const VolumetricMap& map,
+    ChangeDetectionStatus* status) const {
   std::vector<spark_dsg::NodeId> objects_in_bounds;
 
   if (!prior_graph_ || !prior_graph_->hasLayer(DsgLayers::OBJECTS)) {
@@ -663,7 +776,7 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
     return objects_in_bounds;
   }
 
-  // TODO(multy): maybe as step 0 if compute free ratio also use this. 
+  // TODO(multy): maybe as step 0 if compute free ratio also use this.
   updatePriorObjectGeometry(map);
 
   const auto& tsdf_layer = map.getTsdfLayer();
@@ -681,7 +794,7 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
       if (isPointInMapBounds(position_in_current, map)) {
         objects_in_bounds.push_back(node.id);
         if (status) {
-          auto& candidate = status->removed_candidates.emplace_back();
+          auto& candidate = status->removed_snapshots.emplace_back();
           candidate.id = node.id;
           candidate.in_bounds = true;
         }
@@ -704,14 +817,13 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
       continue;
     }
 
-    const float in_bounds_fraction =
-        static_cast<float>(num_in_bounds) / geometry.voxels.size();
+    const float in_bounds_fraction = static_cast<float>(num_in_bounds) / geometry.voxels.size();
     const bool in_bounds = in_bounds_fraction >= config.removal_min_in_bounds_fraction;
     if (in_bounds) {
       objects_in_bounds.push_back(node.id);
     }
     if (status) {
-      auto& candidate = status->removed_candidates.emplace_back();
+      auto& candidate = status->removed_snapshots.emplace_back();
       candidate.id = node.id;
       candidate.has_geometry = true;
       candidate.num_voxels = geometry.voxels.size();
@@ -788,8 +900,8 @@ void ActiveWindowChangeDetector::updatePriorObjectGeometry(const VolumetricMap& 
     geometry.block_counts.clear();
     for (const auto& [index, count] : vertex_counts) {
       geometry.voxels.push_back({index, count});
-      ++geometry.block_counts[spatial_hash::blockIndexFromGlobalIndex(
-          index, tsdf_layer.voxels_per_side)];
+      ++geometry.block_counts[spatial_hash::blockIndexFromGlobalIndex(index,
+                                                                      tsdf_layer.voxels_per_side)];
     }
   }
   prior_geometry_blocks_dirty_ = false;

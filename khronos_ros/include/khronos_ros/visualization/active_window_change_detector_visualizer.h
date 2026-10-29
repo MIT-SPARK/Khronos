@@ -55,7 +55,6 @@
 #include "khronos/active_window/change_detection/active_window_change_detector.h"
 #include "khronos/active_window/data/track.h"
 
-
 namespace khronos {
 
 class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::ActiveWindowCDSink {
@@ -69,8 +68,8 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
 
     //! Frame in which to publish visualizations.
     std::string global_frame_name = hydra::GlobalInfo::instance().getFrames().map;
-    // TODO(multy): this should be default to some awcd dedicated frame? Not the global map frame, 
-    // The transformation between the global map frame and the awcd frame can be identity to 
+    // TODO(multy): this should be default to some awcd dedicated frame? Not the global map frame,
+    // The transformation between the global map frame and the awcd frame can be identity to
     // indicates no difference
 
     //! Scene graph renderer config.
@@ -126,12 +125,12 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
       const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects) const;
 
   void visualizeAddedObjects(
-      const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects,
-      const Eigen::Isometry3d& current_T_prior) const;
+      const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects) const;
 
   //! Draws a box + score label per removal candidate (amber, or red if removed).
-  void visualizeRemovedStatus(const DynamicSceneGraph::Ptr& dsg,
-                              const ActiveWindowChangeDetector::ChangeDetectionStatus& status) const;
+  void visualizeRemovedStatus(
+      const DynamicSceneGraph::Ptr& dsg,
+      const ActiveWindowChangeDetector::ChangeDetectionStatus& status) const;
 
   //! Draws each removal candidate's voxels: green free, red occupied, gray unobserved.
   void visualizeRemovedVoxels(const ActiveWindowChangeDetector::ChangeDetectionStatus& status,

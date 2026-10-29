@@ -37,16 +37,18 @@
 
 #pragma once
 
+#include <map>
 #include <optional>
 #include <set>
+#include <string>
+#include <vector>
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/global_info.h>
 #include <hydra/utils/logging.h>
 #include <ianvs/node_handle.h>
-#include <spark_dsg/dynamic_scene_graph.h>
-
 #include <khronos_msgs/msg/awcd_changes.hpp>
+#include <spark_dsg/dynamic_scene_graph.h>
 
 #include "khronos/active_window/change_detection/active_window_change_detector.h"
 #include "khronos/active_window/data/track.h"
@@ -74,17 +76,15 @@ class ActiveWindowChangeDetectorPublisher : public ActiveWindowChangeDetector::A
     //! topic so all robots' change detectors publish to the same topic; the base station
     //! distinguishes robots via AwcdChanges::robot_name.
     std::string topic = "/awcd_changes";
-
-    //! Publisher queue size.
-    int queue_size = 10;
   } const config;
 
   explicit ActiveWindowChangeDetectorPublisher(const Config& config,
                                                const ianvs::NodeHandle* nh = nullptr);
   virtual ~ActiveWindowChangeDetectorPublisher() = default;
 
-  // KhronosSink callback - called each frame. Only publishes when the set of removed and/or
-  // added object ids differs from the last published sets (see last_removed_ids_/last_added_ids_).
+  // KhronosSink callback - called each frame. Only publishes when the removed ids or the added
+  // objects' ids / prior-frame boxes differ from the last published ones (see
+  // last_removed_ids_/last_added_boxes_).
   void call(const DynamicSceneGraph::Ptr& dsg,
             const std::vector<ActiveWindowChangeDetector::RemovedObject>& removed_objects,
             const std::vector<ActiveWindowChangeDetector::AddedObject>& newly_added_objects,
@@ -96,19 +96,19 @@ class ActiveWindowChangeDetectorPublisher : public ActiveWindowChangeDetector::A
   khronos_msgs::msg::ChangedObjectInfo makeRemovedInfo(
       const ActiveWindowChangeDetector::RemovedObject& obj) const;
 
-  //! Fills in a ChangedObjectInfo entry (full attributes) for a newly-added (possibly merged) object.
+  //! Fills in a ChangedObjectInfo entry (full attributes) for a newly-added (possibly merged)
+  //! object.
   khronos_msgs::msg::ChangedObjectInfo makeAddedInfo(
-      const ActiveWindowChangeDetector::AddedObject& obj,
-      const Eigen::Isometry3d& prior_T_current) const;
+      const ActiveWindowChangeDetector::AddedObject& obj) const;
 
   // ROS
   ianvs::NodeHandle nh_;
   rclcpp::Publisher<khronos_msgs::msg::AwcdChanges>::SharedPtr changes_pub_;
 
-  // Set-membership of the last *published* removed/added ids, used to gate publishing to only
-  // when the reported set of changes actually changed (rather than every frame).
+  // Last *published* removed ids and added id -> prior_bounding_box. Boxes are compared exactly:
+  // they are deterministic, so they only differ when the track grew or current_T_prior moved.
   mutable std::optional<std::set<int64_t>> last_removed_ids_;
-  mutable std::optional<std::set<int64_t>> last_added_ids_;
+  mutable std::optional<std::map<int64_t, BoundingBox>> last_added_boxes_;
 };
 
 void declare_config(ActiveWindowChangeDetectorPublisher::Config& config);

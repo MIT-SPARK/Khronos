@@ -66,7 +66,6 @@ void declare_config(ActiveWindowChangeDetectorPublisher::Config& config) {
   field(config.global_frame_name, "global_frame_name");
   field(config.robot_name, "robot_name");
   field(config.topic, "topic");
-  field(config.queue_size, "queue_size");
 }
 
 ActiveWindowChangeDetectorPublisher::ActiveWindowChangeDetectorPublisher(
@@ -75,7 +74,10 @@ ActiveWindowChangeDetectorPublisher::ActiveWindowChangeDetectorPublisher(
     : config(config::checkValid(config)),
       nh_(nh ? *nh / "change_detector_publisher"
              : ianvs::NodeHandle::this_node("change_detector_publisher")) {
-  changes_pub_ = nh_.create_publisher<khronos_msgs::msg::AwcdChanges>(config.topic, config.queue_size);
+  // Latched: a base station that cleared this robot or lost the link gets the last message again
+  // once the robot is rediscovered, even though the robot only publishes on change.
+  changes_pub_ = nh_.create_publisher<khronos_msgs::msg::AwcdChanges>(
+      config.topic, rclcpp::QoS(1).transient_local().reliable());
   MLOG(1) << "[ActiveWindowChangeDetectorPublisher] Initialized.";
 }
 
@@ -83,22 +85,27 @@ void ActiveWindowChangeDetectorPublisher::call(
     const DynamicSceneGraph::Ptr& /* dsg */,
     const std::vector<RemovedObject>& removed_objects,
     const std::vector<AddedObject>& newly_added_objects,
-    const Eigen::Isometry3d& current_T_prior,
-    const ActiveWindowChangeDetector::ChangeDetectionStatus& /* status */) const {
-  // Gate publishing on set-membership change: only publish if the set of removed and/or added
-  // object ids differs from the last message actually published (not just from last frame's
-  // detector output), so an unchanged scene does not keep re-publishing every frame.
+    const Eigen::Isometry3d& /* current_T_prior */,
+    const ActiveWindowChangeDetector::ChangeDetectionStatus& status) const {
+  // Stopped: stay silent so the base station keeps the last changes. A reset always publishes
+  // (empty while stopped) so the base station clears this robot.
+  if (!status.detection_enabled && !status.history_reset) {
+    return;
+  }
+
+  // Only publish if the removed ids or the added ids / prior boxes differ from the last published
+  // message. Confidences are not compared: they change every frame.
   std::set<int64_t> cur_removed_ids;
   for (const auto& obj : removed_objects) {
     cur_removed_ids.insert(static_cast<int64_t>(obj.id));
   }
-  std::set<int64_t> cur_added_ids;
+  std::map<int64_t, BoundingBox> cur_added_boxes;
   for (const auto& obj : newly_added_objects) {
-    cur_added_ids.insert(static_cast<int64_t>(obj.id));
+    cur_added_boxes.emplace(static_cast<int64_t>(obj.id), obj.prior_bounding_box);
   }
 
-  if (last_removed_ids_.has_value() && last_added_ids_.has_value() &&
-      *last_removed_ids_ == cur_removed_ids && *last_added_ids_ == cur_added_ids) {
+  if (!status.history_reset && last_removed_ids_.has_value() && last_added_boxes_.has_value() &&
+      *last_removed_ids_ == cur_removed_ids && *last_added_boxes_ == cur_added_boxes) {
     return;
   }
 
@@ -112,17 +119,15 @@ void ActiveWindowChangeDetectorPublisher::call(
     msg.removed_objects.push_back(makeRemovedInfo(obj));
   }
 
-  // Object bounding boxes / centroids are stored in the current (odom) frame; transform
-  // them into the prior/report frame before publishing, mirroring the visualizer.
-  const Eigen::Isometry3d prior_T_current = current_T_prior.inverse();
+  // Added objects are reported with their prior-frame bounding box (placed by the detector).
   msg.added_objects.reserve(newly_added_objects.size());
   for (const auto& obj : newly_added_objects) {
-    msg.added_objects.push_back(makeAddedInfo(obj, prior_T_current));
+    msg.added_objects.push_back(makeAddedInfo(obj));
   }
 
   changes_pub_->publish(msg);
   last_removed_ids_ = std::move(cur_removed_ids);
-  last_added_ids_ = std::move(cur_added_ids);
+  last_added_boxes_ = std::move(cur_added_boxes);
 }
 
 ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeRemovedInfo(
@@ -131,28 +136,23 @@ ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeRemovedInfo(
   info.id = static_cast<int64_t>(obj.id);
   // Latched at the detector: constant across every message that reports this object as removed.
   info.stamp = static_cast<builtin_interfaces::msg::Time>(
-      rclcpp::Time(static_cast<int64_t>(obj.first_removed_ns)));
-  info.change_confidence = obj.change_confidence;
-  info.num_frames_observed = obj.num_frames_observed;
+      rclcpp::Time(static_cast<int64_t>(obj.filter.first_changed_ns)));
+  info.change_confidence = obj.filter.change_confidence;
+  info.num_frames_observed = obj.filter.num_frames_observed;
   return info;
 }
 
-ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeAddedInfo(
-    const AddedObject& obj,
-    const Eigen::Isometry3d& prior_T_current) const {
+ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeAddedInfo(const AddedObject& obj) const {
   ChangedObjectInfo info;
   info.id = static_cast<int64_t>(obj.id);
   info.stamp = static_cast<builtin_interfaces::msg::Time>(
       rclcpp::Time(static_cast<int64_t>(obj.first_seen)));
 
-  const Eigen::Vector3d centroid = prior_T_current * obj.centroid.cast<double>();
-  info.centroid.x = centroid.x();
-  info.centroid.y = centroid.y();
-  info.centroid.z = centroid.z();
-
-  BoundingBox bbox = obj.bounding_box;
+  const BoundingBox& bbox = obj.prior_bounding_box;
   if (bbox.isValid()) {
-    bbox.transform(prior_T_current);
+    info.centroid.x = bbox.world_P_center.x();
+    info.centroid.y = bbox.world_P_center.y();
+    info.centroid.z = bbox.world_P_center.z();
     info.bbox_center.x = bbox.world_P_center.x();
     info.bbox_center.y = bbox.world_P_center.y();
     info.bbox_center.z = bbox.world_P_center.z();
@@ -175,8 +175,8 @@ ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeAddedInfo(
   // wired in here, so `name` is left empty. The base station can resolve it against the
   // same label space config (instance_seg_label_space.yaml) used to produce category_id.
   info.confidence = obj.confidence;
-  info.change_confidence = obj.change_confidence;
-  info.num_frames_observed = obj.num_frames_observed;
+  info.change_confidence = obj.filter.change_confidence;
+  info.num_frames_observed = obj.filter.num_frames_observed;
 
   return info;
 }

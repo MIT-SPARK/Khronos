@@ -48,6 +48,7 @@
 #include <spatial_hash/hash.h>
 
 #include "khronos/active_window/active_window.h"
+#include "khronos/active_window/change_detection/change_detection_controller.h"
 #include "khronos/active_window/change_detection/transformation_getter.h"
 #include "khronos/utils/icp_registration_utils.h"
 
@@ -56,98 +57,77 @@ namespace khronos {
 class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
  public:
   /**
-   * @brief Per-object temporal state for the removed-object EMA filter.
-   * Maintained across frames in removed_object_states_.
+   * @brief Temporal filter of one change candidate, shared by removed objects and added tracks:
+   * EMA over the per-frame measurements, the change gate, and a latch of the first change.
    */
-  struct RemovedObjectState {
-    //! EMA-filtered probability that the object's space is free (i.e. object is removed).
-    double free_probability = 0.0;
-    //! Number of frames for which a valid measurement (num_known > 0) was available.
+  struct ChangeFilter {
+    //! EMA-filtered change likelihood (removed: free ratio; added: free-space containment).
+    float change_confidence = 0.0f;
+    //! Number of frames with a valid measurement.
     int num_frames_observed = 0;
-    //! Raw free ratio from the most recent valid measurement (for logging/debugging).
-    float last_free_ratio = 0.0f;
-    //! Sensor frame time (ns) the object first crossed the removal gate. Latched once set;
-    //! never reset even if the object later drops out of the removed set and returns.
-    //! 0 = not yet declared removed.
-    TimeStamp first_removed_ns = 0;
+    //! Frame index of the last measurement (staleness pruning).
+    int last_updated_frame = -1;
+    //! Sensor time (ns) the gate first passed. Latched: never reset, even if is_changed later
+    //! drops. 0 = never changed.
+    TimeStamp first_changed_ns = 0;
+    //! Whether the gate passes this frame. Recomputed every frame for every entry, so entries that
+    //! are not measured keep their last state (freeze-last).
+    bool is_changed = false;
+
+    //! Initializes the EMA to the first measurement, then p = alpha * m + (1 - alpha) * p.
+    void update(float measurement, float alpha, int frame);
+    //! Sets is_changed (confidence >= threshold and enough frames) and latches first_changed_ns.
+    void updateGate(float threshold, int min_frames, TimeStamp stamp);
+    //! Folds in the filter of an absorbed candidate: max confidence / frames / last frame,
+    //! earliest change.
+    void takeOver(const ChangeFilter& absorbed);
+    bool everChanged() const { return first_changed_ns != 0; }
   };
 
   /**
-   * @brief A removed object paired with the sensor frame time it was first declared removed.
-   * The timestamp is latched at the detector (see RemovedObjectState::first_removed_ns) so it
-   * stays constant across every message/frame that reports this object as removed.
+   * @brief Accumulated state of a prior object for removal detection, keyed by its NodeId. Sinks
+   * receive the objects with filter.is_changed.
    */
   struct RemovedObject {
     spark_dsg::NodeId id;
-    TimeStamp first_removed_ns;
-    //! Change-detection confidence: EMA-smoothed free-space probability
-    //! (RemovedObjectState::free_probability) that drove the removal gate. The removal-side
-    //! analogue of AddedObject::change_confidence -- same role, different measurement.
-    float change_confidence = 0.0f;
-    //! RemovedObjectState::num_frames_observed at the time this object was reported.
-    int num_frames_observed = 0;
+    //! change_confidence: EMA-filtered fraction of the object's space observed free.
+    ChangeFilter filter;
   };
 
   /**
-   * @brief Per-track added-filter state: containment EMA plus a snapshot of the track, kept and
-   * reported after the track is gone once added.
-   */
-  struct TrackAddedState {
-    //! EMA-filtered probability that this track is a newly-added object (raw input: free-space
-    //! containment of the track's footprint).
-    double change_confidence = 0.0;
-    //! Number of frames for which a valid containment measurement was available.
-    int num_frames_observed = 0;
-    //! Raw containment ratio from the most recent valid measurement (for logging/debugging).
-    float last_containment = 0.0f;
-    //! frame_index_ value at the last frame this track was measured (staleness pruning).
-    int last_updated_frame = 0;
-    //! Snapshot of the track at its last measurement.
-    BoundingBox bounding_box;
-    std::optional<SemanticClusterInfo> semantics;
-    TimeStamp first_seen = 0;
-    TimeStamp last_seen = 0;
-    //! Track::confidence (tracking quality).
-    float confidence = 0.0f;
-    //! Latched true once the track passes the added gate; prevents pruning.
-    bool ever_added = false;
-    //! The track id and the ids of all tracks it absorbed (Track::absorbed_track_ids).
-    std::set<int> member_track_ids;
-  };
-
-  /**
-   * @brief A newly-added object as reported to sinks. Each track is an object, so `id` is the
-   * track id, stable across merges since the older track survives.
+   * @brief Accumulated state of a track for newly-added detection, keyed by Track::id. Each track
+   * is an object; on a tracker merge the earliest track survives, so `id` stays stable. Holds a
+   * snapshot of the track at its last measurement so it is still reported after the track is
+   * erased. Sinks receive the objects with filter.is_changed.
    */
   struct AddedObject {
-    //! Track id of the object.
-    int id;
-    //! The track id and the ids of all tracks it absorbed (Track::absorbed_track_ids).
-    std::set<int> member_track_ids;
-    //! First and last observation of the track.
-    TimeStamp first_seen;
-    TimeStamp last_seen;
-    //! Accumulated bounding box of the track (Track::accumulated_bounding_box).
+    //! Track::id.
+    int id = -1;
+    //! change_confidence: EMA-filtered containment of the track footprint in prior free space.
+    //! This, not `confidence`, drives the added gate.
+    ChangeFilter filter;
+    //! Track::absorbed_track_ids: ids of the tracks merged into this one.
+    std::set<int> absorbed_track_ids;
+    TimeStamp first_seen = 0;
+    TimeStamp last_seen = 0;
+    //! Track::accumulated_bounding_box, in the current map frame.
     BoundingBox bounding_box;
-    //! Center of the bounding box.
-    Point centroid;
-    //! Semantic info of the track.
+    //! bounding_box in the prior map frame: transformed with current_T_prior at the track's last
+    //! measurement, or every frame if global_added_object_deform.
+    BoundingBox prior_bounding_box;
     std::optional<SemanticClusterInfo> semantics;
-    //! Tracking-quality confidence (Track::confidence). Distinct from change_confidence -- this
-    //! says how well-observed the object is, not how likely it is to be a genuine scene change.
+    //! Track::confidence: tracking quality, i.e. how well-observed the object is.
     float confidence = 0.0f;
-    //! Change-detection confidence (TrackAddedState::change_confidence); this, not `confidence`,
-    //! is compared to added_probability_threshold.
-    float change_confidence = 0.0f;
-    //! TrackAddedState::num_frames_observed at the time this object was reported.
-    int num_frames_observed = 0;
+
+    //! Sets prior_bounding_box to bounding_box placed in the prior frame by prior_T_current.
+    void updatePriorBoundingBox(const Eigen::Isometry3d& prior_T_current);
   };
 
   /**
-   * @brief Debug status of one prior object considered for removal this frame (gate inputs,
-   * measurement, filter state), including objects that fail the in-bounds gate.
+   * @brief Removal measurement of one prior object this frame (gate inputs and raw ratio),
+   * including objects that fail the in-bounds gate. Debug only.
    */
-  struct RemovedCandidateStatus {
+  struct RemovedObjectSnapshot {
     spark_dsg::NodeId id;
     //! Whether the object has a mesh. Meshless objects use the centroid in-bounds test and can
     //! never be measured.
@@ -169,11 +149,6 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     int num_free = 0;
     //! Raw free ratio this frame (valid if measured).
     float raw_ratio = 0.0f;
-    //! Filter state after this frame's update (frozen if not measured).
-    float free_probability = 0.0f;
-    int num_frames_observed = 0;
-    //! Whether the object passed the removal gate this frame.
-    bool removed = false;
     //! Object voxels (current map frame) by state. Only filled if collect_debug_voxels.
     std::vector<GlobalIndex> free_voxels;
     std::vector<GlobalIndex> occupied_voxels;
@@ -181,37 +156,41 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   };
 
   /**
-   * @brief Debug status of one track measured for newly-added detection this frame: its footprint
-   * containment in the prior free space and its filter state.
+   * @brief Added measurement of one track this frame: its footprint containment in the prior free
+   * space. Debug only.
    */
-  struct AddedCandidateStatus {
+  struct AddedObjectSnapshot {
     int track_id = -1;
-    //! Whether the track passed the added gate this frame.
-    bool added = false;
-    //! Accumulated track bounding box in the current map frame.
-    BoundingBox bounding_box;
-    //! Raw containment this frame and the track's own filter state after the update.
+    //! Raw added measurement this frame: footprint containment (graph) or free ratio (mesh).
     float raw_containment = 0.0f;
-    float change_confidence = 0.0f;
-    int num_frames_observed = 0;
-    //! 2D footprint cells of the track, and how many of them lie in the prior free space.
+    //! Cells of the track: 2D footprint cells (graph) or 3D confirmed voxels (mesh); and how many
+    //! of them are free in the prior (in the prior places / not colliding with the prior mesh).
     int num_cells = 0;
     int num_cells_in_free = 0;
-    //! Footprint cell centers inside / outside the prior free space (at the prior place height /
-    //! track centroid height). Only filled if collect_debug_voxels.
+    //! Cell centers free / not free in the prior. Graph: at the prior place height / track
+    //! centroid height. Mesh: voxel centers. Only filled if collect_debug_voxels.
     std::vector<Point> in_free_cells;
     std::vector<Point> out_cells;
   };
 
   /**
-   * @brief Per-frame debug status of the change detector for visualization. Separate from the
-   * removed/added outputs, which only hold objects that passed the gates.
+   * @brief Per-frame debug status of the change detector for visualization: this frame's
+   * measurements plus the accumulated state of every candidate (changed or not).
    */
   struct ChangeDetectionStatus {
     //! Map voxel size [m] of the voxel indices and cells below.
     float voxel_size = 0.0f;
-    std::vector<RemovedCandidateStatus> removed_candidates;
-    std::vector<AddedCandidateStatus> added_candidates;
+    //! Whether detection ran this frame; if stopped, no snapshots or candidates are reported.
+    bool detection_enabled = true;
+    //! Whether the detection history was reset at the start of this frame.
+    bool history_reset = false;
+    //! This frame's measurements.
+    std::vector<RemovedObjectSnapshot> removed_snapshots;
+    std::vector<AddedObjectSnapshot> added_snapshots;
+    //! Accumulated state of all candidates after this frame's update, including unchanged ones.
+    //! Points into the detector: only valid during the sink call, so sinks must not keep it.
+    const std::unordered_map<spark_dsg::NodeId, RemovedObject>* removed_candidates = nullptr;
+    const std::unordered_map<int, AddedObject>* added_candidates = nullptr;
   };
 
   using ActiveWindowCDSink = hydra::OutputSink<const DynamicSceneGraph::Ptr&,
@@ -228,12 +207,12 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! Path to prior map to use for change detection.
     std::filesystem::path prior_map_path;
 
-    //! EMA smoothing factor for the per-object free_probability filter (0 < alpha <= 1).
+    //! EMA smoothing factor for the per-object removal change_confidence filter (0 < alpha <= 1).
     //! Lower values give more smoothing (slower to react); higher values track raw ratios closely.
     //! Cumulative running average (alpha=1/n) is an easy drop-in if EMA proves too noisy.
     float removal_ema_alpha = 0.5f;
 
-    //! Smoothed free_probability threshold above which an object is considered removed.
+    //! Smoothed removal change_confidence threshold above which an object is considered removed.
     float removal_probability_threshold = 0.5f;
 
     //! Minimum number of frames with valid measurements before an object can be declared removed.
@@ -276,12 +255,35 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! Tracks that ever crossed the threshold are never pruned.
     int added_prune_after_frames = 50;
 
+    //! How a track's added measurement is computed. kGraph: fraction of its 2D footprint in the
+    //! prior traversability places. kMesh: fraction of its 3D voxels not colliding with the prior
+    //! mesh (background + object meshes), so space the prior never observed counts as free.
+    enum class AddedDetectionMethod {
+      kGraph,
+      kMesh
+    } added_detection_method = AddedDetectionMethod::kGraph;
+
+    //! kMesh: a track voxel collides if a prior mesh voxel lies within this many voxels
+    //! (Chebyshev distance). 0 = same voxel only.
+    int added_mesh_collision_radius = 0;
+
+    //! false: an added object's prior-frame pose is fixed at its last measurement (local
+    //! transform). true: re-projected with the current transform every frame.
+    bool global_added_object_deform = false;
+
     //! Sinks for the change detector output.
     std::vector<ActiveWindowCDSink::Factory> awcd_sinks;
 
     //! Plugin that provides the odom_T_prior (current_T_prior) transform each frame.
     config::VirtualConfig<TransformationGetter> transformation_getter{
         IdentityTransformationGetter::Config{}};
+
+    //! Whether detection runs from startup. Transform/ICP updates run either way.
+    bool start_enabled = true;
+
+    //! Plugin to start, stop and reset detection at runtime (e.g. RosChangeDetectionController).
+    config::VirtualConfig<ChangeDetectionController> controller{
+        ChangeDetectionController::Config{}};
 
     //! Enable ICP refinement on the transform returned by transformation_getter.
     bool enable_icp_refinement = false;
@@ -330,9 +332,10 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
    */
   void call(const FrameData& data, const VolumetricMap& map, const Tracks& tracks) const override;
 
-
-
   void loadPriorMap();
+
+  //! Clear all removed and added candidates (latched removals and added tracks included).
+  void resetHistory() const;
 
   bool isPriorPointFree(const Point& point_in_map, const VolumetricMap& map) const;
 
@@ -350,12 +353,13 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
    * @brief Find all prior objects with at least removal_min_in_bounds_fraction of their occupied
    * voxels in allocated blocks. Objects without a mesh fall back to testing their centroid.
    * @param map The current volumetric map.
-   * @param status If set, a RemovedCandidateStatus is appended for every object with any voxel in
+   * @param status If set, a RemovedObjectSnapshot is appended for every object with any voxel in
    * bounds (or a meshless object passing the centroid test), including ones failing the gate.
    * @return Vector of node IDs for objects within map bounds.
    */
   std::vector<spark_dsg::NodeId> findPriorObjectsInMapBounds(
-      const VolumetricMap& map, ChangeDetectionStatus* status = nullptr) const;
+      const VolumetricMap& map,
+      ChangeDetectionStatus* status = nullptr) const;
 
   /**
    * @brief Set the transform from prior map frame to current map frame.
@@ -381,7 +385,7 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
    * @brief Compute the per-frame free ratio for each candidate object with a valid measurement
    * (num_known_vertices > 0). Objects with an empty mesh or no KhronosObjectAttributes are skipped.
    * Samples are the object's cached map voxels, weighted per removal_score_weighting.
-   * @param status If set, the measurement fields of the matching removed_candidates are filled.
+   * @param status If set, the measurement fields of the matching removed_snapshots are filled.
    * @return Map from NodeId to raw free ratio [0, 1] for objects that had a valid measurement.
    */
   std::unordered_map<spark_dsg::NodeId, float> computeFreeRatios(
@@ -390,17 +394,15 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
       ChangeDetectionStatus* status = nullptr) const;
 
   /**
-   * @brief Update the EMA filter state for each object that has a measurement this frame,
-   * then return the set of objects whose smoothed free_probability passes the removal gate
-   * (probability >= removal_probability_threshold && frames >= removal_min_frames_observed).
-   * Objects not in measurements are left untouched (freeze-last policy). The first time an
-   * object passes the gate, its RemovedObjectState::first_removed_ns is latched to `stamp`
-   * (the current frame's sensor time) and never updated again.
+   * @brief EMA-update the filter of each object measured this frame (creating its entry on the
+   * first measurement), then re-evaluate the removal gate of every entry
+   * (confidence >= removal_probability_threshold && frames >= removal_min_frames_observed).
+   * Unmeasured objects keep their filter state (freeze-last).
    * @param measurements Per-object raw free ratio measurements for this frame.
-   * @param stamp Sensor frame time (ns) of this call, used to latch first_removed_ns.
+   * @param stamp Sensor frame time (ns) of this call, used to latch first_changed_ns.
    */
-  std::vector<RemovedObject> updateRemovedFilter(
-      const std::unordered_map<spark_dsg::NodeId, float>& measurements, TimeStamp stamp) const;
+  void updateRemovedFilter(const std::unordered_map<spark_dsg::NodeId, float>& measurements,
+                           TimeStamp stamp) const;
 
   /**
    * @brief Compute the per-frame containment ratio for each eligible track (non-dynamic, with
@@ -413,15 +415,31 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
       ChangeDetectionStatus* status = nullptr) const;
 
   /**
-   * @brief Newly-added filter. Takes over the state of absorbed tracks, EMA-updates each measured
-   * track and returns the tracks passing the added gate. Added tracks are latched; others not
-   * measured for added_prune_after_frames frames are pruned.
+   * @brief Compute the per-frame free ratio for each eligible track (as computeContainmentRatios):
+   * the fraction of its confirmed accumulated voxels with no prior mesh voxel within
+   * added_mesh_collision_radius. Returns a map from track ID to raw free ratio [0, 1].
    */
-  std::vector<AddedObject> updateAddedFilter(const std::unordered_map<int, float>& measurements,
-                                             const Tracks& tracks) const;
+  std::unordered_map<int, float> computeMeshFreeRatios(
+      const Tracks& tracks,
+      const VolumetricMap& map,
+      ChangeDetectionStatus* status = nullptr) const;
 
-  //! EMA-update a track's change confidence with this frame's containment measurement.
-  void updateTrackChangeConfidence(TrackAddedState& state, float containment) const;
+  /**
+   * @brief Build prior_mesh_voxels_ once per voxel size from the prior background mesh and object
+   * meshes, in the prior frame.
+   */
+  void updatePriorMeshVoxels(float voxel_size) const;
+
+  /**
+   * @brief Newly-added filter. Takes over the state of absorbed tracks, EMA-updates and snapshots
+   * each measured track (including its prior-frame bounding box; see global_added_object_deform for
+   * unmeasured entries), and re-evaluates the added gate of every entry. Entries that never passed
+   * the gate and were not measured for added_prune_after_frames frames are pruned.
+   * @param stamp Sensor frame time (ns) of this call, used to latch first_changed_ns.
+   */
+  void updateAddedFilter(const std::unordered_map<int, float>& measurements,
+                         const Tracks& tracks,
+                         TimeStamp stamp) const;
 
   /**
    * @brief Cache each prior object's mesh vertices once, and re-quantize them into current-frame
@@ -433,7 +451,8 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   // traversable (MESH_PLACES / TravNodeAttributes) footprint within map bounds.
   // If cell_heights is set, it receives the height (current frame) of each footprint cell's place.
   GlobalIndexSet getPriorFreeFootprint2D(
-      const VolumetricMap& map, spatial_hash::IndexHashMap<float>* cell_heights = nullptr) const;
+      const VolumetricMap& map,
+      spatial_hash::IndexHashMap<float>* cell_heights = nullptr) const;
 
   // Returns 2D voxel indices (z forced to 0) of a track's confirmed accumulated voxels.
   GlobalIndexSet getTrackFootprint2D(const Track& track, float voxel_size) const;
@@ -475,19 +494,29 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   //! Whether block_counts must be recomputed because current_T_prior_ changed.
   mutable bool prior_geometry_blocks_dirty_ = true;
 
-  //! Per-object EMA filter state for removed-object detection. Keyed by prior DSG NodeId.
-  //! Populated lazily on first observation; never erased (freeze-last for unobserved objects).
-  mutable std::unordered_map<spark_dsg::NodeId, RemovedObjectState> removed_object_states_;
+  //! Voxels (prior frame) hit by the prior background and object mesh vertices, for kMesh
+  //! added detection.
+  mutable GlobalIndexSet prior_mesh_voxels_;
 
-  //! Per-track state for newly-added-object detection, keyed by Track::id. Pruned for non-added
-  //! tracks that go stale; added tracks are kept forever.
-  mutable std::unordered_map<int, TrackAddedState> track_added_states_;
+  //! Voxel size prior_mesh_voxels_ was built with (0 = not built yet).
+  mutable float prior_mesh_voxel_size_ = 0.0f;
+
+  //! Accumulated removal state per prior object, keyed by NodeId. Created on the first
+  //! measurement; never erased (freeze-last for unobserved objects).
+  mutable std::unordered_map<spark_dsg::NodeId, RemovedObject> removed_candidates_;
+
+  //! Accumulated added state per track, keyed by Track::id. Pruned for tracks that never passed
+  //! the gate and went stale; tracks that ever passed it are kept forever.
+  mutable std::unordered_map<int, AddedObject> added_candidates_;
 
   //! Frame counter incremented once per call(), used for staleness-based pruning of added records.
   mutable int frame_index_ = 0;
 
   //! Plugin that provides the odom_T_prior transform.
   TransformationGetter::Ptr transformation_getter_;
+
+  //! Run control (enabled / reset requests).
+  ChangeDetectionController::Ptr controller_;
 
   //! Sinks for the change detector output.
   ActiveWindowCDSink::List sinks_;
