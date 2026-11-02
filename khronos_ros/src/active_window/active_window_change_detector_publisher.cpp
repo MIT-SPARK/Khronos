@@ -166,14 +166,16 @@ ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeAddedInfo(const Added
     info.bbox_orientation.z = q.z();
   }
 
+  info.semantic_label = -1;
   if (obj.semantics.has_value()) {
     info.semantic_label = obj.semantics->category_id;
-  } else {
-    info.semantic_label = -1;
+    // The base station matches labels by name: robots may run different label spaces.
+    const auto& names = hydra::GlobalInfo::instance().labelspace().label_names;
+    const auto it = names.find(obj.semantics->category_id);
+    if (it != names.end()) {
+      info.name = it->second;
+    }
   }
-  // NOTE(multy): AddedObject only carries a numeric category_id; no label-space name lookup is
-  // wired in here, so `name` is left empty. The base station can resolve it against the
-  // same label space config (instance_seg_label_space.yaml) used to produce category_id.
   info.confidence = obj.confidence;
   info.change_confidence = obj.filter.change_confidence;
   info.num_frames_observed = obj.filter.num_frames_observed;
