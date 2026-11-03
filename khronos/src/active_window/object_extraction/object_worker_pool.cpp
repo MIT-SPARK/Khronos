@@ -100,15 +100,22 @@ size_t ObjectWorkerPool::numRunning() const { return curr_workers_; }
 void ObjectWorkerPool::submit(TimeStamp stamp,
                               const Track& track,
                               const FrameDataBuffer& frame_data) {
+  TrackLogger::EvictedObservations evicted;
+  if (logger_) {
+    evicted = logger_->takeEvicted(track);
+  }
+
   if (!extractor_) {
     if (logger_) {
-      logger_->log(track, frame_data, false);  // no extractor, so no object
+      logger_->log(track, frame_data, false, std::move(evicted));  // no extractor, so no object
     }
 
     return;
   }
 
-  work_queue_.push(std::make_shared<Request>(stamp, track, frame_data));
+  auto request = std::make_shared<Request>(stamp, track, frame_data);
+  request->evicted = std::move(evicted);
+  work_queue_.push(request);
 }
 
 KhronosObjectAttributes::Ptr ObjectWorkerPool::runBlocking(const Track& track,
@@ -153,7 +160,7 @@ void ObjectWorkerPool::runOnce(Request::Ptr req) const {
   ElapsedTimeRecorder::instance().record("active_window/extract_object", req->stamp, stop - start);
 
   if (logger_) {
-    logger_->log(req->track, req->frame_data, attrs != nullptr);
+    logger_->log(req->track, req->frame_data, attrs != nullptr, std::move(req->evicted));
   }
 
   if (attrs) {

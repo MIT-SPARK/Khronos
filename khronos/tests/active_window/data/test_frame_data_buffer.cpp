@@ -97,6 +97,13 @@ TEST_F(FrameDataBufferTest, MaxBufferSizeEvictsOldest) {
   EXPECT_FALSE(has(buffer, 2));
   EXPECT_TRUE(has(buffer, 3));
   EXPECT_TRUE(has(buffer, 5));
+  // the dropped frame is returned
+  const auto evicted = buffer.storeData(makeFrame(6));
+  ASSERT_TRUE(evicted);
+  EXPECT_EQ(evicted->input.timestamp_ns, 3u);
+  EXPECT_FALSE(has(buffer, 3));
+  EXPECT_TRUE(has(buffer, 6));
+  EXPECT_TRUE(has(buffer, 4));
 }
 
 TEST_F(FrameDataBufferTest, StoresEveryNthFrame) {

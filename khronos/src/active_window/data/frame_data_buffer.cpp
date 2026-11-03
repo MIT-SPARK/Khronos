@@ -88,21 +88,25 @@ const FrameData* FrameDataBuffer::getLatestData() const {
   return buffer_.empty() ? nullptr : buffer_.back().get();
 }
 
-void FrameDataBuffer::storeData(const FrameData::Ptr& data) {
+FrameData::Ptr FrameDataBuffer::storeData(const FrameData::Ptr& data) {
   // Only keep every n-th frame.
   const bool store_data = input_counter_ == 0;
   input_counter_ = (input_counter_ + 1) % config.store_every_n_frames;
   if (!store_data) {
-    return;
+    return nullptr;
   }
 
   buffer_.emplace_back(data);
 
   // Remove the oldest frames if the buffer size is exceeded.
+  FrameData::Ptr evicted;
   if (buffer_.size() > config.max_buffer_size) {
+    evicted = std::move(buffer_.front());
     buffer_.pop_front();
     oldest_time_stamp_ = buffer_.front()->input.timestamp_ns;
   }
+
+  return evicted;
 }
 
 FrameData::Ptr FrameDataBuffer::getData(const TimeStamp stamp,

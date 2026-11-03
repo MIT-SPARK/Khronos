@@ -40,8 +40,10 @@
 #include <algorithm>
 #include <iomanip>
 #include <limits>
+#include <map>
 #include <numeric>
 #include <sstream>
+#include <unordered_set>
 
 #include <config_utilities/config.h>
 #include <config_utilities/types/enum.h>
@@ -91,14 +93,86 @@ std::string sensorToJson(const hydra::InputData& input, const cv::Mat& reference
   return ss.str();
 }
 
-void writeImage(const std::filesystem::path& path,
-                const cv::Mat& image,
-                const std::vector<int>& params = {}) {
+std::string encodeImage(const std::string& extension,
+                        const cv::Mat& image,
+                        const std::vector<int>& params = {}) {
   std::vector<uchar> bytes;
-  if (!cv::imencode(path.extension().string(), image, bytes, params)) {
-    throw std::runtime_error("failed to encode '" + path.string() + "'");
+  if (!cv::imencode(extension, image, bytes, params)) {
+    throw std::runtime_error("failed to encode a '" + extension + "' image");
   }
-  hydra::writeFileAtomic(path, std::string(bytes.begin(), bytes.end()));
+
+  return std::string(bytes.begin(), bytes.end());
+}
+
+// Ranking of observations for keeping images: higher score first, then older, then by sensor (a
+// total order, so the kept set does not depend on which frames were still buffered)
+bool ranksBefore(double lhs_score,
+                 TimeStamp lhs_stamp,
+                 const std::string& lhs_sensor,
+                 double rhs_score,
+                 TimeStamp rhs_stamp,
+                 const std::string& rhs_sensor) {
+  if (lhs_score != rhs_score) {
+    return lhs_score > rhs_score;
+  }
+
+  return lhs_stamp != rhs_stamp ? lhs_stamp < rhs_stamp : lhs_sensor < rhs_sensor;
+}
+
+bool ranksBefore(const TrackLogger::EvictedObservation& lhs,
+                 const TrackLogger::EvictedObservation& rhs) {
+  return ranksBefore(lhs.score, lhs.stamp, lhs.sensor, rhs.score, rhs.stamp, rhs.sensor);
+}
+
+const MeasurementCluster* findCluster(const FrameData& frame, int id) {
+  const auto it =
+      std::find_if(frame.semantic_clusters.begin(),
+                   frame.semantic_clusters.end(),
+                   [id](const MeasurementCluster& cluster) { return cluster.id == id; });
+  return it == frame.semantic_clusters.end() ? nullptr : &*it;
+}
+
+// An observation's full-size segmentation mask, its inclusive 2D bounding box and its
+// track.json metadata members
+struct RenderedObservation {
+  cv::Mat mask;
+  std::optional<cv::Rect> bbox;
+  std::string metadata;
+};
+
+RenderedObservation render(const FrameData& frame, const MeasurementCluster& cluster) {
+  RenderedObservation result;
+  const auto& input = frame.input;
+  const auto& reference = input.color_image.empty() ? input.depth_image : input.color_image;
+  if (!reference.empty()) {
+    result.mask = cv::Mat::zeros(reference.size(), CV_8UC1);
+    for (const auto& pixel : cluster.pixels) {
+      if (pixel.u >= 0 && pixel.u < result.mask.cols && pixel.v >= 0 &&
+          pixel.v < result.mask.rows) {
+        result.mask.at<uint8_t>(pixel.v, pixel.u) = 255;
+      }
+    }
+
+    const auto rect = cv::boundingRect(result.mask);
+    if (rect.area() > 0) {
+      result.bbox = rect;
+    }
+  }
+
+  std::stringstream ss;
+  ss << "\"timestamp_ns\": " << input.timestamp_ns
+     << ", \"world_T_body\": " << poseToJson(input.world_T_body)
+     << ", \"sensor\": " << sensorToJson(input, reference) << ", \"bbox_2d\": ";
+  if (result.bbox) {
+    const auto& bbox = *result.bbox;
+    ss << "[" << bbox.x << ", " << bbox.y << ", " << bbox.x + bbox.width - 1 << ", "
+       << bbox.y + bbox.height - 1 << "]";
+  } else {
+    ss << "null";
+  }
+
+  result.metadata = ss.str();
+  return result;
 }
 
 }  // namespace
@@ -134,6 +208,10 @@ TrackLogger::~TrackLogger() {
     return;
   }
 
+  LOG_IF(INFO, peak_evicted_bytes_ > 0)
+      << "[TrackLogger] Snapshots of frames dropped from the frame buffer peaked at "
+      << peak_evicted_bytes_ / 1.0e6 << " MB";
+
   {
     std::lock_guard<std::mutex> lock(mutex_);
     should_shutdown_ = true;
@@ -143,12 +221,199 @@ TrackLogger::~TrackLogger() {
   thread_->join();
 }
 
-void TrackLogger::log(const Track& track, const FrameDataBuffer& frame_data, bool extracted) {
+void TrackLogger::snapshot(const FrameData& frame, const Tracks& tracks) {
   if (!thread_) {
     return;
   }
 
   try {
+    const auto stamp = frame.input.timestamp_ns;
+    const auto& sensor = frame.input.getSensor().name;
+    std::lock_guard<std::mutex> lock(evicted_mutex_);
+
+    // Move the snapshots of absorbed tracks to their absorber and drop those of tracks that are
+    // gone (e.g. deleted, or absorbed by a track that is gone)
+    std::unordered_set<int> live;
+    for (const auto& track : tracks) {
+      live.insert(track.id);
+      for (const auto id : track.absorbed_track_ids) {
+        const auto it = evicted_.find(id);
+        if (it == evicted_.end()) {
+          continue;
+        }
+
+        auto absorbed = std::move(it->second);
+        evicted_.erase(it);
+        auto& target = evicted_[track.id];
+        std::move(absorbed.begin(), absorbed.end(), std::back_inserter(target));
+        limitImages(target);
+      }
+    }
+
+    for (auto it = evicted_.begin(); it != evicted_.end();) {
+      it = live.count(it->first) ? std::next(it) : evicted_.erase(it);
+    }
+
+    std::optional<Images> frame_images;  // color and depth are encoded once per frame
+    for (const auto& track : tracks) {
+      for (const auto& observation : track.observations) {
+        if (observation.stamp != stamp || observation.sensor != sensor ||
+            observation.semantic_cluster_id == -1) {
+          continue;
+        }
+
+        const auto cluster = findCluster(frame, observation.semantic_cluster_id);
+        if (!cluster) {
+          continue;
+        }
+
+        auto rendered = render(frame, *cluster);
+        EvictedObservation evicted;
+        evicted.stamp = stamp;
+        evicted.sensor = sensor;
+        evicted.score = score(*cluster);
+        evicted.metadata = std::move(rendered.metadata);
+        if (config.save_mask_rle && rendered.bbox) {
+          evicted.mask_rle = encodeMaskRle(rendered.mask);
+        }
+
+        auto& track_evicted = evicted_[track.id];
+        // only encode images if the observation is among the best of the track so far
+        size_t num_better = 0;
+        for (const auto& other : track_evicted) {
+          num_better += other.images && ranksBefore(other, evicted);
+        }
+
+        if (num_better < config.max_images_per_object) {
+          auto images =
+              encodeImages(frame.input, rendered.mask, frame_images ? &*frame_images : nullptr);
+          if (!frame_images) {
+            frame_images = images;
+          }
+
+          evicted.images = std::make_shared<Images>(std::move(images));
+        }
+
+        track_evicted.push_back(std::move(evicted));
+        limitImages(track_evicted);
+      }
+    }
+
+    updateEvictedBytes();
+  } catch (const std::exception& e) {
+    LOG(WARNING) << "[TrackLogger] Failed to snapshot frame " << frame.input.timestamp_ns << ": "
+                 << e.what();
+  }
+}
+
+void TrackLogger::limitImages(EvictedObservations& observations) const {
+  std::vector<EvictedObservation*> with_images;
+  for (auto& observation : observations) {
+    if (observation.images) {
+      with_images.push_back(&observation);
+    }
+  }
+
+  if (with_images.size() <= config.max_images_per_object) {
+    return;
+  }
+
+  std::sort(with_images.begin(), with_images.end(), [](const auto* lhs, const auto* rhs) {
+    return ranksBefore(*lhs, *rhs);
+  });
+  for (size_t i = config.max_images_per_object; i < with_images.size(); ++i) {
+    with_images[i]->images.reset();
+  }
+}
+
+void TrackLogger::updateEvictedBytes() {
+  // shared color/depth files are counted once
+  std::unordered_set<const std::string*> files;
+  size_t bytes = 0;
+  for (const auto& [id, observations] : evicted_) {
+    bytes += observations.capacity() * sizeof(EvictedObservation);
+    for (const auto& observation : observations) {
+      bytes += observation.sensor.capacity() + observation.metadata.capacity() +
+               observation.mask_rle.capacity();
+      if (!observation.images) {
+        continue;
+      }
+
+      const auto& images = *observation.images;
+      bytes += sizeof(Images) + images.mask.capacity();
+      for (const auto& file : {images.color, images.depth}) {
+        if (file && files.insert(file.get()).second) {
+          bytes += file->capacity();
+        }
+      }
+    }
+  }
+
+  evicted_bytes_ = bytes;
+  peak_evicted_bytes_ = std::max(peak_evicted_bytes_, bytes);
+}
+
+TrackLogger::EvictedObservations TrackLogger::takeEvicted(const Track& track) {
+  EvictedObservations result;
+  if (!thread_) {
+    return result;
+  }
+
+  std::lock_guard<std::mutex> lock(evicted_mutex_);
+  std::vector<int> ids(track.absorbed_track_ids.begin(), track.absorbed_track_ids.end());
+  ids.push_back(track.id);
+  for (const auto id : ids) {
+    const auto it = evicted_.find(id);
+    if (it == evicted_.end()) {
+      continue;
+    }
+
+    std::move(it->second.begin(), it->second.end(), std::back_inserter(result));
+    evicted_.erase(it);
+  }
+
+  // absorbed tracks may each hold their best images; only the track's best are needed
+  limitImages(result);
+  updateEvictedBytes();
+  return result;
+}
+
+size_t TrackLogger::numEvicted(bool with_images) const {
+  std::lock_guard<std::mutex> lock(evicted_mutex_);
+  size_t result = 0;
+  for (const auto& [id, observations] : evicted_) {
+    for (const auto& observation : observations) {
+      result += !with_images || observation.images;
+    }
+  }
+
+  return result;
+}
+
+size_t TrackLogger::evictedBytes() const {
+  std::lock_guard<std::mutex> lock(evicted_mutex_);
+  return evicted_bytes_;
+}
+
+size_t TrackLogger::peakEvictedBytes() const {
+  std::lock_guard<std::mutex> lock(evicted_mutex_);
+  return peak_evicted_bytes_;
+}
+
+void TrackLogger::log(const Track& track,
+                      const FrameDataBuffer& frame_data,
+                      bool extracted,
+                      EvictedObservations evicted) {
+  if (!thread_) {
+    return;
+  }
+
+  try {
+    std::map<std::pair<TimeStamp, std::string>, size_t> evicted_index;
+    for (size_t i = 0; i < evicted.size(); ++i) {
+      evicted_index.emplace(std::make_pair(evicted[i].stamp, evicted[i].sensor), i);
+    }
+
     auto request = std::make_shared<Request>(Request{track, {}, extracted});
     for (const auto& observation : track.observations) {
       if (observation.semantic_cluster_id == -1) {
@@ -157,7 +422,15 @@ void TrackLogger::log(const Track& track, const FrameDataBuffer& frame_data, boo
 
       const auto frame = frame_data.getData(observation.stamp, observation.sensor);
       if (frame) {
-        request->frames.emplace_back(frame, observation.semantic_cluster_id);
+        request->sources.push_back({frame, observation.semantic_cluster_id, std::nullopt});
+        continue;
+      }
+
+      const auto it = evicted_index.find({observation.stamp, observation.sensor});
+      if (it != evicted_index.end()) {
+        request->sources.push_back(
+            {nullptr, observation.semantic_cluster_id, std::move(evicted[it->second])});
+        evicted_index.erase(it);
       }
     }
 
@@ -267,27 +540,80 @@ std::string TrackLogger::encodeMaskRle(const cv::Mat& mask) {
   return ss.str();
 }
 
+double TrackLogger::score(const MeasurementCluster& cluster) const {
+  return config.score == Config::Score::kBBoxVolume
+             ? static_cast<double>(cluster.bounding_box.volume())
+             : static_cast<double>(cluster.pixels.size());
+}
+
+TrackLogger::Images TrackLogger::encodeImages(const hydra::InputData& input,
+                                              const cv::Mat& mask,
+                                              const Images* frame) const {
+  Images images;
+  if (frame) {
+    images.color = frame->color;
+    images.depth = frame->depth;
+  } else {
+    const std::vector<int> jpeg_params{cv::IMWRITE_JPEG_QUALITY, config.jpeg_quality};
+    if (input.color_image.channels() == 3) {
+      cv::Mat bgr;
+      cv::cvtColor(input.color_image, bgr, cv::COLOR_RGB2BGR);
+      images.color = std::make_shared<std::string>(encodeImage(".jpg", bgr, jpeg_params));
+    } else if (!input.color_image.empty()) {
+      images.color =
+          std::make_shared<std::string>(encodeImage(".jpg", input.color_image, jpeg_params));
+    }
+
+    if (config.save_depth && input.depth_image.type() == CV_32FC1) {
+      cv::Mat depth_m = input.depth_image.clone();
+      cv::patchNaNs(depth_m, 0.0);
+      depth_m.setTo(0.0f, depth_m == std::numeric_limits<float>::infinity());
+      depth_m.setTo(0.0f, depth_m < 0.0f);
+      cv::Mat depth_mm;
+      depth_m.convertTo(depth_mm, CV_16UC1, 1000.0);  // saturates at 65535
+      images.depth = std::make_shared<std::string>(encodeImage(".png", depth_mm));
+    }
+  }
+
+  if (!mask.empty()) {
+    images.mask = encodeImage(".png", mask);
+  }
+
+  return images;
+}
+
 void TrackLogger::write(const Request& request) const {
   const auto& track = request.track;
   struct Candidate {
-    const FrameData* frame;
+    const FrameData* frame;  // buffered frame, or
     const MeasurementCluster* cluster;
+    const EvictedObservation* evicted;  // snapshot of a dropped frame
+    TimeStamp stamp;
+    const std::string* sensor;
     double score;
   };
 
   std::vector<Candidate> candidates;
-  for (const auto& [frame, id] : request.frames) {
-    const auto it = std::find_if(frame->semantic_clusters.begin(),
-                                 frame->semantic_clusters.end(),
-                                 [id = id](const auto& cluster) { return cluster.id == id; });
-    if (it == frame->semantic_clusters.end()) {
+  for (const auto& source : request.sources) {
+    if (source.evicted) {
+      const auto& evicted = *source.evicted;
+      candidates.push_back(
+          {nullptr, nullptr, &evicted, evicted.stamp, &evicted.sensor, evicted.score});
       continue;
     }
 
-    const double score = config.score == Config::Score::kBBoxVolume
-                             ? static_cast<double>(it->bounding_box.volume())
-                             : static_cast<double>(it->pixels.size());
-    candidates.push_back({frame.get(), &*it, score});
+    const auto cluster = findCluster(*source.frame, source.cluster_id);
+    if (!cluster) {
+      continue;
+    }
+
+    const auto& input = source.frame->input;
+    candidates.push_back({source.frame.get(),
+                          cluster,
+                          nullptr,
+                          input.timestamp_ns,
+                          &input.getSensor().name,
+                          score(*cluster)});
   }
 
   // only the best observations of extracted tracks keep their images; tracks that extraction
@@ -297,8 +623,10 @@ void TrackLogger::write(const Request& request) const {
   std::vector<bool> kept(candidates.size(), true);
   std::vector<size_t> order(candidates.size());
   std::iota(order.begin(), order.end(), 0);
-  std::stable_sort(order.begin(), order.end(), [&candidates](size_t lhs, size_t rhs) {
-    return candidates[lhs].score > candidates[rhs].score;
+  std::sort(order.begin(), order.end(), [&candidates](size_t lhs, size_t rhs) {
+    const auto& a = candidates[lhs];
+    const auto& b = candidates[rhs];
+    return ranksBefore(a.score, a.stamp, *a.sensor, b.score, b.stamp, *b.sensor);
   });
   for (size_t i = max_kept; i < order.size(); ++i) {
     kept[order[i]] = false;
@@ -325,81 +653,61 @@ void TrackLogger::write(const Request& request) const {
 
   ss << ", \"observations\": [";
   for (size_t k = 0; k < candidates.size(); ++k) {
-    const auto& [frame, cluster, score] = candidates[k];
-    const auto& input = frame->input;
-    const auto& reference = input.color_image.empty() ? input.depth_image : input.color_image;
-
-    // full-size segmentation mask and its inclusive 2D bounding box
-    cv::Mat mask;
-    std::optional<cv::Rect> bbox;
-    if (!reference.empty()) {
-      mask = cv::Mat::zeros(reference.size(), CV_8UC1);
-      for (const auto& pixel : cluster->pixels) {
-        if (pixel.u >= 0 && pixel.u < mask.cols && pixel.v >= 0 && pixel.v < mask.rows) {
-          mask.at<uint8_t>(pixel.v, pixel.u) = 255;
-        }
+    const auto& candidate = candidates[k];
+    std::string metadata;
+    std::string mask_rle;
+    std::shared_ptr<const Images> images;
+    if (candidate.frame) {
+      const auto rendered = render(*candidate.frame, *candidate.cluster);
+      metadata = rendered.metadata;
+      if (kept[k]) {
+        images = std::make_shared<Images>(encodeImages(candidate.frame->input, rendered.mask));
+      } else if (config.save_mask_rle && rendered.bbox) {
+        mask_rle = encodeMaskRle(rendered.mask);
       }
-
-      const auto rect = cv::boundingRect(mask);
-      if (rect.area() > 0) {
-        bbox = rect;
+    } else {
+      metadata = candidate.evicted->metadata;
+      mask_rle = candidate.evicted->mask_rle;
+      images = candidate.evicted->images;
+      if (kept[k] && !images) {
+        // not expected: snapshots keep the images of the track's best observations
+        LOG(WARNING) << "[TrackLogger] Track " << track.id << ": no images for observation "
+                     << candidate.stamp;
+        kept[k] = false;
       }
     }
 
     const std::string prefix = "obs_" + std::to_string(k) + "_";
     std::optional<std::string> color_file, depth_file, mask_file;
     if (kept[k]) {
-      if (input.color_image.channels() == 3) {
-        cv::Mat bgr;
-        cv::cvtColor(input.color_image, bgr, cv::COLOR_RGB2BGR);
-        color_file = prefix + "color.jpg";
-        writeImage(track_path / *color_file, bgr, {cv::IMWRITE_JPEG_QUALITY, config.jpeg_quality});
-      } else if (!input.color_image.empty()) {
-        color_file = prefix + "color.jpg";
-        writeImage(track_path / *color_file,
-                   input.color_image,
-                   {cv::IMWRITE_JPEG_QUALITY, config.jpeg_quality});
-      }
+      const auto write_file = [&](const std::string* bytes, const std::string& suffix) {
+        if (!bytes || bytes->empty()) {
+          return std::optional<std::string>();
+        }
 
-      if (config.save_depth && input.depth_image.type() == CV_32FC1) {
-        cv::Mat depth_m = input.depth_image.clone();
-        cv::patchNaNs(depth_m, 0.0);
-        depth_m.setTo(0.0f, depth_m == std::numeric_limits<float>::infinity());
-        depth_m.setTo(0.0f, depth_m < 0.0f);
-        cv::Mat depth_mm;
-        depth_m.convertTo(depth_mm, CV_16UC1, 1000.0);  // saturates at 65535
-        depth_file = prefix + "depth.png";
-        writeImage(track_path / *depth_file, depth_mm);
-      }
+        const auto file = prefix + suffix;
+        hydra::writeFileAtomic(track_path / file, *bytes);
+        return std::optional<std::string>(file);
+      };
 
-      if (!mask.empty()) {
-        mask_file = prefix + "mask.png";
-        writeImage(track_path / *mask_file, mask);
-      }
+      color_file = write_file(images->color.get(), "color.jpg");
+      depth_file = write_file(images->depth.get(), "depth.png");
+      mask_file = write_file(&images->mask, "mask.png");
     }
 
     const auto file_or_null = [](const std::optional<std::string>& file) {
       return file ? jsonString(*file) : std::string("null");
     };
 
-    ss << (k ? "," : "") << "\n  {\"k\": " << k << ", \"timestamp_ns\": " << input.timestamp_ns
-       << ", \"world_T_body\": " << poseToJson(input.world_T_body)
-       << ", \"sensor\": " << sensorToJson(input, reference) << ", \"bbox_2d\": ";
-    if (bbox) {
-      ss << "[" << bbox->x << ", " << bbox->y << ", " << bbox->x + bbox->width - 1 << ", "
-         << bbox->y + bbox->height - 1 << "]";
+    ss << (k ? "," : "") << "\n  {\"k\": " << k << ", " << metadata << ", \"mask_rle\": ";
+    if (!kept[k] && !mask_rle.empty()) {
+      ss << "\"" << mask_rle << "\"";
     } else {
       ss << "null";
     }
 
-    ss << ", \"mask_rle\": ";
-    if (!kept[k] && config.save_mask_rle && bbox) {
-      ss << "\"" << encodeMaskRle(mask) << "\"";
-    } else {
-      ss << "null";
-    }
-
-    ss << ", \"score\": " << jsonNumber(score) << ", \"kept\": " << (kept[k] ? "true" : "false")
+    ss << ", \"score\": " << jsonNumber(candidate.score)
+       << ", \"kept\": " << (kept[k] ? "true" : "false")
        << ", \"color\": " << file_or_null(color_file) << ", \"depth\": " << file_or_null(depth_file)
        << ", \"mask\": " << file_or_null(mask_file) << "}";
   }

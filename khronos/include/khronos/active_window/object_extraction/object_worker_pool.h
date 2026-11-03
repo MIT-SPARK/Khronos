@@ -71,6 +71,8 @@ class ObjectWorkerPool {
     TimeStamp stamp;
     Track track;
     FrameDataBuffer frame_data;
+    //! The track's observations in frames the buffer already dropped (for the logger)
+    TrackLogger::EvictedObservations evicted;
   };
 
   ObjectWorkerPool(const Config& config,

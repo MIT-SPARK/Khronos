@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <optional>
 #include <sstream>
 
@@ -74,6 +75,66 @@ struct FailingExtractor : ObjectExtractor {
     return nullptr;
   }
 };
+
+// All files below a directory, by relative path
+std::map<std::string, std::string> readTree(const std::filesystem::path& root) {
+  std::map<std::string, std::string> result;
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(root)) {
+    if (entry.is_regular_file()) {
+      std::ifstream fin(entry.path(), std::ios::binary);
+      std::stringstream ss;
+      ss << fin.rdbuf();
+      result[std::filesystem::relative(entry.path(), root).string()] = ss.str();
+    }
+  }
+  return result;
+}
+
+// Feeds frames through a buffer of the given size the way the active window does (snapshot every
+// dropped frame for the live tracks), then logs the tracks as extracted.
+std::map<std::string, std::string> logWithBuffer(TrackLogger::Config config,
+                                                 size_t max_buffer_size,
+                                                 const std::vector<FrameData::Ptr>& frames,
+                                                 const Tracks& tracks,
+                                                 size_t* num_evicted = nullptr) {
+  const auto root = makeTempDir();
+  config.log_path = root;
+  FrameDataBuffer::Config buffer_config;
+  buffer_config.max_buffer_size = max_buffer_size;
+  FrameDataBuffer buffer(buffer_config);
+  {
+    TrackLogger logger(config);
+    for (const auto& frame : frames) {
+      const auto evicted = buffer.storeData(frame);
+      if (evicted) {
+        logger.snapshot(*evicted, tracks);
+      }
+    }
+
+    if (num_evicted) {
+      *num_evicted = logger.numEvicted();
+    }
+
+    for (const auto& track : tracks) {
+      logger.log(track, buffer, true, logger.takeEvicted(track));
+    }
+    logger.flush();
+    EXPECT_EQ(logger.numEvicted(), 0u);
+    EXPECT_EQ(logger.evictedBytes(), 0u);
+  }
+
+  auto result = readTree(root);
+  std::filesystem::remove_all(root);
+  return result;
+}
+
+Pixels makePixels(size_t num) {
+  Pixels pixels;
+  for (size_t i = 0; i < num; ++i) {
+    pixels.emplace_back(static_cast<int>(i % 4), static_cast<int>(i / 4));
+  }
+  return pixels;
+}
 
 }  // namespace
 
@@ -293,6 +354,215 @@ TEST(TrackLogger, DropsTracksWhenQueueIsFull) {
   EXPECT_TRUE(std::filesystem::exists(root / "2" / "track.json"));
   EXPECT_FALSE(std::filesystem::exists(root / "3"));
   EXPECT_FALSE(std::filesystem::exists(root / "4"));
+  std::filesystem::remove_all(root);
+}
+
+TEST(TrackLogger, EvictedFrameKeepsImageAndObservation) {
+  const auto camera = makeCamera();
+  // the best observation (3 pixels) is the oldest frame, which the buffer drops
+  const std::vector<FrameData::Ptr> frames{makeFrame(camera, 10, makePixels(3)),
+                                           makeFrame(camera, 20, makePixels(1)),
+                                           makeFrame(camera, 30, makePixels(2))};
+  Track track;
+  track.id = 3;
+  for (const TimeStamp stamp : {10, 20, 30}) {
+    track.observations.emplace_back(stamp, 1, -1, "test_camera");
+  }
+
+  TrackLogger::Config config;
+  config.save_depth = true;
+  size_t num_evicted = 0;
+  const auto evicted = logWithBuffer(config, 2, frames, {track}, &num_evicted);
+  EXPECT_EQ(num_evicted, 1u);
+  ASSERT_TRUE(evicted.count("3/track.json"));
+  const auto& json = evicted.at("3/track.json");
+  EXPECT_NE(json.find("{\"k\": 0, \"timestamp_ns\": 10, "), std::string::npos) << json;
+  EXPECT_NE(json.find("\"bbox_2d\": [0, 0, 2, 0], \"mask_rle\": null, \"score\": 3, \"kept\": "
+                      "true, \"color\": \"obs_0_color.jpg\", \"depth\": \"obs_0_depth.png\", "
+                      "\"mask\": \"obs_0_mask.png\"}"),
+            std::string::npos)
+      << json;
+  EXPECT_NE(json.find("{\"k\": 2, \"timestamp_ns\": 30"), std::string::npos) << json;
+  for (const auto file : {"3/obs_0_color.jpg", "3/obs_0_depth.png", "3/obs_0_mask.png"}) {
+    EXPECT_TRUE(evicted.count(file)) << file;
+  }
+
+  // same files, byte for byte, as with a buffer that never drops a frame
+  EXPECT_EQ(evicted, logWithBuffer(config, 100, frames, {track}));
+}
+
+TEST(TrackLogger, EvictedRankingEqualsUnboundedBuffer) {
+  const auto camera = makeCamera();
+  // scores (pixel counts) with ties, best ones spread over old and recent frames
+  const std::vector<size_t> sizes{2, 7, 1, 7, 3, 12, 5, 7, 2, 9, 12, 4};
+  std::vector<FrameData::Ptr> frames;
+  Track first, second;
+  first.id = 1;
+  second.id = 2;
+  for (size_t i = 0; i < sizes.size(); ++i) {
+    const TimeStamp stamp = 10 * (i + 1);
+    frames.push_back(makeFrame(camera, stamp, makePixels(sizes[i])));
+    // the second track sees every other frame
+    first.observations.emplace_back(stamp, 1, -1, "test_camera");
+    if (i % 2) {
+      second.observations.emplace_back(stamp, 1, -1, "test_camera");
+    }
+  }
+
+  for (const size_t max_images : {1, 3, 20}) {
+    TrackLogger::Config config;
+    config.max_images_per_object = max_images;
+    const auto unbounded = logWithBuffer(config, 100, frames, {first, second});
+    for (const size_t buffer_size : {1, 2, 5, 11}) {
+      size_t num_evicted = 0;
+      EXPECT_EQ(logWithBuffer(config, buffer_size, frames, {first, second}, &num_evicted),
+                unbounded)
+          << "max_images " << max_images << ", buffer " << buffer_size;
+      EXPECT_GT(num_evicted, 0u);
+    }
+  }
+}
+
+TEST(TrackLogger, AbsorbedTrackSnapshotsMoveToAbsorber) {
+  const auto camera = makeCamera();
+  const auto best = makeFrame(camera, 10, makePixels(5));
+  const auto other = makeFrame(camera, 20, makePixels(1));
+  const auto unrelated = makeFrame(camera, 30, makePixels(1));
+  Track absorbed;
+  absorbed.id = 7;
+  absorbed.first_seen = 10;
+  absorbed.last_seen = 10;
+  absorbed.observations.emplace_back(10, 1, -1, "test_camera");
+  Track survivor;
+  survivor.id = 4;
+  survivor.first_seen = 5;
+  survivor.last_seen = 20;
+  survivor.observations.emplace_back(20, 1, -1, "test_camera");
+
+  const auto root = makeTempDir();
+  TrackLogger::Config config;
+  config.log_path = root;
+  FrameDataBuffer buffer(FrameDataBuffer::Config{});
+  buffer.storeData(other);
+  {
+    TrackLogger logger(config);
+    logger.snapshot(*best, {absorbed, survivor});  // dropped while track 7 is live
+    EXPECT_EQ(logger.numEvicted(true), 1u);
+    survivor.absorb(std::move(absorbed));
+    // the next dropped frame moves the snapshots of track 7 to track 4
+    logger.snapshot(*unrelated, {survivor});
+    EXPECT_EQ(logger.numEvicted(true), 1u);
+    logger.log(survivor, buffer, true, logger.takeEvicted(survivor));
+    logger.flush();
+    EXPECT_EQ(logger.numEvicted(), 0u);
+  }
+
+  const auto json = readFile(root / "4" / "track.json");
+  EXPECT_NE(json.find("\"absorbed_track_ids\": [7]"), std::string::npos) << json;
+  EXPECT_NE(json.find("{\"k\": 0, \"timestamp_ns\": 10"), std::string::npos) << json;
+  EXPECT_NE(json.find("\"score\": 5, \"kept\": true, \"color\": \"obs_0_color.jpg\""),
+            std::string::npos)
+      << json;
+  EXPECT_NE(json.find("{\"k\": 1, \"timestamp_ns\": 20"), std::string::npos) << json;
+  EXPECT_TRUE(std::filesystem::exists(root / "4" / "obs_0_color.jpg"));
+  EXPECT_FALSE(std::filesystem::exists(root / "7"));
+  std::filesystem::remove_all(root);
+}
+
+TEST(TrackLogger, TakesSnapshotsOfAbsorbedTracksWithBestImagesOnly) {
+  const auto camera = makeCamera();
+  Track first, second;
+  first.id = 1;
+  first.observations.emplace_back(10, 1, -1, "test_camera");
+  second.id = 2;
+  second.observations.emplace_back(20, 1, -1, "test_camera");
+
+  TrackLogger::Config config;
+  config.log_path = makeTempDir();
+  TrackLogger logger(config);
+  logger.snapshot(*makeFrame(camera, 10, makePixels(2)), {first, second});
+  logger.snapshot(*makeFrame(camera, 20, makePixels(3)), {first, second});
+  EXPECT_EQ(logger.numEvicted(true), 2u);  // each track keeps its best image
+
+  // absorbed after the last dropped frame: taking the absorber's snapshots includes track 2's
+  first.absorb(std::move(second));
+  const auto evicted = logger.takeEvicted(first);
+  ASSERT_EQ(evicted.size(), 2u);
+  EXPECT_EQ(logger.numEvicted(), 0u);
+  EXPECT_EQ(logger.evictedBytes(), 0u);
+  size_t with_images = 0;
+  for (const auto& observation : evicted) {
+    with_images += observation.images != nullptr;
+    EXPECT_EQ(observation.images != nullptr, observation.stamp == 20) << observation.stamp;
+  }
+  EXPECT_EQ(with_images, 1u);
+  std::filesystem::remove_all(config.log_path);
+}
+
+TEST(TrackLogger, DropsSnapshotsOfDeletedTracks) {
+  const auto camera = makeCamera();
+  Track track;
+  track.id = 5;
+  track.observations.emplace_back(10, 1, -1, "test_camera");
+  Track unrelated;
+  unrelated.id = 6;
+
+  TrackLogger::Config config;
+  config.log_path = makeTempDir();
+  TrackLogger logger(config);
+  logger.snapshot(*makeFrame(camera, 10, makePixels(2)), {track, unrelated});
+  EXPECT_EQ(logger.numEvicted(), 1u);
+  EXPECT_GT(logger.evictedBytes(), 0u);
+
+  // track 5 is gone (deleted without being logged) when the next frame is dropped
+  logger.snapshot(*makeFrame(camera, 20, makePixels(2)), {unrelated});
+  EXPECT_EQ(logger.numEvicted(), 0u);
+  EXPECT_EQ(logger.evictedBytes(), 0u);
+  EXPECT_GT(logger.peakEvictedBytes(), 0u);
+  EXPECT_TRUE(logger.takeEvicted(track).empty());
+  std::filesystem::remove_all(config.log_path);
+}
+
+TEST(TrackLogger, NoSnapshotsWhenDisabledOrNothingIsDropped) {
+  const auto camera = makeCamera();
+  Track track;
+  track.id = 5;
+  track.observations.emplace_back(10, 1, -1, "test_camera");
+
+  TrackLogger disabled(TrackLogger::Config{});
+  disabled.snapshot(*makeFrame(camera, 10, makePixels(2)), {track});
+  EXPECT_EQ(disabled.numEvicted(), 0u);
+  EXPECT_TRUE(disabled.takeEvicted(track).empty());
+
+  // a buffer that never drops a frame never needs a snapshot
+  FrameDataBuffer buffer(FrameDataBuffer::Config{});
+  for (TimeStamp stamp = 10; stamp <= 50; stamp += 10) {
+    EXPECT_EQ(buffer.storeData(makeFrame(camera, stamp, makePixels(1))), nullptr);
+  }
+}
+
+TEST(TrackLogger, WorkerPoolPassesSnapshotsToTheLogger) {
+  const auto root = makeTempDir();
+  TrackLogger::Config config;
+  config.log_path = root;
+  auto logger = std::make_shared<TrackLogger>(config);
+
+  Track track;
+  track.id = 9;
+  track.observations.emplace_back(10, 1, -1, "test_camera");
+  logger->snapshot(*makeFrame(makeCamera(), 10, makePixels(2)), {track});
+  {
+    ObjectWorkerPool pool(ObjectWorkerPool::Config{}, nullptr, logger);
+    pool.submit(0, track, FrameDataBuffer(FrameDataBuffer::Config{}));
+  }
+  logger->flush();
+  EXPECT_EQ(logger->numEvicted(), 0u);
+
+  // dropped tracks stay metadata only
+  const auto json = readFile(root / "9" / "track.json");
+  EXPECT_NE(json.find("{\"k\": 0, \"timestamp_ns\": 10"), std::string::npos) << json;
+  EXPECT_NE(json.find("\"mask_rle\": \"[0,2,10]\""), std::string::npos) << json;
+  EXPECT_EQ(json.find("\"kept\": true"), std::string::npos) << json;
   std::filesystem::remove_all(root);
 }
 

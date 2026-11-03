@@ -45,6 +45,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -60,6 +61,12 @@ namespace khronos {
  * hydra_image_store/FORMAT.md, section 2): <log_path>/<track_id>/track.json plus color/depth/mask
  * images for the best max_images_per_object observations. Files are written by a background
  * thread.
+ *
+ * Frames can leave the frame buffer while a track still references them (max_buffer_size). The
+ * owner calls snapshot() with each frame the buffer drops; the logger then keeps what it needs of
+ * the live tracks' observations in that frame (metadata, plus the encoded images while the
+ * observation ranks within its track's best max_images_per_object), so the logged track is the
+ * same as with an unbounded buffer.
  */
 class TrackLogger {
  public:
@@ -85,14 +92,54 @@ class TrackLogger {
   explicit TrackLogger(const Config& config);
   ~TrackLogger();
 
+  //! Encoded image files of an observation (null/empty if not available). Observations of the
+  //! same frame share the color and depth files.
+  struct Images {
+    std::shared_ptr<const std::string> color;  //!< JPEG
+    std::shared_ptr<const std::string> depth;  //!< 16-bit PNG, millimeters
+    std::string mask;                          //!< 8-bit PNG
+  };
+
+  //! What logging needs of an observation whose frame was dropped from the frame buffer
+  struct EvictedObservation {
+    TimeStamp stamp = 0;
+    std::string sensor;
+    double score = 0.0;
+    //! track.json members: timestamp, pose, sensor and 2D bounding box
+    std::string metadata;
+    //! Run-length encoded mask (empty if none or not configured)
+    std::string mask_rle;
+    //! Only set while the observation ranks within the track's best max_images_per_object
+    std::shared_ptr<const Images> images;
+  };
+
+  using EvictedObservations = std::vector<EvictedObservation>;
+
   bool enabled() const { return static_cast<bool>(thread_); }
 
   /**
-   * @brief Queue the track and its frames (all observations with a semantic cluster in the
-   * buffer) for writing. Never throws.
-   * @param extracted Whether object extraction produced a node for the track
+   * @brief Record the observations the given tracks have in a frame that is dropped from the
+   * frame buffer. Snapshots of tracks absorbed by one of the tracks move to it; snapshots of
+   * tracks that are no longer in `tracks` (and were not taken) are dropped. No-op if disabled.
    */
-  void log(const Track& track, const FrameDataBuffer& frame_data, bool extracted);
+  void snapshot(const FrameData& frame, const Tracks& tracks);
+
+  /**
+   * @brief Take the snapshots of a track and of the tracks it absorbed (call when the track leaves
+   * the tracker, then pass them to log()).
+   */
+  EvictedObservations takeEvicted(const Track& track);
+
+  /**
+   * @brief Queue the track and its frames (all observations with a semantic cluster whose frame is
+   * in the buffer or in `evicted`) for writing. Never throws.
+   * @param extracted Whether object extraction produced a node for the track
+   * @param evicted Snapshots of the track's observations whose frames left the buffer
+   */
+  void log(const Track& track,
+           const FrameDataBuffer& frame_data,
+           bool extracted,
+           EvictedObservations evicted = {});
 
   //! Block until all queued tracks are written (resumes a paused logger)
   void flush();
@@ -104,18 +151,40 @@ class TrackLogger {
   //! Number of tracks dropped because the queue was full
   size_t numDropped() const;
 
+  //! Number of evicted observations held for live tracks (optionally only those with images)
+  size_t numEvicted(bool with_images = false) const;
+
+  //! Memory held by the snapshots of live tracks [bytes], currently and at most so far
+  size_t evictedBytes() const;
+  size_t peakEvictedBytes() const;
+
   //! Row-major run lengths of a binary mask, starting with background: "[r0,r1,...]"
   static std::string encodeMaskRle(const cv::Mat& mask);
 
  private:
+  //! An observation to write: its buffered frame and cluster id, or its snapshot
+  struct Source {
+    FrameData::Ptr frame;
+    int cluster_id = -1;
+    std::optional<EvictedObservation> evicted;
+  };
+
   struct Request {
     Track track;
-    std::vector<std::pair<FrameData::Ptr, int>> frames;
+    std::vector<Source> sources;
     bool extracted;
   };
 
   void spin();
   void write(const Request& request) const;
+  double score(const MeasurementCluster& cluster) const;
+  //! Encode the images of an observation (color and depth are reused from `frame` if given)
+  Images encodeImages(const hydra::InputData& input,
+                      const cv::Mat& mask,
+                      const Images* frame = nullptr) const;
+  //! Drop the images of all but the best max_images_per_object observations
+  void limitImages(EvictedObservations& observations) const;
+  void updateEvictedBytes();
 
   mutable std::mutex mutex_;
   std::condition_variable cv_;
@@ -125,6 +194,12 @@ class TrackLogger {
   size_t num_dropped_ = 0;
   bool should_shutdown_ = false;
   std::unique_ptr<std::thread> thread_;
+
+  //! Snapshots of observations in dropped frames, by track id (only touched by snapshot/take)
+  mutable std::mutex evicted_mutex_;
+  std::unordered_map<int, EvictedObservations> evicted_;
+  size_t evicted_bytes_ = 0;
+  size_t peak_evicted_bytes_ = 0;
 };
 
 void declare_config(TrackLogger::Config& config);

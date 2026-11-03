@@ -212,7 +212,12 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
 
   // Save the frame for later use and free-up memory of frames no longer used.
   frame_data_buffer_.trimBuffer(tracks_);
-  frame_data_buffer_.storeData(data);
+  const auto evicted = frame_data_buffer_.storeData(data);
+  if (evicted && track_logger_->enabled()) {
+    // A track may still reference the dropped frame: keep what the track logger needs of it.
+    Timer snapshot_timer("active_window/track_logger_snapshot", stamp);
+    track_logger_->snapshot(*evicted, tracks_);
+  }
 
   CLOG(4) << "[Khronos Active Window] Frame data buffer size: " << frame_data_buffer_.size()
           << ", object extraction threads running: " << extraction_worker_.numRunning() << ".";
