@@ -99,6 +99,7 @@ void declare_config(ActiveWindow::Config& config) {
   config.object_extractor.setOptional();
   field(config.object_extractor, "object_extractor");
   field(config.extraction_worker, "extraction_worker");
+  field(config.track_logger, "track_logger");
   field(config.mesh_integrator, "mesh_integrator");
   field(config.frame_data_buffer, "frame_data_buffer");
   field(config.khronos_sinks, "khronos_sinks");
@@ -126,7 +127,8 @@ ActiveWindow::ActiveWindow(const Config& config,
       processors_(config.processors),
       tracking_integrator_(config.tracking_integrator, map_window_.get()),
       mesh_integrator_(config.mesh_integrator),
-      extraction_worker_(config.extraction_worker, config.object_extractor.create()),
+      track_logger_(std::make_shared<TrackLogger>(config.track_logger)),
+      extraction_worker_(config.extraction_worker, config.object_extractor.create(), track_logger_),
       sinks_(KhronosSink::instantiate(config.khronos_sinks)),
       frame_data_buffer_(config.frame_data_buffer) {
   if (!map_window_) {
@@ -153,6 +155,7 @@ void ActiveWindow::addKhronosSink(const KhronosSink::Ptr& sink) {
 void ActiveWindow::stop() {
   ActiveWindowModule::stop();
   finishMapping();
+  track_logger_->flush();
 }
 
 void ActiveWindow::updateTrackingStatus(const FrameData& data) {

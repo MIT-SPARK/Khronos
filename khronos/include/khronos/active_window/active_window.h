@@ -100,6 +100,8 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     TrackingIntegrator::Config tracking_integrator;
     config::VirtualConfig<ObjectExtractor> object_extractor;
     ObjectWorkerPool::Config extraction_worker;
+    //! Logs the observations of tracks handed to object extraction (off by default)
+    TrackLogger::Config track_logger;
     hydra::MeshIntegratorConfig mesh_integrator;
     FrameDataBuffer::Config frame_data_buffer;
     std::vector<KhronosSink::Factory> khronos_sinks;
@@ -184,6 +186,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   TrackingIntegrator tracking_integrator_;
   hydra::MeshIntegrator mesh_integrator_;
 
+  std::shared_ptr<TrackLogger> track_logger_;
   ObjectWorkerPool extraction_worker_;
 
   std::mutex mutex_;

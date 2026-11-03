@@ -62,8 +62,13 @@ ObjectWorkerPool::Request::Request(TimeStamp stamp,
     : stamp(stamp), track(track), frame_data(frame_data) {}
 
 ObjectWorkerPool::ObjectWorkerPool(const Config& config,
-                                   std::unique_ptr<ObjectExtractor>&& extractor)
-    : config(config), should_shutdown_(false), curr_workers_(0), extractor_(std::move(extractor)) {
+                                   std::unique_ptr<ObjectExtractor>&& extractor,
+                                   std::shared_ptr<TrackLogger> logger)
+    : config(config),
+      should_shutdown_(false),
+      curr_workers_(0),
+      extractor_(std::move(extractor)),
+      logger_(std::move(logger)) {
   if (extractor_) {
     spin_thread_ = std::make_unique<std::thread>(&ObjectWorkerPool::spin, this);
   }
@@ -96,6 +101,10 @@ void ObjectWorkerPool::submit(TimeStamp stamp,
                               const Track& track,
                               const FrameDataBuffer& frame_data) {
   if (!extractor_) {
+    if (logger_) {
+      logger_->log(track, frame_data, false);  // no extractor, so no object
+    }
+
     return;
   }
 
@@ -142,6 +151,10 @@ void ObjectWorkerPool::runOnce(Request::Ptr req) const {
   const auto stop = std::chrono::high_resolution_clock::now();
 
   ElapsedTimeRecorder::instance().record("active_window/extract_object", req->stamp, stop - start);
+
+  if (logger_) {
+    logger_->log(req->track, req->frame_data, attrs != nullptr);
+  }
 
   if (attrs) {
     // The track left the active window, so its object is archived from here on.

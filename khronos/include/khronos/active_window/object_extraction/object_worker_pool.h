@@ -46,6 +46,7 @@
 #include <hydra/common/message_queue.h>
 
 #include "khronos/active_window/object_extraction/object_extractor.h"
+#include "khronos/active_window/object_extraction/track_logger.h"
 
 namespace khronos {
 
@@ -72,7 +73,9 @@ class ObjectWorkerPool {
     FrameDataBuffer frame_data;
   };
 
-  ObjectWorkerPool(const Config& config, std::unique_ptr<ObjectExtractor>&& extractor);
+  ObjectWorkerPool(const Config& config,
+                   std::unique_ptr<ObjectExtractor>&& extractor,
+                   std::shared_ptr<TrackLogger> logger = nullptr);
   ~ObjectWorkerPool();
 
   void stop();
@@ -94,6 +97,8 @@ class ObjectWorkerPool {
   mutable std::atomic<size_t> curr_workers_;
 
   std::unique_ptr<ObjectExtractor> extractor_;
+  //! Optional logger for the tracks handed to extraction
+  std::shared_ptr<TrackLogger> logger_;
   hydra::MessageQueue<Request::Ptr> work_queue_;
 
   mutable std::mutex output_mutex_;
