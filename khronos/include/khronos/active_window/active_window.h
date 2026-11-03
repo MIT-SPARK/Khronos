@@ -92,6 +92,14 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     // perform full updates on every frame.
     float min_output_separation = 0.0f;
 
+    // If true, pass the inputs of frames without an output to the next output (in
+    // ActiveWindowOutput::sensor_data, oldest first), e.g., for the frontend keyframe selector.
+    // Inputs still pending at stop() go with the final output of finishMapping(). Side effects
+    // downstream: every Hydra frontend functor sees every input, so PoseGraphTracker adds denser
+    // agent nodes (up to its own gates) and traversability integrates every frame (more CPU), and
+    // up to min_output_separation of InputData is held in memory.
+    bool forward_intermediate_inputs = false;
+
     // If true, run object extraction in detached threads to avoid blocking the active window.
     bool detach_object_extraction = true;
 
@@ -204,6 +212,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   // Ids of tracks absorbed by other tracks (MaxIoUTracker::mergeTracks) since the last output,
   // whose object nodes are deleted downstream with the next output.
   std::vector<int> pending_retractions_;
+  std::vector<hydra::InputData::ConstPtr> intermediate_inputs_;
 };
 
 void declare_config(ActiveWindow::Config& config);
