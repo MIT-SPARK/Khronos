@@ -38,7 +38,6 @@
 #include "khronos/active_window/object_extraction/track_logger.h"
 
 #include <algorithm>
-#include <iomanip>
 #include <limits>
 #include <map>
 #include <numeric>
