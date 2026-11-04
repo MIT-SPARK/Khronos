@@ -93,12 +93,14 @@ void declare_config(ActiveWindow::Config& config) {
   field(config.verbosity, "verbosity");
   field(config.detach_object_extraction, "detach_object_extraction");
   field(config.min_output_separation, "min_output_separation", "s");
+  field(config.forward_intermediate_inputs, "forward_intermediate_inputs");
   // intentionally avoid descend into namespace to keep backwards compatability
   field(config.processors, "processors", false);
   field(config.tracking_integrator, "tracking_integrator");
   config.object_extractor.setOptional();
   field(config.object_extractor, "object_extractor");
   field(config.extraction_worker, "extraction_worker");
+  field(config.track_logger, "track_logger");
   field(config.mesh_integrator, "mesh_integrator");
   field(config.frame_data_buffer, "frame_data_buffer");
   field(config.khronos_sinks, "khronos_sinks");
@@ -126,7 +128,8 @@ ActiveWindow::ActiveWindow(const Config& config,
       processors_(config.processors),
       tracking_integrator_(config.tracking_integrator, map_window_.get()),
       mesh_integrator_(config.mesh_integrator),
-      extraction_worker_(config.extraction_worker, config.object_extractor.create()),
+      track_logger_(std::make_shared<TrackLogger>(config.track_logger)),
+      extraction_worker_(config.extraction_worker, config.object_extractor.create(), track_logger_),
       sinks_(KhronosSink::instantiate(config.khronos_sinks)),
       frame_data_buffer_(config.frame_data_buffer) {
   if (!map_window_) {
@@ -153,6 +156,7 @@ void ActiveWindow::addKhronosSink(const KhronosSink::Ptr& sink) {
 void ActiveWindow::stop() {
   ActiveWindowModule::stop();
   finishMapping();
+  track_logger_->flush();
 }
 
 void ActiveWindow::updateTrackingStatus(const FrameData& data) {
@@ -208,7 +212,12 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
 
   // Save the frame for later use and free-up memory of frames no longer used.
   frame_data_buffer_.trimBuffer(tracks_);
-  frame_data_buffer_.storeData(data);
+  const auto evicted = frame_data_buffer_.storeData(data);
+  if (evicted && track_logger_->enabled()) {
+    // A track may still reference the dropped frame: keep what the track logger needs of it.
+    Timer snapshot_timer("active_window/track_logger_snapshot", stamp);
+    track_logger_->snapshot(*evicted, tracks_);
+  }
 
   CLOG(4) << "[Khronos Active Window] Frame data buffer size: " << frame_data_buffer_.size()
           << ", object extraction threads running: " << extraction_worker_.numRunning() << ".";
@@ -226,6 +235,10 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
   // TODO(lschmid): Double check this does what's intended. Check whether we can move mesh
   // extraction here and whether it makes sense to move launching object threads before this.
   if (last_full_upated_ + fromSeconds(config.min_output_separation) > stamp) {
+    if (config.forward_intermediate_inputs) {
+      intermediate_inputs_.push_back(std::make_shared<hydra::InputData>(data->input));
+    }
+
     return nullptr;
   }
 
@@ -233,6 +246,10 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
   CLOG(5) << "[Khronos Active Window] Extracting output data.";
   auto output = extractOutputData(*data, config.detach_object_extraction);
   last_full_upated_ = stamp;
+  // Intermediate inputs come first to keep sensor_data in chronological order.
+  output->sensor_data.insert(
+      output->sensor_data.begin(), intermediate_inputs_.begin(), intermediate_inputs_.end());
+  intermediate_inputs_.clear();
 
   // unset update flags
   for (const auto& block : map_.getTsdfLayer()) {
@@ -258,11 +275,25 @@ void ActiveWindow::finishMapping() {
   // Extract objects and wait for them to finish extraction.
   const auto latest = frame_data_buffer_.getLatestData();
   if (!latest) {
+    intermediate_inputs_.clear();
     LOG_IF(WARNING, num_frames_processed_ > 0) << "Unable to get last frame from buffer!";
     return;
   }
 
   auto output = extractOutputData(*latest, false);
+  if (output) {
+    // Forwarded inputs still pending go first; the newest of them is the latest frame
+    // already in the output.
+    std::vector<hydra::InputData::ConstPtr> pending;
+    for (const auto& input : intermediate_inputs_) {
+      if (input->timestamp_ns < output->timestamp_ns) {
+        pending.push_back(input);
+      }
+    }
+    output->sensor_data.insert(output->sensor_data.begin(), pending.begin(), pending.end());
+  }
+
+  intermediate_inputs_.clear();
   if (output && output_queue_) {
     output_queue_->push(output);
   }
