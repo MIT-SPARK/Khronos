@@ -93,7 +93,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     float min_output_separation = 0.0f;
 
     // If true, also pass the inputs skipped by min_output_separation with the next output
-    // (sensor_data, oldest first), e.g., for the keyframe selector. All frontend functors see them.
+    // (intermediate_inputs, oldest first) for the keyframe selector; sensor_data is unchanged.
     bool forward_intermediate_inputs = false;
 
     // If true, run object extraction in detached threads to avoid blocking the active window.

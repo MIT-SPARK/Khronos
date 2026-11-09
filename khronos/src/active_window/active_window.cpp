@@ -246,9 +246,7 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
   CLOG(5) << "[Khronos Active Window] Extracting output data.";
   auto output = extractOutputData(*data, config.detach_object_extraction);
   last_full_upated_ = stamp;
-  // Intermediate inputs come first to keep sensor_data in chronological order.
-  output->sensor_data.insert(
-      output->sensor_data.begin(), intermediate_inputs_.begin(), intermediate_inputs_.end());
+  output->intermediate_inputs = std::move(intermediate_inputs_);
   intermediate_inputs_.clear();
 
   // unset update flags
@@ -282,15 +280,13 @@ void ActiveWindow::finishMapping() {
 
   auto output = extractOutputData(*latest, false);
   if (output) {
-    // Forwarded inputs still pending go first; the newest of them is the latest frame
-    // already in the output.
-    std::vector<hydra::InputData::ConstPtr> pending;
+    // Forwarded inputs still pending; the newest of them is the latest frame, already
+    // the output's sensor data.
     for (const auto& input : intermediate_inputs_) {
       if (input->timestamp_ns < output->timestamp_ns) {
-        pending.push_back(input);
+        output->intermediate_inputs.push_back(input);
       }
     }
-    output->sensor_data.insert(output->sensor_data.begin(), pending.begin(), pending.end());
   }
 
   intermediate_inputs_.clear();
