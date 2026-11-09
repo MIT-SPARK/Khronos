@@ -9,10 +9,12 @@
 #include <gtest/gtest.h>
 #include <hydra/input/camera.h>
 #include <hydra/input/sensor_extrinsics.h>
+#include <nlohmann/json.hpp>
 #include <opencv2/imgcodecs.hpp>
+#include <yaml-cpp/yaml.h>
 
 #include "khronos/active_window/object_extraction/object_worker_pool.h"
-#include "khronos/active_window/object_extraction/track_logger.h"
+#include "khronos/active_window/track_logger.h"
 
 namespace khronos {
 namespace {
@@ -68,6 +70,24 @@ std::string readFile(const std::filesystem::path& path) {
   std::stringstream ss;
   ss << fin.rdbuf();
   return ss.str();
+}
+
+using Json = nlohmann::json;
+
+Json readJson(const std::filesystem::path& path) { return Json::parse(readFile(path)); }
+
+// The keyframe archives' pose layout: translation in metres and a wxyz quaternion
+Json poseJson(const Eigen::Vector3d& p, const Eigen::Quaterniond& q = {1, 0, 0, 0}) {
+  return {{"translation_m", {p.x(), p.y(), p.z()}},
+          {"rotation_wxyz", {q.w(), q.x(), q.y(), q.z()}}};
+}
+
+size_t numKept(const Json& track) {
+  size_t result = 0;
+  for (const auto& observation : track["observations"]) {
+    result += observation["kept"].get<bool>();
+  }
+  return result;
 }
 
 struct FailingExtractor : ObjectExtractor {
@@ -185,28 +205,51 @@ TEST(TrackLogger, WritesTrackAndKeptImages) {
   }
 
   const auto track_dir = root / "tracks" / "12";
-  const auto json = readFile(track_dir / "track.json");
-  EXPECT_NE(json.find("{\"version\": 1, \"robot_id\": 0, \"track_id\": 12, "
-                      "\"absorbed_track_ids\": [7, 9], \"extracted\": true, "
-                      "\"semantic_label\": 3, \"observations\": ["),
-            std::string::npos)
-      << json;
+  const auto text = readFile(track_dir / "track.json");
+  EXPECT_EQ(text.rfind("{\n  \"version\": 1,", 0), 0u) << text;  // version first
+  const auto json = Json::parse(text);
+  EXPECT_EQ(json["robot_id"], 0);
+  EXPECT_EQ(json["track_id"], 12);
+  EXPECT_EQ(json["absorbed_track_ids"], Json({7, 9}));
+  EXPECT_EQ(json["extracted"], true);
+  EXPECT_EQ(json["semantic_label"], 3);
+  ASSERT_EQ(json["observations"].size(), 2u) << text;
   // non-kept observation: metadata only plus RLE mask
-  EXPECT_NE(json.find("{\"k\": 0, \"timestamp_ns\": 10, \"world_T_body\": [1, 0, 0, 1, 0, 1, 0, "
-                      "2, 0, 0, 1, 3, 0, 0, 0, 1], \"sensor\": {\"name\": \"test_camera\", "
-                      "\"width\": 4, \"height\": 3, \"fx\": 10, \"fy\": 10, \"cx\": 2, \"cy\": "
-                      "1.5, \"body_T_sensor\": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, "
-                      "1]}, \"bbox_2d\": [1, 1, 1, 1], \"mask_rle\": \"[5,1,6]\", \"score\": 1, "
-                      "\"kept\": false, \"color\": null, \"depth\": null, \"mask\": null}"),
-            std::string::npos)
-      << json;
-  EXPECT_NE(json.find("{\"k\": 1, \"timestamp_ns\": 20"), std::string::npos) << json;
-  EXPECT_NE(json.find("\"bbox_2d\": [1, 0, 2, 1], \"mask_rle\": null, \"score\": 3, \"kept\": "
-                      "true, \"color\": \"obs_1_color.jpg\", \"depth\": \"obs_1_depth.png\", "
-                      "\"mask\": \"obs_1_mask.png\"}"),
-            std::string::npos)
-      << json;
-  EXPECT_EQ(json.find("\"k\": 2"), std::string::npos) << json;
+  const Json expected_first{{"k", 0},
+                            {"timestamp_ns", 10},
+                            {"world_T_body", poseJson({1.0, 2.0, 3.0})},
+                            {"sensor", "test_camera"},
+                            {"image_size", {4, 3}},
+                            {"bbox_2d", {1, 1, 1, 1}},
+                            {"mask_rle", "[5,1,6]"},
+                            {"score", 1.0},
+                            {"kept", false},
+                            {"color", nullptr},
+                            {"depth", nullptr},
+                            {"mask", nullptr}};
+  EXPECT_EQ(json["observations"][0], expected_first) << text;
+  const auto& second = json["observations"][1];
+  EXPECT_EQ(second["k"], 1);
+  EXPECT_EQ(second["timestamp_ns"], 20);
+  EXPECT_EQ(second["bbox_2d"], Json({1, 0, 2, 1}));
+  EXPECT_EQ(second["mask_rle"], nullptr);
+  EXPECT_EQ(second["score"], 3.0);
+  EXPECT_EQ(second["kept"], true);
+  EXPECT_EQ(second["color"], "obs_1_color.jpg");
+  EXPECT_EQ(second["depth"], "obs_1_depth.png");
+  EXPECT_EQ(second["mask"], "obs_1_mask.png");
+
+  // the sensor's record is written once, as in the keyframe archives' metadata.yaml
+  const auto sensors = YAML::LoadFile((root / "tracks" / "sensors.yaml").string());
+  EXPECT_EQ(sensors["version"].as<int>(), 1);
+  ASSERT_EQ(sensors["sensors"].size(), 1u);
+  const auto sensor = sensors["sensors"][0];
+  EXPECT_EQ(sensor["name"].as<std::string>(), "test_camera");
+  EXPECT_EQ(sensor["config"]["type"].as<std::string>(), "camera");
+  EXPECT_EQ(sensor["config"]["fx"].as<double>(), 10.0);
+  EXPECT_EQ(sensor["config"]["cy"].as<double>(), 1.5);
+  EXPECT_EQ(sensor["config"]["width"].as<int>(), 4);
+  EXPECT_EQ(sensor["config"]["extrinsics"]["type"].as<std::string>(), "param");
 
   EXPECT_FALSE(std::filesystem::exists(track_dir / "obs_0_color.jpg"));
   const auto color = cv::imread((track_dir / "obs_1_color.jpg").string(), cv::IMREAD_UNCHANGED);
@@ -259,12 +302,12 @@ TEST(TrackLogger, LogsFailedExtraction) {
   logger->flush();
 
   for (const auto id : {"4", "5"}) {
-    const auto json = readFile(root / id / "track.json");
-    EXPECT_NE(json.find("\"extracted\": false"), std::string::npos) << json;
-    EXPECT_NE(json.find("\"semantic_label\": null"), std::string::npos) << json;
+    const auto json = readJson(root / id / "track.json");
+    EXPECT_EQ(json["extracted"], false);
+    EXPECT_EQ(json["semantic_label"], nullptr);
     // dropped tracks are metadata only: no kept observation and no image files
-    EXPECT_EQ(json.find("\"kept\": true"), std::string::npos) << json;
-    EXPECT_NE(json.find("\"kept\": false"), std::string::npos) << json;
+    EXPECT_EQ(json["observations"].size(), 1u);
+    EXPECT_EQ(numKept(json), 0u);
     for (const auto& entry : std::filesystem::directory_iterator(root / id)) {
       EXPECT_EQ(entry.path().filename(), "track.json") << entry.path();
     }
@@ -292,9 +335,9 @@ TEST(TrackLogger, KeepsImagesOfDroppedTracksWhenConfigured) {
   }
   logger->flush();
 
-  const auto json = readFile(root / "6" / "track.json");
-  EXPECT_NE(json.find("\"extracted\": false"), std::string::npos) << json;
-  EXPECT_NE(json.find("\"kept\": true"), std::string::npos) << json;
+  const auto json = readJson(root / "6" / "track.json");
+  EXPECT_EQ(json["extracted"], false);
+  EXPECT_EQ(numKept(json), 1u);
   std::filesystem::remove_all(root);
 }
 
@@ -317,12 +360,12 @@ TEST(TrackLogger, NonFiniteValuesAreNull) {
     logger.flush();
   }
 
-  const auto json = readFile(root / "8" / "track.json");
-  EXPECT_NE(json.find("\"world_T_body\": [1, 0, 0, null, 0, 1, 0, null, 0, 0, 1, 3, 0, 0, 0, 1]"),
-            std::string::npos)
-      << json;
-  EXPECT_EQ(json.find("nan"), std::string::npos) << json;
-  EXPECT_EQ(json.find("inf"), std::string::npos) << json;
+  const auto text = readFile(root / "8" / "track.json");
+  const auto logged = Json::parse(text)["observations"][0]["world_T_body"];
+  EXPECT_EQ(logged["translation_m"], Json({nullptr, nullptr, 3.0})) << text;
+  EXPECT_EQ(logged["rotation_wxyz"], Json({1.0, 0.0, 0.0, 0.0})) << text;
+  EXPECT_EQ(text.find("nan"), std::string::npos) << text;
+  EXPECT_EQ(text.find("inf"), std::string::npos) << text;
   std::filesystem::remove_all(root);
 }
 
@@ -375,14 +418,19 @@ TEST(TrackLogger, EvictedFrameKeepsImageAndObservation) {
   const auto evicted = logWithBuffer(config, 2, frames, {track}, &num_evicted);
   EXPECT_EQ(num_evicted, 1u);
   ASSERT_TRUE(evicted.count("3/track.json"));
-  const auto& json = evicted.at("3/track.json");
-  EXPECT_NE(json.find("{\"k\": 0, \"timestamp_ns\": 10, "), std::string::npos) << json;
-  EXPECT_NE(json.find("\"bbox_2d\": [0, 0, 2, 0], \"mask_rle\": null, \"score\": 3, \"kept\": "
-                      "true, \"color\": \"obs_0_color.jpg\", \"depth\": \"obs_0_depth.png\", "
-                      "\"mask\": \"obs_0_mask.png\"}"),
-            std::string::npos)
-      << json;
-  EXPECT_NE(json.find("{\"k\": 2, \"timestamp_ns\": 30"), std::string::npos) << json;
+  const auto json = Json::parse(evicted.at("3/track.json"));
+  ASSERT_EQ(json["observations"].size(), 3u);
+  const auto& best = json["observations"][0];
+  EXPECT_EQ(best["timestamp_ns"], 10);
+  EXPECT_EQ(best["bbox_2d"], Json({0, 0, 2, 0}));
+  EXPECT_EQ(best["mask_rle"], nullptr);
+  EXPECT_EQ(best["score"], 3.0);
+  EXPECT_EQ(best["kept"], true);
+  EXPECT_EQ(best["color"], "obs_0_color.jpg");
+  EXPECT_EQ(best["depth"], "obs_0_depth.png");
+  EXPECT_EQ(best["mask"], "obs_0_mask.png");
+  EXPECT_EQ(json["observations"][2]["timestamp_ns"], 30);
+  EXPECT_TRUE(evicted.count("sensors.yaml"));
   for (const auto file : {"3/obs_0_color.jpg", "3/obs_0_depth.png", "3/obs_0_mask.png"}) {
     EXPECT_TRUE(evicted.count(file)) << file;
   }
@@ -457,13 +505,17 @@ TEST(TrackLogger, AbsorbedTrackSnapshotsMoveToAbsorber) {
     EXPECT_EQ(logger.numEvicted(), 0u);
   }
 
-  const auto json = readFile(root / "4" / "track.json");
-  EXPECT_NE(json.find("\"absorbed_track_ids\": [7]"), std::string::npos) << json;
-  EXPECT_NE(json.find("{\"k\": 0, \"timestamp_ns\": 10"), std::string::npos) << json;
-  EXPECT_NE(json.find("\"score\": 5, \"kept\": true, \"color\": \"obs_0_color.jpg\""),
-            std::string::npos)
-      << json;
-  EXPECT_NE(json.find("{\"k\": 1, \"timestamp_ns\": 20"), std::string::npos) << json;
+  const auto json = readJson(root / "4" / "track.json");
+  EXPECT_EQ(json["absorbed_track_ids"], Json({7}));
+  ASSERT_EQ(json["observations"].size(), 2u);
+  const auto& first = json["observations"][0];
+  EXPECT_EQ(first["timestamp_ns"], 10);
+  EXPECT_EQ(first["score"], 5.0);
+  EXPECT_EQ(first["kept"], true);
+  EXPECT_EQ(first["color"], "obs_0_color.jpg");
+  EXPECT_EQ(json["observations"][1]["timestamp_ns"], 20);
+  // the snapshot registered the sensor of the dropped frame
+  EXPECT_TRUE(std::filesystem::exists(root / "sensors.yaml"));
   EXPECT_TRUE(std::filesystem::exists(root / "4" / "obs_0_color.jpg"));
   EXPECT_FALSE(std::filesystem::exists(root / "7"));
   std::filesystem::remove_all(root);
@@ -559,10 +611,11 @@ TEST(TrackLogger, WorkerPoolPassesSnapshotsToTheLogger) {
   EXPECT_EQ(logger->numEvicted(), 0u);
 
   // dropped tracks stay metadata only
-  const auto json = readFile(root / "9" / "track.json");
-  EXPECT_NE(json.find("{\"k\": 0, \"timestamp_ns\": 10"), std::string::npos) << json;
-  EXPECT_NE(json.find("\"mask_rle\": \"[0,2,10]\""), std::string::npos) << json;
-  EXPECT_EQ(json.find("\"kept\": true"), std::string::npos) << json;
+  const auto json = readJson(root / "9" / "track.json");
+  ASSERT_EQ(json["observations"].size(), 1u);
+  EXPECT_EQ(json["observations"][0]["timestamp_ns"], 10);
+  EXPECT_EQ(json["observations"][0]["mask_rle"], "[0,2,10]");
+  EXPECT_EQ(numKept(json), 0u);
   std::filesystem::remove_all(root);
 }
 

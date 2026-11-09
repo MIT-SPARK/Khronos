@@ -46,7 +46,7 @@
 #include <hydra/common/message_queue.h>
 
 #include "khronos/active_window/object_extraction/object_extractor.h"
-#include "khronos/active_window/object_extraction/track_logger.h"
+#include "khronos/active_window/track_logger.h"
 
 namespace khronos {
 

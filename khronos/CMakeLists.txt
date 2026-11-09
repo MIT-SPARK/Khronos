@@ -55,7 +55,7 @@ add_library(${PROJECT_NAME}
         src/active_window/object_extraction/accumulated_object_extractor.cpp
         src/active_window/object_extraction/mesh_object_extractor.cpp
         src/active_window/object_extraction/object_worker_pool.cpp
-        src/active_window/object_extraction/track_logger.cpp
+        src/active_window/track_logger.cpp
         src/active_window/tracking/external_tracker.cpp
         src/active_window/tracking/max_iou_tracker.cpp
         src/active_window/tracking/semantic_matching.cpp

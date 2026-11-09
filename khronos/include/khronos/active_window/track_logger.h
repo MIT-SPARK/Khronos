@@ -40,6 +40,7 @@
 #include <condition_variable>
 #include <deque>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -58,9 +59,10 @@ namespace khronos {
 
 /**
  * @brief Logs the observations of tracks handed to object extraction to disk (format: Hydra's
- * hydra_image_store/FORMAT.md, section 2): <log_path>/<track_id>/track.json plus color/depth/mask
- * images for the best max_images_per_object observations. Files are written by a background
- * thread.
+ * hydra_python/image_store/FORMAT.md, section 2): <log_path>/<track_id>/track.json plus
+ * color/depth/mask images for the best max_images_per_object observations, and
+ * <log_path>/sensors.yaml with the record (hydra::input::writeSensor) of every sensor the tracks
+ * reference. Files are written by a background thread.
  *
  * Frames can leave the frame buffer while a track still references them (max_buffer_size). The
  * owner calls snapshot() with each frame the buffer drops; the logger then keeps what it needs of
@@ -105,7 +107,8 @@ class TrackLogger {
     TimeStamp stamp = 0;
     std::string sensor;
     double score = 0.0;
-    //! track.json members: timestamp, pose, sensor and 2D bounding box
+    //! track.json members as compact JSON: timestamp, pose, sensor name, image size and 2D
+    //! bounding box
     std::string metadata;
     //! Run-length encoded mask (empty if none or not configured)
     std::string mask_rle;
@@ -177,6 +180,10 @@ class TrackLogger {
 
   void spin();
   void write(const Request& request) const;
+  //! Remember the record of a sensor for sensors.yaml (first one per name)
+  void noteSensor(const hydra::Sensor& sensor) const;
+  //! Rewrite sensors.yaml if a sensor was added since it was last written
+  void writeSensors() const;
   double score(const MeasurementCluster& cluster) const;
   //! Encode the images of an observation (color and depth are reused from `frame` if given)
   Images encodeImages(const hydra::InputData& input,
@@ -194,6 +201,11 @@ class TrackLogger {
   size_t num_dropped_ = 0;
   bool should_shutdown_ = false;
   std::unique_ptr<std::thread> thread_;
+
+  //! Sensor records (YAML text) by name, written to sensors.yaml
+  mutable std::mutex sensors_mutex_;
+  mutable std::map<std::string, std::string> sensors_;
+  mutable bool sensors_written_ = true;
 
   //! Snapshots of observations in dropped frames, by track id (only touched by snapshot/take)
   mutable std::mutex evicted_mutex_;

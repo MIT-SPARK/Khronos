@@ -35,7 +35,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#include "khronos/active_window/object_extraction/track_logger.h"
+#include "khronos/active_window/track_logger.h"
 
 #include <algorithm>
 #include <limits>
@@ -50,46 +50,25 @@
 #include <config_utilities/validation.h>
 #include <glog/logging.h>
 #include <hydra/common/global_info.h>
-#include <hydra/input/camera.h>
+#include <hydra/input/input_data_io.h>
 #include <hydra/utils/data_directory.h>
+#include <nlohmann/json.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#include <yaml-cpp/yaml.h>
 
 namespace khronos {
 namespace {
 
-using hydra::jsonNumber;
-using hydra::jsonString;
+using Json = nlohmann::ordered_json;
 
-// non-finite entries are written as null (JSON has no nan/inf)
-std::string poseToJson(const Eigen::Isometry3d& pose) {
-  std::stringstream ss;
-  ss << "[";
-  for (int r = 0; r < 4; ++r) {
-    for (int c = 0; c < 4; ++c) {
-      ss << (r || c ? ", " : "") << jsonNumber(pose.matrix()(r, c));
-    }
-  }
-  ss << "]";
-  return ss.str();
-}
-
-std::string sensorToJson(const hydra::InputData& input, const cv::Mat& reference) {
-  const auto& sensor = input.getSensor();
-  const auto camera = dynamic_cast<const hydra::Camera*>(&sensor);
-  std::stringstream ss;
-  ss << "{\"name\": " << jsonString(sensor.name) << ", ";
-  if (camera) {
-    const auto& cam = camera->getConfig();
-    ss << "\"width\": " << cam.width << ", \"height\": " << cam.height
-       << ", \"fx\": " << jsonNumber(cam.fx) << ", \"fy\": " << jsonNumber(cam.fy)
-       << ", \"cx\": " << jsonNumber(cam.cx) << ", \"cy\": " << jsonNumber(cam.cy);
-  } else {
-    ss << "\"width\": " << reference.cols << ", \"height\": " << reference.rows
-       << ", \"fx\": null, \"fy\": null, \"cx\": null, \"cy\": null";
-  }
-  ss << ", \"body_T_sensor\": " << poseToJson(sensor.body_T_sensor()) << "}";
-  return ss.str();
+// Same layout as the world_T_body of Hydra's keyframe archives; nlohmann writes non-finite
+// numbers as null (JSON has no nan/inf)
+Json poseToJson(const Eigen::Isometry3d& pose) {
+  const Eigen::Vector3d p = pose.translation();
+  const Eigen::Quaterniond q(pose.linear());
+  return {{"translation_m", {p.x(), p.y(), p.z()}},
+          {"rotation_wxyz", {q.w(), q.x(), q.y(), q.z()}}};
 }
 
 std::string encodeImage(const std::string& extension,
@@ -136,7 +115,7 @@ const MeasurementCluster* findCluster(const FrameData& frame, int id) {
 struct RenderedObservation {
   cv::Mat mask;
   std::optional<cv::Rect> bbox;
-  std::string metadata;
+  Json metadata;
 };
 
 RenderedObservation render(const FrameData& frame, const MeasurementCluster& cluster) {
@@ -158,19 +137,23 @@ RenderedObservation render(const FrameData& frame, const MeasurementCluster& clu
     }
   }
 
-  std::stringstream ss;
-  ss << "\"timestamp_ns\": " << input.timestamp_ns
-     << ", \"world_T_body\": " << poseToJson(input.world_T_body)
-     << ", \"sensor\": " << sensorToJson(input, reference) << ", \"bbox_2d\": ";
-  if (result.bbox) {
-    const auto& bbox = *result.bbox;
-    ss << "[" << bbox.x << ", " << bbox.y << ", " << bbox.x + bbox.width - 1 << ", "
-       << bbox.y + bbox.height - 1 << "]";
-  } else {
-    ss << "null";
+  // image_size is the size of the image the mask and bbox refer to (sensors other than
+  // cameras have no width/height in their record)
+  result.metadata = {{"timestamp_ns", input.timestamp_ns},
+                     {"world_T_body", poseToJson(input.world_T_body)},
+                     {"sensor", input.getSensor().name},
+                     {"image_size", nullptr},
+                     {"bbox_2d", nullptr}};
+  if (!reference.empty()) {
+    result.metadata["image_size"] = {reference.cols, reference.rows};
   }
 
-  result.metadata = ss.str();
+  if (result.bbox) {
+    const auto& bbox = *result.bbox;
+    result.metadata["bbox_2d"] = {
+        bbox.x, bbox.y, bbox.x + bbox.width - 1, bbox.y + bbox.height - 1};
+  }
+
   return result;
 }
 
@@ -228,6 +211,7 @@ void TrackLogger::snapshot(const FrameData& frame, const Tracks& tracks) {
   try {
     const auto stamp = frame.input.timestamp_ns;
     const auto& sensor = frame.input.getSensor().name;
+    noteSensor(frame.input.getSensor());
     std::lock_guard<std::mutex> lock(evicted_mutex_);
 
     // Move the snapshots of absorbed tracks to their absorber and drop those of tracks that are
@@ -271,7 +255,7 @@ void TrackLogger::snapshot(const FrameData& frame, const Tracks& tracks) {
         evicted.stamp = stamp;
         evicted.sensor = sensor;
         evicted.score = score(*cluster);
-        evicted.metadata = std::move(rendered.metadata);
+        evicted.metadata = rendered.metadata.dump();
         if (config.save_mask_rle && rendered.bbox) {
           evicted.mask_rle = encodeMaskRle(rendered.mask);
         }
@@ -607,6 +591,7 @@ void TrackLogger::write(const Request& request) const {
     }
 
     const auto& input = source.frame->input;
+    noteSensor(input.getSensor());
     candidates.push_back({source.frame.get(),
                           cluster,
                           nullptr,
@@ -633,27 +618,23 @@ void TrackLogger::write(const Request& request) const {
 
   const auto track_path = config.log_path / std::to_string(track.id);
   std::filesystem::create_directories(track_path);
+  // readers find every sensor a track references in sensors.yaml
+  writeSensors();
 
-  std::stringstream ss;
-  ss << "{\"version\": 1, \"robot_id\": " << hydra::GlobalInfo::instance().getRobotPrefix().id
-     << ", \"track_id\": " << track.id << ", \"absorbed_track_ids\": [";
-  bool first = true;
-  for (const auto id : track.absorbed_track_ids) {
-    ss << (first ? "" : ", ") << id;
-    first = false;
-  }
-
-  ss << "], \"extracted\": " << (request.extracted ? "true" : "false") << ", \"semantic_label\": ";
+  Json record{{"version", 1},
+              {"robot_id", hydra::GlobalInfo::instance().getRobotPrefix().id},
+              {"track_id", track.id},
+              {"absorbed_track_ids", track.absorbed_track_ids},
+              {"extracted", request.extracted},
+              {"semantic_label", nullptr},
+              {"observations", Json::array()}};
   if (track.semantics) {
-    ss << track.semantics->category_id;
-  } else {
-    ss << "null";
+    record["semantic_label"] = track.semantics->category_id;
   }
 
-  ss << ", \"observations\": [";
   for (size_t k = 0; k < candidates.size(); ++k) {
     const auto& candidate = candidates[k];
-    std::string metadata;
+    Json metadata;
     std::string mask_rle;
     std::shared_ptr<const Images> images;
     if (candidate.frame) {
@@ -665,7 +646,7 @@ void TrackLogger::write(const Request& request) const {
         mask_rle = encodeMaskRle(rendered.mask);
       }
     } else {
-      metadata = candidate.evicted->metadata;
+      metadata = Json::parse(candidate.evicted->metadata);
       mask_rle = candidate.evicted->mask_rle;
       images = candidate.evicted->images;
       if (kept[k] && !images) {
@@ -677,42 +658,67 @@ void TrackLogger::write(const Request& request) const {
     }
 
     const std::string prefix = "obs_" + std::to_string(k) + "_";
-    std::optional<std::string> color_file, depth_file, mask_file;
-    if (kept[k]) {
-      const auto write_file = [&](const std::string* bytes, const std::string& suffix) {
-        if (!bytes || bytes->empty()) {
-          return std::optional<std::string>();
-        }
+    const auto write_file = [&](const std::string* bytes, const std::string& suffix) -> Json {
+      if (!kept[k] || !bytes || bytes->empty()) {
+        return nullptr;
+      }
 
-        const auto file = prefix + suffix;
-        hydra::writeFileAtomic(track_path / file, *bytes);
-        return std::optional<std::string>(file);
-      };
-
-      color_file = write_file(images->color.get(), "color.jpg");
-      depth_file = write_file(images->depth.get(), "depth.png");
-      mask_file = write_file(&images->mask, "mask.png");
-    }
-
-    const auto file_or_null = [](const std::optional<std::string>& file) {
-      return file ? jsonString(*file) : std::string("null");
+      const auto file = prefix + suffix;
+      hydra::writeFileAtomic(track_path / file, *bytes);
+      return file;
     };
 
-    ss << (k ? "," : "") << "\n  {\"k\": " << k << ", " << metadata << ", \"mask_rle\": ";
-    if (!kept[k] && !mask_rle.empty()) {
-      ss << "\"" << mask_rle << "\"";
-    } else {
-      ss << "null";
-    }
-
-    ss << ", \"score\": " << jsonNumber(candidate.score)
-       << ", \"kept\": " << (kept[k] ? "true" : "false")
-       << ", \"color\": " << file_or_null(color_file) << ", \"depth\": " << file_or_null(depth_file)
-       << ", \"mask\": " << file_or_null(mask_file) << "}";
+    Json observation{{"k", k}};
+    observation.update(metadata);
+    observation["mask_rle"] = !kept[k] && !mask_rle.empty() ? Json(mask_rle) : Json(nullptr);
+    observation["score"] = candidate.score;
+    observation["kept"] = static_cast<bool>(kept[k]);
+    observation["color"] = write_file(images ? images->color.get() : nullptr, "color.jpg");
+    observation["depth"] = write_file(images ? images->depth.get() : nullptr, "depth.png");
+    observation["mask"] = write_file(images ? &images->mask : nullptr, "mask.png");
+    record["observations"].push_back(std::move(observation));
   }
 
-  ss << (candidates.empty() ? "]}\n" : "\n]}\n");
-  hydra::writeFileAtomic(track_path / "track.json", ss.str());
+  hydra::writeFileAtomic(track_path / "track.json", record.dump(2) + "\n");
+}
+
+void TrackLogger::noteSensor(const hydra::Sensor& sensor) const {
+  std::lock_guard<std::mutex> lock(sensors_mutex_);
+  if (sensors_.count(sensor.name)) {
+    return;
+  }
+
+  sensors_.emplace(sensor.name, YAML::Dump(hydra::input::writeSensor(sensor)));
+  sensors_written_ = false;
+}
+
+void TrackLogger::writeSensors() const {
+  std::string contents;
+  {
+    std::lock_guard<std::mutex> lock(sensors_mutex_);
+    if (sensors_written_) {
+      return;
+    }
+
+    YAML::Node records(YAML::NodeType::Sequence);
+    for (const auto& [name, record] : sensors_) {
+      records.push_back(YAML::Load(record));
+    }
+
+    YAML::Node root;
+    root["version"] = 1;
+    root["sensors"] = records;
+    contents = YAML::Dump(root) + "\n";
+    sensors_written_ = true;
+  }
+
+  try {
+    hydra::writeFileAtomic(config.log_path / "sensors.yaml", contents);
+  } catch (...) {
+    std::lock_guard<std::mutex> lock(sensors_mutex_);
+    sensors_written_ = false;
+    throw;
+  }
 }
 
 }  // namespace khronos
