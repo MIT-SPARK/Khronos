@@ -23,6 +23,7 @@
   <depend>kimera_pgmo</depend>
   <depend>hydra</depend>
   <depend>small_gicp</depend>
+  <depend>nlohmann-json-dev</depend>
 
   <export>
       <build_type>cmake</build_type>

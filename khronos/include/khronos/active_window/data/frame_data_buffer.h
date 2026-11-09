@@ -38,6 +38,7 @@
 #pragma once
 
 #include <deque>
+#include <string>
 
 #include "khronos/active_window/data/frame_data.h"
 #include "khronos/active_window/data/track.h"
@@ -67,8 +68,10 @@ class FrameDataBuffer {
   /**
    * @brief Add new frame data as candidate to the buffer.
    * @param data The new frame data to store.
+   * @returns The oldest frame if storing the data exceeded max_buffer_size and it was dropped
+   * (even if a track still references it), otherwise nullptr.
    */
-  void storeData(const FrameData::Ptr& data);
+  FrameData::Ptr storeData(const FrameData::Ptr& data);
 
   /**
    * @brief Remove all frame data that is no longer referenced by any track. This

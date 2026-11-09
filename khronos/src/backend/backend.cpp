@@ -43,6 +43,7 @@
 
 #include <config_utilities/types/path.h>
 #include <glog/logging.h>
+#include <hydra/backend/merge_tracker.h>
 #include <hydra/backend/mst_factors.h>
 #include <hydra/common/global_info.h>
 #include <hydra/common/pipeline_queues.h>
@@ -260,6 +261,14 @@ void Backend::save(const hydra::DataDirectory& log_setup) {
     kimera_pgmo::WriteMesh(path / "mesh.ply", *mesh, *mesh);
   }
   deformation_graph_->save(path / "deformation_graph.dgrf");
+
+  // Save the final node merges (child -> parent) next to the DSG.
+  try {
+    std::lock_guard<std::mutex> lock(private_dsg_->mutex);
+    hydra::saveMerges(private_dsg_->merges, path / "merges.json");
+  } catch (const std::exception& e) {
+    LOG(ERROR) << "Failed to save merges: " << e.what();
+  }
 
   // Save the proposed merges.
   saveProposedMerges(log_setup);

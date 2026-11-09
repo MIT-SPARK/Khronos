@@ -92,6 +92,10 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     // perform full updates on every frame.
     float min_output_separation = 0.0f;
 
+    // If true, also pass the inputs skipped by min_output_separation with the next output
+    // (intermediate_inputs, oldest first) for the keyframe selector; sensor_data is unchanged.
+    bool forward_intermediate_inputs = false;
+
     // If true, run object extraction in detached threads to avoid blocking the active window.
     bool detach_object_extraction = true;
 
@@ -100,6 +104,8 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     TrackingIntegrator::Config tracking_integrator;
     config::VirtualConfig<ObjectExtractor> object_extractor;
     ObjectWorkerPool::Config extraction_worker;
+    //! Logs the observations of tracks handed to object extraction (off by default)
+    TrackLogger::Config track_logger;
     hydra::MeshIntegratorConfig mesh_integrator;
     FrameDataBuffer::Config frame_data_buffer;
     std::vector<KhronosSink::Factory> khronos_sinks;
@@ -184,6 +190,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   TrackingIntegrator tracking_integrator_;
   hydra::MeshIntegrator mesh_integrator_;
 
+  std::shared_ptr<TrackLogger> track_logger_;
   ObjectWorkerPool extraction_worker_;
 
   std::mutex mutex_;
@@ -201,6 +208,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   // Ids of tracks absorbed by other tracks (MaxIoUTracker::mergeTracks) since the last output,
   // whose object nodes are deleted downstream with the next output.
   std::vector<int> pending_retractions_;
+  std::vector<hydra::InputData::ConstPtr> intermediate_inputs_;
 };
 
 void declare_config(ActiveWindow::Config& config);
