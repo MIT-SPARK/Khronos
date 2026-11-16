@@ -38,6 +38,7 @@
 #include "khronos/active_window/change_detection/active_window_change_detector.h"
 
 #include <algorithm>
+#include <typeinfo>
 
 #include <config_utilities/types/enum.h>
 #include <config_utilities/types/path.h>
@@ -637,15 +638,21 @@ void ActiveWindowChangeDetector::updateAddedFilter(
 void ActiveWindowChangeDetector::call(const FrameData& data,
                                       const VolumetricMap& map,
                                       const Tracks& tracks) const {
+  MLOG(1) << "[ActiveWindowChangeDetector] Call starts (stamp " << data.input.timestamp_ns
+          << ", enabled " << controller_->isEnabled() << ").";
   ChangeDetectionStatus status;
   status.voxel_size = map.config.voxel_size;
+  status.icp_refinement_enabled = config.enable_icp_refinement;
   if (controller_->consumeReset()) {
     resetHistory();
     status.history_reset = true;
   }
 
   // Poll the transformation getter and update current_T_prior_ if a new transform is available.
+  MLOG(1) << "[ActiveWindowChangeDetector] Polling transformation getter.";
   const auto tf = transformation_getter_->getTransformation();
+  MLOG(1) << "[ActiveWindowChangeDetector] Transformation getter returned "
+          << (tf.has_value() ? "a new transform." : "nothing.");
   if (tf.has_value()) {
     // Loop residual: the getter reads map->odom, which traverses the pre_icp_odom->odom edge that
     // TfIcpPublisher derives from current_T_prior_. So this delta is what the world moved since we
@@ -664,10 +671,23 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   }
 
   // While stopped only the transform is updated; sinks still get it (TfIcpPublisher closes the
-  // loop).
+  // ICP loop).
   if (!controller_->isEnabled()) {
     status.detection_enabled = false;
-    ActiveWindowCDSink::callAll(sinks_, prior_graph_, {}, {}, current_T_prior_, status);
+    // Original call
+    // ActiveWindowCDSink::callAll(sinks_, prior_graph_, {}, {}, current_T_prior_, status);
+    // DEBUG(multy): per-sink logs to find a sink that never returns.
+    size_t sink_index = 0;
+    for (const auto& sink : sinks_) {
+      const char* name = sink ? typeid(*sink).name() : "null";
+      MLOG(1) << "[ActiveWindowChangeDetector] Sink " << sink_index << " (" << name << ") starts.";
+      if (sink) {
+        sink->call(prior_graph_, {}, {}, current_T_prior_, status);
+      }
+      MLOG(1) << "[ActiveWindowChangeDetector] Sink " << sink_index << " (" << name << ") ends.";
+      ++sink_index;
+    }
+    MLOG(1) << "[ActiveWindowChangeDetector] Call ends (stopped).";
     return;
   }
 
@@ -725,8 +745,18 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
           << " removed objects and " << newly_added_objects.size() << " newly added objects.";
 
   // Call all sinks with removed objects, newly-added objects, and the prior-to-current transform.
-  ActiveWindowCDSink::callAll(
-      sinks_, prior_graph_, removed_objects, newly_added_objects, current_T_prior_, status);
+  // DEBUG(multy): per-sink logs to find a sink that never returns.
+  size_t sink_index = 0;
+  for (const auto& sink : sinks_) {
+    const char* name = sink ? typeid(*sink).name() : "null";
+    MLOG(1) << "[ActiveWindowChangeDetector] Sink " << sink_index << " (" << name << ") starts.";
+    if (sink) {
+      sink->call(prior_graph_, removed_objects, newly_added_objects, current_T_prior_, status);
+    }
+    MLOG(1) << "[ActiveWindowChangeDetector] Sink " << sink_index << " (" << name << ") ends.";
+    ++sink_index;
+  }
+  MLOG(1) << "[ActiveWindowChangeDetector] Call ends.";
 }
 
 void ActiveWindowChangeDetector::resetHistory() const {

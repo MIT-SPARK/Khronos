@@ -184,6 +184,8 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     bool detection_enabled = true;
     //! Whether the detection history was reset at the start of this frame.
     bool history_reset = false;
+    //! Whether current_T_prior is ICP-refined (enable_icp_refinement); otherwise it is the TF.
+    bool icp_refinement_enabled = false;
     //! This frame's measurements.
     std::vector<RemovedObjectSnapshot> removed_snapshots;
     std::vector<AddedObjectSnapshot> added_snapshots;

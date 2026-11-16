@@ -57,12 +57,12 @@ namespace khronos {
  *
  * Publishes pre_icp_odom -> odom (StaticTF), splitting the full odom_T_map
  * transform (received as current_T_prior from AWCD) into:
- *   - map -> pre_icp_odom: published externally by upper level pose estimation modules (ROMAN, etc.)
+ *   - map -> pre_icp_odom: published externally by upper level pose estimation modules (ROMAN,
+ * etc.)
  *   - pre_icp_odom -> odom: published here (ICP delta on top of estimated pose)
- *  
+ *
  * On startup, seeds identity so the TF chain map -> odom is immediately resolvable.
- * When enable_icp_refinement=false in AWCD, current_T_prior equals the estimated pose
- * and the ICP delta is identity.
+ * When enable_icp_refinement=false in AWCD, it keeps the seeded identity and never re-publishes.
  */
 class TfIcpPublisher : public ActiveWindowChangeDetector::ActiveWindowCDSink {
  public:

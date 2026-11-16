@@ -74,14 +74,21 @@ TfIcpPublisher::TfIcpPublisher(const Config& cfg, const ianvs::NodeHandle* nh)
           << getOdomFrame() << "). Seeded identity transform.";
 }
 
-void TfIcpPublisher::call(const DynamicSceneGraph::Ptr& /*dsg*/,
-                          const std::vector<ActiveWindowChangeDetector::RemovedObject>& /*removed_objects*/,
-                          const std::vector<ActiveWindowChangeDetector::AddedObject>& /*newly_added_objects*/,
-                          const Eigen::Isometry3d& current_T_prior,
-                          const ActiveWindowChangeDetector::ChangeDetectionStatus& /*status*/) const {
+void TfIcpPublisher::call(
+    const DynamicSceneGraph::Ptr& /*dsg*/,
+    const std::vector<ActiveWindowChangeDetector::RemovedObject>& /*removed_objects*/,
+    const std::vector<ActiveWindowChangeDetector::AddedObject>& /*newly_added_objects*/,
+    const Eigen::Isometry3d& current_T_prior,
+    const ActiveWindowChangeDetector::ChangeDetectionStatus& status) const {
+  // Without ICP there is no correction: keep the identity seeded in the constructor. Re-deriving
+  // it from current_T_prior would cancel ROMAN updates the getter hasn't reported yet.
+  if (!status.icp_refinement_enabled) {
+    return;
+  }
+
   // Look up map -> pre_icp_odom (the ROMAN-only result, published upstream).
   std::string err;
-  const auto status = hydra::lookupTransform(tf_lookup_.buffer,
+  const auto lookup = hydra::lookupTransform(tf_lookup_.buffer,
                                              std::nullopt,
                                              "map",
                                              config.pre_icp_odom_frame,
@@ -89,18 +96,18 @@ void TfIcpPublisher::call(const DynamicSceneGraph::Ptr& /*dsg*/,
                                              config.tf_lookup.wait_duration_s,
                                              config.tf_lookup.verbosity,
                                              &err);
-  if (!status) {
+  if (!lookup) {
     MLOG(3) << "[TfIcpPublisher] TF lookup map -> " << config.pre_icp_odom_frame
             << " failed: " << err << ". Broadcasting identity.";
     broadcastTransform(Eigen::Isometry3d::Identity());
     return;
   }
-  const Eigen::Isometry3d map_T_pre_icp_odom = status.target_T_source();
+  const Eigen::Isometry3d map_T_pre_icp_odom = lookup.target_T_source();
 
   // Split map_T_odom = map_T_pre_icp_odom * pre_icp_odom_T_odom and solve for our half:
   //   pre_icp_odom_T_odom = map_T_pre_icp_odom^-1 * map_T_odom
   // current_T_prior is odom_T_map (full ROMAN + ICP result from AWCD), so map_T_odom is its
-  // inverse. With ICP disabled the two factors cancel and this is identity, as documented above.
+  // inverse.
   const Eigen::Isometry3d pre_icp_odom_T_odom =
       map_T_pre_icp_odom.inverse() * current_T_prior.inverse();
   broadcastTransform(pre_icp_odom_T_odom);

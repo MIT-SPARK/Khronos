@@ -37,6 +37,8 @@
 
 #include "khronos/active_window/active_window.h"
 
+#include <typeinfo>
+
 #include <hydra/common/global_info.h>
 #include <hydra/input/sensor_utilities.h>
 #include <hydra/reconstruction/integration_masking.h>
@@ -173,7 +175,9 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
   }
 
   const auto stamp = input->timestamp_ns;
+  CLOG(1) << "[Khronos Active Window] Spin starts (stamp " << stamp << ").";
   std::lock_guard<std::mutex> lock(mutex_);
+  CLOG(1) << "[Khronos Active Window] Lock acquired.";
   latest_stamp_ = stamp;
   Timer timer("active_window/all", stamp);
 
@@ -229,7 +233,19 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
   ++num_frames_processed_;
 
   Timer sink_timer("active_window/sinks", stamp);
-  KhronosSink::callAll(sinks_, *data, map_, tracks_);
+  // DEBUG(multy): per-sink logs to find a sink that never returns.
+  size_t sink_index = 0;
+  for (const auto& sink : sinks_) {
+    const char* name = sink ? typeid(*sink).name() : "null";
+    CLOG(1) << "[Khronos Active Window] Sink " << sink_index << " (" << name << ") starts.";
+    if (sink) {
+      sink->call(*data, map_, tracks_);
+    }
+    CLOG(1) << "[Khronos Active Window] Sink " << sink_index << " (" << name << ") ends.";
+    ++sink_index;
+  }
+  // original call sight
+  //   KhronosSink::callAll(sinks_, *data, map_, tracks_);
   sink_timer.stop();
 
   // TODO(lschmid): Double check this does what's intended. Check whether we can move mesh
@@ -239,6 +255,7 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
       intermediate_inputs_.push_back(std::make_shared<hydra::InputData>(data->input));
     }
 
+    CLOG(1) << "[Khronos Active Window] Spin ends (no output this frame).";
     return nullptr;
   }
 
@@ -254,6 +271,7 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
     block.clearUpdated();
   }
 
+  CLOG(1) << "[Khronos Active Window] Spin ends (returning output).";
   return output;
 }
 
