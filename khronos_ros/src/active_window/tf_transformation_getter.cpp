@@ -66,29 +66,31 @@ void declare_config(TFTransformationGetter::Config& config) {
 }
 
 TFTransformationGetter::TFTransformationGetter(const Config& cfg)
-    : config(config::checkValid(cfg)), tf_lookup_(config.tf_lookup) {
+    : config(config::checkValid(cfg)), should_shutdown_(false), tf_lookup_(config.tf_lookup) {
   MLOG(1) << "[TFTransformationGetter] TF listener created (" << config.prior_frame_id << " -> "
           << getRobotFrame() << ")";
+
+  lookup_thread_ = std::make_unique<std::thread>(&TFTransformationGetter::spin, this);
+}
+
+TFTransformationGetter::~TFTransformationGetter() {
+  should_shutdown_ = true;
+  if (lookup_thread_) {
+    lookup_thread_->join();
+    lookup_thread_.reset();
+  }
 }
 
 std::optional<Eigen::Isometry3d> TFTransformationGetter::getTransformation() const {
-  std::string err;
-  const auto status = hydra::lookupTransform(tf_lookup_.buffer,
-                                             std::nullopt,
-                                             config.prior_frame_id,
-                                             getRobotFrame(),
-                                             config.tf_lookup.max_tries,
-                                             config.tf_lookup.wait_duration_s,
-                                             config.tf_lookup.verbosity,
-                                             &err);
-  if (!status) {
-    MLOG(3) << "[TFTransformationGetter] TF lookup failed: " << err;
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!last_status_) {
+    MLOG(3) << "[TFTransformationGetter] No TF found yet: " << err;
     return std::nullopt;
   }
 
   // status.target_T_source() is map_T_{robot}/odom; current_T_prior is its inverse
   // (odom frame is "current").
-  const Eigen::Isometry3d current_T_prior = status.target_T_source().inverse();
+  const Eigen::Isometry3d current_T_prior = last_status_.target_T_source().inverse();
 
   const Eigen::Isometry3d delta = last_reported_.inverse() * current_T_prior;
   const double dt = delta.translation().norm();
@@ -104,10 +106,28 @@ std::optional<Eigen::Isometry3d> TFTransformationGetter::getTransformation() con
   return current_T_prior;
 }
 
+void TFTransformationGetter::spin() {
+  while (!shuold_shutdown_) {
+    std::string err;
+    const auto status = hydra::lookupTransform(tf_lookup_.buffer,
+                                               std::nullopt,
+                                               config.prior_frame_id,
+                                               getRobotFrame(),
+                                               config.tf_lookup.max_tries,
+                                               config.tf_lookup.wait_duration_s,
+                                               config.tf_lookup.verbosity,
+                                               &err);
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    last_status_ = status;
+  }
+}
+
 std::string TFTransformationGetter::getRobotFrame() const {
   if (!config.robot_frame_id.empty()) {
     return config.robot_frame_id;
   }
+
   return hydra::GlobalInfo::instance().getFrames().odom;
 }
 

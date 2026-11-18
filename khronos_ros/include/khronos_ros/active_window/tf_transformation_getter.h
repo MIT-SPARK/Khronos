@@ -38,6 +38,7 @@
 #pragma once
 
 #include <string>
+#include <thread>
 
 #include <hydra/common/global_info.h>
 #include <hydra/utils/logging.h>
@@ -80,6 +81,7 @@ class TFTransformationGetter : public TransformationGetter {
   } const config;
 
   explicit TFTransformationGetter(const Config& config);
+  ~TFTransformationGetter();
 
   /**
    * @brief Look up map→odom TF and return odom_T_map = current_T_prior.
@@ -90,7 +92,13 @@ class TFTransformationGetter : public TransformationGetter {
  private:
   //! Returns robot_frame_id from config if set, otherwise GlobalInfo odom frame.
   std::string getRobotFrame() const;
+  void spin();
 
+  std::mutex mutex_;
+  std::unique_ptr<std::thread> lookup_thread_;
+  std::atomic<bool> should_shutdown_;
+
+  hydra::PoseStatus last_status_;
   hydra::TFLookup tf_lookup_;
 
   mutable Eigen::Isometry3d last_reported_ = Eigen::Isometry3d::Identity();
