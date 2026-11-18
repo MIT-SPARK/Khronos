@@ -84,7 +84,7 @@ TFTransformationGetter::~TFTransformationGetter() {
 std::optional<Eigen::Isometry3d> TFTransformationGetter::getTransformation() const {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!last_status_) {
-    MLOG(3) << "[TFTransformationGetter] No TF found yet: " << err;
+    LOG_EVERY_N(WARNING, 10) << "No transformation to prior map found";
     return std::nullopt;
   }
 
@@ -107,7 +107,7 @@ std::optional<Eigen::Isometry3d> TFTransformationGetter::getTransformation() con
 }
 
 void TFTransformationGetter::spin() {
-  while (!shuold_shutdown_) {
+  while (!should_shutdown_) {
     std::string err;
     const auto status = hydra::lookupTransform(tf_lookup_.buffer,
                                                std::nullopt,

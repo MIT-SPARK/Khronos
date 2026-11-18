@@ -94,7 +94,7 @@ class TFTransformationGetter : public TransformationGetter {
   std::string getRobotFrame() const;
   void spin();
 
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
   std::unique_ptr<std::thread> lookup_thread_;
   std::atomic<bool> should_shutdown_;
 
