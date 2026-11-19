@@ -273,6 +273,8 @@ const Color kCandidateColor(230, 180, 40, 255);
 const Color kFreeColor(0, 255, 0, 255);
 const Color kOccupiedColor(255, 0, 0, 255);
 const Color kUnknownColor(128, 128, 128, 255);
+//! Footprint of an added candidate observed empty (absence evidence).
+const Color kAbsentColor(0, 140, 255, 255);
 //! Alpha of candidates that failed the in-bounds or observed gate.
 const uint8_t kOutOfBoundsAlpha = 80;
 
@@ -303,8 +305,26 @@ std::string addedLabel(const AddedObjectSnapshot& candidate, const ChangeFilter&
   ss << std::fixed << std::setprecision(2);
   ss << "T" << candidate.track_id << (filter.is_changed ? " ADDED" : "")
      << " p=" << filter.change_confidence << " n=" << filter.num_frames_observed;
-  ss << "\nraw=" << candidate.raw_containment << " cells " << candidate.num_cells_in_free << "/"
-     << candidate.num_cells;
+  if (candidate.has_novelty || candidate.num_cells > 0) {
+    ss << "\nraw=" << candidate.raw_containment << " cells " << candidate.num_cells_in_free << "/"
+       << candidate.num_cells;
+  } else {
+    ss << "\nno track, last raw=" << candidate.raw_containment;
+  }
+  const auto& presence = candidate.presence;
+  if (presence.num_voxels > 0) {
+    ss << "\npresence ";
+    if (presence.valid) {
+      ss << presence.presence;
+    } else {
+      ss << "n/a";
+    }
+    ss << " occ " << presence.num_occupied << "/" << presence.num_observed << " obs of "
+       << presence.num_voxels;
+    if (candidate.updated) {
+      ss << " -> m=" << candidate.measurement;
+    }
+  }
   return ss.str();
 }
 
@@ -564,6 +584,12 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedVoxels(
     };
     add_cells(candidate.in_free_cells, kFreeColor);
     add_cells(candidate.out_cells, kOccupiedColor);
+    // Presence-only candidates (no track this frame): their footprint, observed occupied (still
+    // there) or free (gone). Measured tracks already draw these voxels above.
+    if (candidate.in_free_cells.empty() && candidate.out_cells.empty()) {
+      add_cells(candidate.present_cells, kCandidateColor);
+      add_cells(candidate.absent_cells, kAbsentColor);
+    }
   }
 
   // Markers without points (e.g. collect_debug_voxels off) are deleted by the tracker.

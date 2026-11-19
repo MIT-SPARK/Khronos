@@ -38,6 +38,8 @@
 #include "khronos/active_window/change_detection/active_window_change_detector.h"
 
 #include <algorithm>
+#include <limits>
+#include <string>
 
 #include <config_utilities/types/enum.h>
 #include <config_utilities/types/path.h>
@@ -78,6 +80,10 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
              std::vector<std::string>{"graph", "mesh"});
   field(config.added_mesh_collision_radius, "added_mesh_collision_radius");
   field(config.global_added_object_deform, "global_added_object_deform");
+  field(config.added_absence_evidence, "added_absence_evidence");
+  field(config.added_absence_min_observed_fraction, "added_absence_min_observed_fraction");
+  field(config.added_absence_max_observation_age_s, "added_absence_max_observation_age_s", "s");
+  field(config.added_absence_occupied_buffer_s, "added_absence_occupied_buffer_s", "s");
   field<Path::Absolute>(config.prior_map_path, "prior_map_path");
   field(config.awcd_sinks, "awcd_sinks");
   field(config.transformation_getter, "transformation_getter");
@@ -93,6 +99,12 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   checkInRange(config.removal_min_in_bounds_fraction, 0.0f, 1.0f, "removal_min_in_bounds_fraction");
   checkInRange(config.removal_min_observed_fraction, 0.0f, 1.0f, "removal_min_observed_fraction");
   check(config.added_mesh_collision_radius, GE, 0, "added_mesh_collision_radius");
+  checkInRange(config.added_absence_min_observed_fraction,
+               0.0f,
+               1.0f,
+               "added_absence_min_observed_fraction");
+  check(config.added_absence_max_observation_age_s, GE, 0.0f, "added_absence_max_observation_age_s");
+  check(config.added_absence_occupied_buffer_s, GE, 0.0f, "added_absence_occupied_buffer_s");
   check<Path::Exists>(config.prior_map_path, "prior_map_path");
 }
 
@@ -548,10 +560,85 @@ void ActiveWindowChangeDetector::updatePriorMeshVoxels(float voxel_size) const {
           << " voxels.";
 }
 
+ActiveWindowChangeDetector::PresenceMeasurement ActiveWindowChangeDetector::measurePresence(
+    const std::vector<Point>& footprint,
+    const TrackingLayer& tracking_layer,
+    TimeStamp stamp,
+    float min_observed_fraction,
+    float max_observation_age_s,
+    float occupied_buffer_s,
+    std::vector<Point>* present_cells,
+    std::vector<Point>* absent_cells) {
+  // Age [s] of a voxel timestamp at `stamp`; never-set (0) timestamps are infinitely old.
+  const auto age_s = [stamp](TimeStamp t) {
+    if (t == 0u) {
+      return std::numeric_limits<double>::infinity();
+    }
+    return t >= stamp ? 0.0 : toSeconds(stamp - t);
+  };
+
+  PresenceMeasurement result;
+  result.num_voxels = footprint.size();
+  for (const Point& point : footprint) {
+    const auto* voxel = tracking_layer.getVoxelPtr(point);
+    if (!voxel || age_s(voxel->last_observed) > max_observation_age_s) {
+      continue;  // Not observed now: out of view, occluded, or outside the active window.
+    }
+    ++result.num_observed;
+    const bool occupied = age_s(voxel->last_occupied) <= occupied_buffer_s;
+    if (occupied) {
+      ++result.num_occupied;
+    }
+    auto* cells = occupied ? present_cells : absent_cells;
+    if (cells) {
+      cells->push_back(point);
+    }
+  }
+
+  result.valid = result.num_voxels > 0 && result.num_observed > 0 &&
+                 static_cast<float>(result.num_observed) >=
+                     min_observed_fraction * static_cast<float>(result.num_voxels);
+  if (result.num_observed > 0) {
+    result.presence =
+        static_cast<float>(result.num_occupied) / static_cast<float>(result.num_observed);
+  }
+  return result;
+}
+
+std::optional<float> ActiveWindowChangeDetector::combineAddedMeasurement(
+    std::optional<float> novelty,
+    float last_novelty,
+    const PresenceMeasurement& presence) {
+  if (presence.valid) {
+    return novelty.value_or(last_novelty) * presence.presence;
+  }
+  return novelty;  // No presence: the novelty alone (today's behavior), or no update.
+}
+
+std::vector<Point> ActiveWindowChangeDetector::trackFootprint(const Track& track,
+                                                              float voxel_size) {
+  // Re-quantize the confirmed voxels from the tracker's voxel size to the map's, so each point is
+  // the center of one map voxel.
+  GlobalIndexSet indices;
+  const float voxel_size_inv = 1.0f / voxel_size;
+  for (const GlobalIndex& index : track.confirmedVoxels()) {
+    const Point center = spatial_hash::centerPointFromIndex(index, track.accumulated_voxel_size);
+    indices.insert(spatial_hash::indexFromPoint<GlobalIndex>(center, voxel_size_inv));
+  }
+  std::vector<Point> footprint;
+  footprint.reserve(indices.size());
+  for (const GlobalIndex& index : indices) {
+    footprint.push_back(spatial_hash::centerPointFromIndex(index, voxel_size));
+  }
+  return footprint;
+}
+
 void ActiveWindowChangeDetector::updateAddedFilter(
     const std::unordered_map<int, float>& measurements,
     const Tracks& tracks,
-    TimeStamp stamp) const {
+    const VolumetricMap& map,
+    TimeStamp stamp,
+    ChangeDetectionStatus* status) const {
   // 1. Take over the state of tracks absorbed by other tracks, so an absorbed track that was
   // already added is not reported as a duplicate of its survivor.
   for (const Track& track : tracks) {
@@ -560,12 +647,16 @@ void ActiveWindowChangeDetector::updateAddedFilter(
       if (absorbed_it == added_candidates_.end()) {
         continue;
       }
-      const ChangeFilter absorbed = absorbed_it->second.filter;
+      const AddedObject absorbed = std::move(absorbed_it->second);
       added_candidates_.erase(absorbed_it);
 
       auto& object = added_candidates_[track.id];
       object.id = track.id;
-      object.filter.takeOver(absorbed);
+      object.filter.takeOver(absorbed.filter);
+      object.last_novelty = std::max(object.last_novelty, absorbed.last_novelty);
+      if (object.footprint.empty()) {
+        object.footprint = absorbed.footprint;  // Until the survivor's next measurement.
+      }
       MLOG(3) << "[ActiveWindowChangeDetector] Track " << track.id << " took over absorbed track "
               << absorbed_id;
     }
@@ -589,7 +680,15 @@ void ActiveWindowChangeDetector::updateAddedFilter(
 
     auto& object = added_candidates_[track_id];
     object.id = track_id;
-    object.filter.update(containment, config.added_ema_alpha, frame_index_);
+    if (!config.added_absence_evidence) {
+      object.filter.update(containment, config.added_ema_alpha, frame_index_);
+      MLOG(4) << "[ActiveWindowChangeDetector] Track " << track_id
+              << " EMA update: raw=" << containment
+              << " smoothed=" << object.filter.change_confidence
+              << " frames=" << object.filter.num_frames_observed;
+    } else {
+      object.footprint = trackFootprint(track, map.config.voxel_size);
+    }
     object.absorbed_track_ids = track.absorbed_track_ids;
     object.first_seen = track.first_seen;
     object.last_seen = track.last_seen;
@@ -597,10 +696,71 @@ void ActiveWindowChangeDetector::updateAddedFilter(
     object.updatePriorBoundingBox(prior_T_current);
     object.semantics = track.semantics;
     object.confidence = track.confidence;
+  }
 
-    MLOG(4) << "[ActiveWindowChangeDetector] Track " << track_id
-            << " EMA update: raw=" << containment << " smoothed=" << object.filter.change_confidence
-            << " frames=" << object.filter.num_frames_observed;
+  // 2b. Negative evidence: update every candidate (measured or not) with its novelty weighted by
+  // the presence of its footprint in the live map. Candidates neither measured nor observed keep
+  // their state (freeze-last).
+  if (config.added_absence_evidence) {
+    // Indices, not pointers: snapshots are appended below.
+    std::unordered_map<int, size_t> snapshots;
+    if (status) {
+      for (size_t i = 0; i < status->added_snapshots.size(); ++i) {
+        snapshots[status->added_snapshots[i].track_id] = i;
+      }
+    }
+    const bool collect_cells = status && config.collect_debug_voxels;
+    const auto& tracking_layer = *map.getTrackingLayer();
+
+    for (auto& [track_id, object] : added_candidates_) {
+      const auto novelty_it = measurements.find(track_id);
+      const std::optional<float> novelty = novelty_it == measurements.end()
+                                               ? std::nullopt
+                                               : std::optional<float>(novelty_it->second);
+      std::vector<Point> present_cells, absent_cells;
+      const PresenceMeasurement presence =
+          measurePresence(object.footprint,
+                          tracking_layer,
+                          stamp,
+                          config.added_absence_min_observed_fraction,
+                          config.added_absence_max_observation_age_s,
+                          config.added_absence_occupied_buffer_s,
+                          collect_cells ? &present_cells : nullptr,
+                          collect_cells ? &absent_cells : nullptr);
+      const auto measurement = combineAddedMeasurement(novelty, object.last_novelty, presence);
+      if (novelty) {
+        object.last_novelty = *novelty;
+      }
+      if (measurement) {
+        object.filter.update(*measurement, config.added_ema_alpha, frame_index_);
+        MLOG(4) << "[ActiveWindowChangeDetector] Track " << track_id << " EMA update: novelty="
+                << (novelty ? std::to_string(*novelty) : "none") << " presence="
+                << (presence.valid ? std::to_string(presence.presence) : "none") << " ("
+                << presence.num_occupied << "/" << presence.num_observed << "/"
+                << presence.num_voxels << ") raw=" << *measurement
+                << " smoothed=" << object.filter.change_confidence
+                << " frames=" << object.filter.num_frames_observed;
+      }
+
+      if (!status || (!novelty && !presence.valid)) {
+        continue;
+      }
+      AddedObjectSnapshot* snapshot = nullptr;
+      const auto snapshot_it = snapshots.find(track_id);
+      if (snapshot_it != snapshots.end()) {
+        snapshot = &status->added_snapshots[snapshot_it->second];
+      } else {
+        snapshot = &status->added_snapshots.emplace_back();
+        snapshot->track_id = track_id;
+        snapshot->raw_containment = object.last_novelty;  // Last novelty (no track this frame).
+      }
+      snapshot->has_novelty = novelty.has_value();
+      snapshot->presence = presence;
+      snapshot->updated = measurement.has_value();
+      snapshot->measurement = measurement.value_or(0.0f);
+      snapshot->present_cells = std::move(present_cells);
+      snapshot->absent_cells = std::move(absent_cells);
+    }
   }
 
   // 3. Gate & prune. Unmeasured entries keep the prior pose of their last measurement unless
@@ -620,11 +780,13 @@ void ActiveWindowChangeDetector::updateAddedFilter(
               << ", change_confidence=" << filter.change_confidence
               << ", frames=" << filter.num_frames_observed
               << ", absorbed=" << object.absorbed_track_ids.size() << ")";
-    } else if (!filter.everChanged() &&
+    } else if ((!filter.everChanged() || config.added_absence_evidence) &&
                (frame_index_ - filter.last_updated_frame) > config.added_prune_after_frames) {
-      MLOG(4) << "[ActiveWindowChangeDetector] Pruning stale non-added track " << object.id;
+      // With absence evidence an added object is withdrawn by observation (its gate drops), so a
+      // withdrawn one can be pruned once stale. Without it, ever-added tracks are kept forever.
+      MLOG(4) << "[ActiveWindowChangeDetector] Pruning stale non-added track " << object.id
+              << (filter.everChanged() ? " (withdrawn)" : "");
       it = added_candidates_.erase(it);
-      // TODO (multy): rethink if ever_changed is need and the prune strategy
       continue;
     }
     ++it;
@@ -703,7 +865,7 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
           : computeContainmentRatios(tracks, map, &status);
 
   // 5. Update the per-track filters and gates, and prune stale records.
-  updateAddedFilter(added_measurements, tracks, data.input.timestamp_ns);
+  updateAddedFilter(added_measurements, tracks, map, data.input.timestamp_ns, &status);
 
   // Sinks get the changed objects; the status points to all accumulated state for debugging.
   status.removed_candidates = &removed_candidates_;

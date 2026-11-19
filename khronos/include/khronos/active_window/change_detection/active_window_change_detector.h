@@ -119,8 +119,29 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! Track::confidence: tracking quality, i.e. how well-observed the object is.
     float confidence = 0.0f;
 
+    //! Centers (current map frame, map voxel size) of the track's confirmed voxels at its last
+    //! measurement: where the object was. Used for presence measurements (added_absence_evidence).
+    std::vector<Point> footprint;
+    //! Raw added measurement (novelty) of the track's last measurement.
+    float last_novelty = 0.0f;
+
     //! Sets prior_bounding_box to bounding_box placed in the prior frame by prior_T_current.
     void updatePriorBoundingBox(const Eigen::Isometry3d& prior_T_current);
+  };
+
+  /**
+   * @brief Presence of an added object this frame: how much of its footprint the live map
+   * currently observes as occupied (added_absence_evidence).
+   */
+  struct PresenceMeasurement {
+    //! Footprint voxels, those observed recently, and those of them occupied recently.
+    int num_voxels = 0;
+    int num_observed = 0;
+    int num_occupied = 0;
+    //! Whether enough of the footprint was observed (added_absence_min_observed_fraction).
+    bool valid = false;
+    //! num_occupied / num_observed: 1 = still there, 0 = observed empty. Meaningful if valid.
+    float presence = 0.0f;
   };
 
   /**
@@ -171,6 +192,17 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! centroid height. Mesh: voxel centers. Only filled if collect_debug_voxels.
     std::vector<Point> in_free_cells;
     std::vector<Point> out_cells;
+    //! Whether the track had a novelty measurement this frame (false: presence only).
+    bool has_novelty = false;
+    //! Presence of the candidate's footprint this frame (added_absence_evidence).
+    PresenceMeasurement presence;
+    //! Measurement fed to the EMA this frame, if any.
+    bool updated = false;
+    float measurement = 0.0f;
+    //! Footprint voxel centers observed occupied / observed free this frame. Only filled if
+    //! collect_debug_voxels.
+    std::vector<Point> present_cells;
+    std::vector<Point> absent_cells;
   };
 
   /**
@@ -270,6 +302,23 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
     //! false: an added object's prior-frame pose is fixed at its last measurement (local
     //! transform). true: re-projected with the current transform every frame.
     bool global_added_object_deform = false;
+
+    //! Negative evidence for added objects: every frame, measure how much of each candidate's
+    //! footprint the live map observes as occupied (presence p), and feed novelty * p into its
+    //! EMA, so an added object that is observed gone decays and is withdrawn. Off: only live tracks
+    //! are measured and a reported added object is kept forever.
+    bool added_absence_evidence = false;
+
+    //! Min fraction of a candidate's footprint voxels observed recently for a presence
+    //! measurement; less (out of view, occluded, outside the active window) freezes the candidate.
+    float added_absence_min_observed_fraction = 0.5f;
+
+    //! A footprint voxel counts as observed if its last observation is at most this old [s].
+    float added_absence_max_observation_age_s = 0.5f;
+
+    //! An observed footprint voxel counts as occupied if it was occupied at most this long ago
+    //! [s] (like the tracking integrator's temporal_buffer, to bridge sensor sparsity).
+    float added_absence_occupied_buffer_s = 1.0f;
 
     //! Sinks for the change detector output.
     std::vector<ActiveWindowCDSink::Factory> awcd_sinks;
@@ -374,6 +423,37 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
    */
   Point transformPriorToCurrentFrame(const Eigen::Vector3d& point_in_prior) const;
 
+  /**
+   * @brief Presence of a footprint in the live tracking layer at `stamp`: a voxel is observed if
+   * its last observation is at most max_observation_age_s old, and occupied if it was observed and
+   * occupied at most occupied_buffer_s ago. Valid if at least min_observed_fraction of the
+   * footprint is observed.
+   * @param present_cells, absent_cells If set, receive the observed occupied / free voxel centers.
+   */
+  static PresenceMeasurement measurePresence(const std::vector<Point>& footprint,
+                                             const TrackingLayer& tracking_layer,
+                                             TimeStamp stamp,
+                                             float min_observed_fraction,
+                                             float max_observation_age_s,
+                                             float occupied_buffer_s,
+                                             std::vector<Point>* present_cells = nullptr,
+                                             std::vector<Point>* absent_cells = nullptr);
+
+  /**
+   * @brief The added measurement of a candidate this frame from its novelty (set if its track was
+   * measured this frame), the novelty of its last measurement, and its presence: novelty * p,
+   * last_novelty * p, novelty, or none (freeze) if neither is available.
+   */
+  static std::optional<float> combineAddedMeasurement(std::optional<float> novelty,
+                                                      float last_novelty,
+                                                      const PresenceMeasurement& presence);
+
+  /**
+   * @brief Centers of a track's confirmed voxels, re-quantized to the map voxel size (current
+   * frame), deduplicated.
+   */
+  static std::vector<Point> trackFootprint(const Track& track, float voxel_size);
+
  protected:
   /// Runs small_gicp ICP using current map mesh vs prior DSG background mesh.
   /// Updates current_T_prior_ if ICP converges with sufficient inliers.
@@ -433,13 +513,21 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   /**
    * @brief Newly-added filter. Takes over the state of absorbed tracks, EMA-updates and snapshots
    * each measured track (including its prior-frame bounding box; see global_added_object_deform for
-   * unmeasured entries), and re-evaluates the added gate of every entry. Entries that never passed
-   * the gate and were not measured for added_prune_after_frames frames are pruned.
+   * unmeasured entries), and re-evaluates the added gate of every entry. With
+   * added_absence_evidence, every candidate is updated with its presence-weighted measurement
+   * (combineAddedMeasurement) instead. Entries that are not added and were not measured for
+   * added_prune_after_frames frames are pruned; without added_absence_evidence, only those that
+   * never passed the gate.
+   * @param map The live map, for presence measurements.
    * @param stamp Sensor frame time (ns) of this call, used to latch first_changed_ns.
+   * @param status If set, presence fields of the added snapshots are filled (and snapshots
+   * added for candidates measured by presence only).
    */
   void updateAddedFilter(const std::unordered_map<int, float>& measurements,
                          const Tracks& tracks,
-                         TimeStamp stamp) const;
+                         const VolumetricMap& map,
+                         TimeStamp stamp,
+                         ChangeDetectionStatus* status = nullptr) const;
 
   /**
    * @brief Cache each prior object's mesh vertices once, and re-quantize them into current-frame
@@ -505,8 +593,9 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
   //! measurement; never erased (freeze-last for unobserved objects).
   mutable std::unordered_map<spark_dsg::NodeId, RemovedObject> removed_candidates_;
 
-  //! Accumulated added state per track, keyed by Track::id. Pruned for tracks that never passed
-  //! the gate and went stale; tracks that ever passed it are kept forever.
+  //! Accumulated added state per track, keyed by Track::id. Pruned for tracks that are not added
+  //! and went stale; without added_absence_evidence, tracks that ever passed the gate are kept
+  //! forever.
   mutable std::unordered_map<int, AddedObject> added_candidates_;
 
   //! Frame counter incremented once per call(), used for staleness-based pruning of added records.
