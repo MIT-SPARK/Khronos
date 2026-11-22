@@ -50,6 +50,7 @@
 #include <utility>
 #include <vector>
 
+#include <nlohmann/json.hpp>
 #include <opencv2/core.hpp>
 
 #include "khronos/active_window/data/frame_data_buffer.h"
@@ -77,13 +78,13 @@ class TrackLogger {
     std::filesystem::path log_path;
     //! Number of observations per track that keep their images (ranked by score)
     size_t max_images_per_object = 1;
-    //! How observations are scored: number of segmented pixels or 3D bounding box volume
+    //! Score observations by segmented pixel count or 3D bounding box volume
     enum class Score { kSegmentSize, kBBoxVolume } score = Score::kSegmentSize;
     //! Also write depth images (uint16 millimeters) for kept observations
     bool save_depth = false;
     //! Record a run-length encoded mask for observations that do not keep their images
     bool save_mask_rle = true;
-    //! Also keep images for tracks that extraction dropped (otherwise they are metadata only)
+    //! Keep images of dropped tracks (otherwise save only metadata)
     bool keep_images_of_dropped_tracks = false;
     //! JPEG quality of the color images
     int jpeg_quality = 95;
@@ -94,25 +95,23 @@ class TrackLogger {
   explicit TrackLogger(const Config& config);
   ~TrackLogger();
 
-  //! Encoded image files of an observation (null/empty if not available). Observations of the
-  //! same frame share the color and depth files.
+  //! Encoded images; observations in one frame share color and depth files.
   struct Images {
     std::shared_ptr<const std::string> color;  //!< JPEG
     std::shared_ptr<const std::string> depth;  //!< 16-bit PNG, millimeters
     std::string mask;                          //!< 8-bit PNG
   };
 
-  //! What logging needs of an observation whose frame was dropped from the frame buffer
+  //! Observation retained after its frame leaves the buffer
   struct EvictedObservation {
     TimeStamp stamp = 0;
     std::string sensor;
     double score = 0.0;
-    //! track.json members as compact JSON: timestamp, pose, sensor name, image size and 2D
-    //! bounding box
-    std::string metadata;
+    //! Timestamp, pose, sensor, image size and 2D bounding box for track.json
+    nlohmann::ordered_json metadata;
     //! Run-length encoded mask (empty if none or not configured)
     std::string mask_rle;
-    //! Only set while the observation ranks within the track's best max_images_per_object
+    //! Images of observations ranked within max_images_per_object
     std::shared_ptr<const Images> images;
   };
 
@@ -144,22 +143,8 @@ class TrackLogger {
            bool extracted,
            EvictedObservations evicted = {});
 
-  //! Block until all queued tracks are written (resumes a paused logger)
+  //! Block until all queued tracks are written
   void flush();
-
-  //! Stop (or resume) writing queued tracks; queued tracks are kept, new ones are queued
-  //! up to max_queue_size (mainly for tests)
-  void pause(bool paused);
-
-  //! Number of tracks dropped because the queue was full
-  size_t numDropped() const;
-
-  //! Number of evicted observations held for live tracks (optionally only those with images)
-  size_t numEvicted(bool with_images = false) const;
-
-  //! Memory held by the snapshots of live tracks [bytes], currently and at most so far
-  size_t evictedBytes() const;
-  size_t peakEvictedBytes() const;
 
   //! Row-major run lengths of a binary mask, starting with background: "[r0,r1,...]"
   static std::string encodeMaskRle(const cv::Mat& mask);
@@ -185,20 +170,17 @@ class TrackLogger {
   //! Rewrite sensors.yaml if a sensor was added since it was last written
   void writeSensors() const;
   double score(const MeasurementCluster& cluster) const;
-  //! Encode the images of an observation (color and depth are reused from `frame` if given)
+  //! Encode images, reusing color and depth from frame when provided
   Images encodeImages(const hydra::InputData& input,
                       const cv::Mat& mask,
                       const Images* frame = nullptr) const;
   //! Drop the images of all but the best max_images_per_object observations
   void limitImages(EvictedObservations& observations) const;
-  void updateEvictedBytes();
 
-  mutable std::mutex mutex_;
+  std::mutex mutex_;
   std::condition_variable cv_;
-  std::deque<std::shared_ptr<Request>> queue_;
+  std::deque<Request> queue_;
   bool writing_ = false;
-  bool paused_ = false;
-  size_t num_dropped_ = 0;
   bool should_shutdown_ = false;
   std::unique_ptr<std::thread> thread_;
 
@@ -207,11 +189,9 @@ class TrackLogger {
   mutable std::map<std::string, std::string> sensors_;
   mutable bool sensors_written_ = true;
 
-  //! Snapshots of observations in dropped frames, by track id (only touched by snapshot/take)
-  mutable std::mutex evicted_mutex_;
+  //! Dropped-frame observations by track id; snapshot/take own access
+  std::mutex evicted_mutex_;
   std::unordered_map<int, EvictedObservations> evicted_;
-  size_t evicted_bytes_ = 0;
-  size_t peak_evicted_bytes_ = 0;
 };
 
 void declare_config(TrackLogger::Config& config);

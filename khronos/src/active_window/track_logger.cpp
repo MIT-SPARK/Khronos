@@ -190,10 +190,6 @@ TrackLogger::~TrackLogger() {
     return;
   }
 
-  LOG_IF(INFO, peak_evicted_bytes_ > 0)
-      << "[TrackLogger] Snapshots of frames dropped from the frame buffer peaked at "
-      << peak_evicted_bytes_ / 1.0e6 << " MB";
-
   {
     std::lock_guard<std::mutex> lock(mutex_);
     should_shutdown_ = true;
@@ -255,7 +251,7 @@ void TrackLogger::snapshot(const FrameData& frame, const Tracks& tracks) {
         evicted.stamp = stamp;
         evicted.sensor = sensor;
         evicted.score = score(*cluster);
-        evicted.metadata = rendered.metadata.dump();
+        evicted.metadata = std::move(rendered.metadata);
         if (config.save_mask_rle && rendered.bbox) {
           evicted.mask_rle = encodeMaskRle(rendered.mask);
         }
@@ -281,8 +277,6 @@ void TrackLogger::snapshot(const FrameData& frame, const Tracks& tracks) {
         limitImages(track_evicted);
       }
     }
-
-    updateEvictedBytes();
   } catch (const std::exception& e) {
     LOG(WARNING) << "[TrackLogger] Failed to snapshot frame " << frame.input.timestamp_ns << ": "
                  << e.what();
@@ -309,33 +303,6 @@ void TrackLogger::limitImages(EvictedObservations& observations) const {
   }
 }
 
-void TrackLogger::updateEvictedBytes() {
-  // shared color/depth files are counted once
-  std::unordered_set<const std::string*> files;
-  size_t bytes = 0;
-  for (const auto& [id, observations] : evicted_) {
-    bytes += observations.capacity() * sizeof(EvictedObservation);
-    for (const auto& observation : observations) {
-      bytes += observation.sensor.capacity() + observation.metadata.capacity() +
-               observation.mask_rle.capacity();
-      if (!observation.images) {
-        continue;
-      }
-
-      const auto& images = *observation.images;
-      bytes += sizeof(Images) + images.mask.capacity();
-      for (const auto& file : {images.color, images.depth}) {
-        if (file && files.insert(file.get()).second) {
-          bytes += file->capacity();
-        }
-      }
-    }
-  }
-
-  evicted_bytes_ = bytes;
-  peak_evicted_bytes_ = std::max(peak_evicted_bytes_, bytes);
-}
-
 TrackLogger::EvictedObservations TrackLogger::takeEvicted(const Track& track) {
   EvictedObservations result;
   if (!thread_) {
@@ -357,30 +324,7 @@ TrackLogger::EvictedObservations TrackLogger::takeEvicted(const Track& track) {
 
   // absorbed tracks may each hold their best images; only the track's best are needed
   limitImages(result);
-  updateEvictedBytes();
   return result;
-}
-
-size_t TrackLogger::numEvicted(bool with_images) const {
-  std::lock_guard<std::mutex> lock(evicted_mutex_);
-  size_t result = 0;
-  for (const auto& [id, observations] : evicted_) {
-    for (const auto& observation : observations) {
-      result += !with_images || observation.images;
-    }
-  }
-
-  return result;
-}
-
-size_t TrackLogger::evictedBytes() const {
-  std::lock_guard<std::mutex> lock(evicted_mutex_);
-  return evicted_bytes_;
-}
-
-size_t TrackLogger::peakEvictedBytes() const {
-  std::lock_guard<std::mutex> lock(evicted_mutex_);
-  return peak_evicted_bytes_;
 }
 
 void TrackLogger::log(const Track& track,
@@ -397,7 +341,7 @@ void TrackLogger::log(const Track& track,
       evicted_index.emplace(std::make_pair(evicted[i].stamp, evicted[i].sensor), i);
     }
 
-    auto request = std::make_shared<Request>(Request{track, {}, extracted});
+    Request request{track, {}, extracted};
     for (const auto& observation : track.observations) {
       if (observation.semantic_cluster_id == -1) {
         continue;
@@ -405,13 +349,13 @@ void TrackLogger::log(const Track& track,
 
       const auto frame = frame_data.getData(observation.stamp, observation.sensor);
       if (frame) {
-        request->sources.push_back({frame, observation.semantic_cluster_id, std::nullopt});
+        request.sources.push_back({frame, observation.semantic_cluster_id, std::nullopt});
         continue;
       }
 
       const auto it = evicted_index.find({observation.stamp, observation.sensor});
       if (it != evicted_index.end()) {
-        request->sources.push_back(
+        request.sources.push_back(
             {nullptr, observation.semantic_cluster_id, std::move(evicted[it->second])});
         evicted_index.erase(it);
       }
@@ -421,11 +365,10 @@ void TrackLogger::log(const Track& track,
     if (config.max_queue_size && queue_.size() >= config.max_queue_size) {
       LOG(WARNING) << "[TrackLogger] Queue full (" << queue_.size() << "), dropping track "
                    << track.id;
-      ++num_dropped_;
       return;
     }
 
-    queue_.push_back(request);
+    queue_.push_back(std::move(request));
   } catch (const std::exception& e) {
     LOG(WARNING) << "[TrackLogger] Failed to queue track " << track.id << ": " << e.what();
     return;
@@ -440,45 +383,28 @@ void TrackLogger::flush() {
   }
 
   std::unique_lock<std::mutex> lock(mutex_);
-  paused_ = false;
-  cv_.notify_all();
   cv_.wait(lock, [this] { return queue_.empty() && !writing_; });
-}
-
-void TrackLogger::pause(bool paused) {
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    paused_ = paused;
-  }
-
-  cv_.notify_all();
-}
-
-size_t TrackLogger::numDropped() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return num_dropped_;
 }
 
 void TrackLogger::spin() {
   while (true) {
-    std::shared_ptr<Request> request;
+    Request request;
     {
       std::unique_lock<std::mutex> lock(mutex_);
-      // shutdown overrides a pause: every queued track is still written
-      cv_.wait(lock, [this] { return should_shutdown_ || (!paused_ && !queue_.empty()); });
+      cv_.wait(lock, [this] { return should_shutdown_ || !queue_.empty(); });
       if (queue_.empty()) {
         return;  // only exit once every queued track is written
       }
 
-      request = queue_.front();
+      request = std::move(queue_.front());
       queue_.pop_front();
       writing_ = true;
     }
 
     try {
-      write(*request);
+      write(request);
     } catch (const std::exception& e) {
-      LOG(WARNING) << "[TrackLogger] Failed to write track " << request->track.id << ": "
+      LOG(WARNING) << "[TrackLogger] Failed to write track " << request.track.id << ": "
                    << e.what();
     }
 
@@ -646,7 +572,7 @@ void TrackLogger::write(const Request& request) const {
         mask_rle = encodeMaskRle(rendered.mask);
       }
     } else {
-      metadata = Json::parse(candidate.evicted->metadata);
+      metadata = candidate.evicted->metadata;
       mask_rle = candidate.evicted->mask_rle;
       images = candidate.evicted->images;
       if (kept[k] && !images) {
