@@ -37,6 +37,8 @@
 
 #include "khronos_ros/active_window/tf_transformation_getter.h"
 
+#include <chrono>
+
 #include <Eigen/Geometry>
 #include <config_utilities/config.h>
 #include <config_utilities/validation.h>
@@ -63,22 +65,25 @@ void declare_config(TFTransformationGetter::Config& config) {
   field(config.tf_change_threshold_m, "tf_change_threshold_m");
   field(config.tf_change_threshold_rad, "tf_change_threshold_rad", "rad");
   field(config.tf_lookup, "tf_lookup");
+  check(config.tf_lookup.wait_duration_s, GT, 0.0, "tf_lookup.wait_duration_s");
 }
 
 TFTransformationGetter::TFTransformationGetter(const Config& cfg)
-    : config(config::checkValid(cfg)), should_shutdown_(false), tf_lookup_(config.tf_lookup) {
+    : config(config::checkValid(cfg)), tf_lookup_(config.tf_lookup) {
   MLOG(1) << "[TFTransformationGetter] TF listener created (" << config.prior_frame_id << " -> "
           << getRobotFrame() << ")";
 
-  lookup_thread_ = std::make_unique<std::thread>(&TFTransformationGetter::spin, this);
+  lookup_thread_ = std::thread(&TFTransformationGetter::spin, this);
 }
 
 TFTransformationGetter::~TFTransformationGetter() {
-  should_shutdown_ = true;
-  if (lookup_thread_) {
-    lookup_thread_->join();
-    lookup_thread_.reset();
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    should_shutdown_ = true;
   }
+
+  lookup_cv_.notify_all();
+  lookup_thread_.join();
 }
 
 std::optional<Eigen::Isometry3d> TFTransformationGetter::getTransformation() const {
@@ -107,19 +112,28 @@ std::optional<Eigen::Isometry3d> TFTransformationGetter::getTransformation() con
 }
 
 void TFTransformationGetter::spin() {
-  while (!should_shutdown_) {
-    std::string err;
-    const auto status = hydra::lookupTransform(tf_lookup_.buffer,
-                                               std::nullopt,
-                                               config.prior_frame_id,
-                                               getRobotFrame(),
-                                               config.tf_lookup.max_tries,
-                                               config.tf_lookup.wait_duration_s,
-                                               config.tf_lookup.verbosity,
-                                               &err);
+  const auto period = std::chrono::duration<double>(config.tf_lookup.wait_duration_s);
+  const auto robot_frame = getRobotFrame();
+  while (true) {
+    hydra::PoseStatus status;
+    try {
+      // No timeout or retry loop: destruction must not wait for TF to become available.
+      const auto transform =
+          tf_lookup_.buffer.lookupTransform(config.prior_frame_id, robot_frame, rclcpp::Time());
+      const auto& p = transform.transform.translation;
+      const auto& q = transform.transform.rotation;
+      status.target_p_source = Eigen::Vector3d(p.x, p.y, p.z);
+      status.target_R_source = Eigen::Quaterniond(q.w, q.x, q.y, q.z).normalized();
+      status.is_valid = true;
+    } catch (const tf2::TransformException&) {
+      // Missing TF is expected before relocalization. Invalidate the previous result.
+    }
 
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
     last_status_ = status;
+    if (lookup_cv_.wait_for(lock, period, [this] { return should_shutdown_; })) {
+      return;
+    }
   }
 }
 

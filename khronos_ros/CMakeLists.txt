@@ -60,6 +60,17 @@ target_link_libraries(khronos_node ${PROJECT_NAME} ${gflags_LIBRARIES})
 add_executable(spatio_temporal_visualizer_node app/spatio_temporal_visualizer_node.cpp)
 target_link_libraries(spatio_temporal_visualizer_node ${PROJECT_NAME} ${gflags_LIBRARIES})
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(
+    test_${PROJECT_NAME}
+    tests/main.cpp
+    tests/test_tf_transformation_getter.cpp
+    TIMEOUT 20
+  )
+  target_link_libraries(test_${PROJECT_NAME} ${PROJECT_NAME})
+endif()
+
 # ##############################################################################
 # Export #
 # ##############################################################################
