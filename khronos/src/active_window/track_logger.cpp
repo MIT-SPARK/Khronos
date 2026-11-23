@@ -590,7 +590,7 @@ void TrackLogger::write(const Request& request) const {
       }
 
       const auto file = prefix + suffix;
-      hydra::writeFileAtomic(track_path / file, *bytes);
+      hydra::DataDirectory::writeFileAtomic(track_path / file, *bytes);
       return file;
     };
 
@@ -605,7 +605,7 @@ void TrackLogger::write(const Request& request) const {
     record["observations"].push_back(std::move(observation));
   }
 
-  hydra::writeFileAtomic(track_path / "track.json", record.dump(2) + "\n");
+  hydra::DataDirectory::writeFileAtomic(track_path / "track.json", record.dump(2) + "\n");
 }
 
 void TrackLogger::noteSensor(const hydra::Sensor& sensor) const {
@@ -639,7 +639,7 @@ void TrackLogger::writeSensors() const {
   }
 
   try {
-    hydra::writeFileAtomic(config.log_path / "sensors.yaml", contents);
+    hydra::DataDirectory::writeFileAtomic(config.log_path / "sensors.yaml", contents);
   } catch (...) {
     std::lock_guard<std::mutex> lock(sensors_mutex_);
     sensors_written_ = false;

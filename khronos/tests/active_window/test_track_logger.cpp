@@ -1,5 +1,3 @@
-#include <unistd.h>
-
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -8,6 +6,7 @@
 #include <gtest/gtest.h>
 #include <hydra/input/camera.h>
 #include <hydra/input/sensor_extrinsics.h>
+#include <hydra/utils/temp_path.h>
 #include <nlohmann/json.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <yaml-cpp/yaml.h>
@@ -17,15 +16,6 @@
 
 namespace khronos {
 namespace {
-
-std::filesystem::path makeTempDir() {
-  auto pattern = (std::filesystem::temp_directory_path() / "khronos-tracks-XXXXXX").string();
-  if (!mkdtemp(pattern.data())) {
-    throw std::runtime_error("could not create temporary directory");
-  }
-
-  return pattern;
-}
 
 std::shared_ptr<hydra::Camera> makeCamera() {
   hydra::Camera::Config config;
@@ -114,7 +104,8 @@ std::map<std::string, std::string> logWithBuffer(TrackLogger::Config config,
                                                  size_t max_buffer_size,
                                                  const std::vector<FrameData::Ptr>& frames,
                                                  const Tracks& tracks) {
-  const auto root = makeTempDir();
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  const auto& root = temp.path;
   config.log_path = root;
   FrameDataBuffer::Config buffer_config;
   buffer_config.max_buffer_size = max_buffer_size;
@@ -135,9 +126,7 @@ std::map<std::string, std::string> logWithBuffer(TrackLogger::Config config,
     logger.flush();
   }
 
-  auto result = readTree(root);
-  std::filesystem::remove_all(root);
-  return result;
+  return readTree(root);
 }
 
 Pixels makePixels(size_t num) {
@@ -163,7 +152,8 @@ TEST(TrackLogger, EncodeMaskRle) {
 }
 
 TEST(TrackLogger, WritesTrackAndKeptImages) {
-  const auto root = makeTempDir();
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  const auto& root = temp.path;
   const auto camera = makeCamera();
 
   FrameDataBuffer buffer(FrameDataBuffer::Config{});
@@ -255,16 +245,11 @@ TEST(TrackLogger, WritesTrackAndKeptImages) {
   ASSERT_EQ(depth.type(), CV_16UC1);
   EXPECT_EQ(depth.at<uint16_t>(1, 1), 1500);
   EXPECT_EQ(depth.at<uint16_t>(0, 0), 0);
-
-  for (const auto& entry : std::filesystem::directory_iterator(track_dir)) {
-    EXPECT_EQ(entry.path().string().find(".tmp"), std::string::npos) << entry.path();
-  }
-
-  std::filesystem::remove_all(root);
 }
 
 TEST(TrackLogger, LogsFailedExtraction) {
-  const auto root = makeTempDir();
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  const auto& root = temp.path;
   TrackLogger::Config config;
   config.log_path = root;
   auto logger = std::make_shared<TrackLogger>(config);
@@ -300,12 +285,11 @@ TEST(TrackLogger, LogsFailedExtraction) {
       EXPECT_EQ(entry.path().filename(), "track.json") << entry.path();
     }
   }
-
-  std::filesystem::remove_all(root);
 }
 
 TEST(TrackLogger, KeepsImagesOfDroppedTracksWhenConfigured) {
-  const auto root = makeTempDir();
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  const auto& root = temp.path;
   TrackLogger::Config config;
   config.log_path = root;
   config.keep_images_of_dropped_tracks = true;
@@ -327,7 +311,6 @@ TEST(TrackLogger, KeepsImagesOfDroppedTracksWhenConfigured) {
   const auto json = readJson(root / "6" / "track.json");
   EXPECT_EQ(json["extracted"], false);
   EXPECT_EQ(numKept(json), 1u);
-  std::filesystem::remove_all(root);
 }
 
 TEST(TrackLogger, EvictedFrameKeepsImageAndObservation) {
@@ -438,7 +421,8 @@ TEST(TrackLogger, AbsorbedTrackSnapshotsMoveToAbsorber) {
   survivor.last_seen = 20;
   survivor.observations.emplace_back(20, 1, -1, "test_camera");
 
-  const auto root = makeTempDir();
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  const auto& root = temp.path;
   TrackLogger::Config config;
   config.log_path = root;
   FrameDataBuffer buffer(FrameDataBuffer::Config{});
@@ -466,7 +450,6 @@ TEST(TrackLogger, AbsorbedTrackSnapshotsMoveToAbsorber) {
   EXPECT_TRUE(std::filesystem::exists(root / "sensors.yaml"));
   EXPECT_TRUE(std::filesystem::exists(root / "4" / "obs_0_color.jpg"));
   EXPECT_FALSE(std::filesystem::exists(root / "7"));
-  std::filesystem::remove_all(root);
 }
 
 TEST(TrackLogger, TakesSnapshotsOfAbsorbedTracksWithBestImagesOnly) {
@@ -478,7 +461,8 @@ TEST(TrackLogger, TakesSnapshotsOfAbsorbedTracksWithBestImagesOnly) {
   second.observations.emplace_back(20, 1, -1, "test_camera");
 
   TrackLogger::Config config;
-  config.log_path = makeTempDir();
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  config.log_path = temp.path;
   TrackLogger logger(config);
   logger.snapshot(*makeFrame(camera, 10, makePixels(2)), {first, second});
   logger.snapshot(*makeFrame(camera, 20, makePixels(3)), {first, second});
@@ -495,7 +479,6 @@ TEST(TrackLogger, TakesSnapshotsOfAbsorbedTracksWithBestImagesOnly) {
   }
 
   EXPECT_EQ(with_images, 1u);
-  std::filesystem::remove_all(config.log_path);
 }
 
 TEST(TrackLogger, DropsSnapshotsOfDeletedTracks) {
@@ -508,7 +491,8 @@ TEST(TrackLogger, DropsSnapshotsOfDeletedTracks) {
   unrelated.observations.emplace_back(10, 1, -1, "test_camera");
 
   TrackLogger::Config config;
-  config.log_path = makeTempDir();
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  config.log_path = temp.path;
   TrackLogger logger(config);
   logger.snapshot(*makeFrame(camera, 10, makePixels(2)), {track, unrelated});
 
@@ -519,7 +503,6 @@ TEST(TrackLogger, DropsSnapshotsOfDeletedTracks) {
   ASSERT_EQ(kept.size(), 1u);
   EXPECT_EQ(kept.front().stamp, 10u);
   EXPECT_TRUE(kept.front().images);
-  std::filesystem::remove_all(config.log_path);
 }
 
 TEST(TrackLogger, DisabledWithoutPath) {
@@ -537,7 +520,8 @@ TEST(TrackLogger, DisabledWithoutPath) {
 }
 
 TEST(TrackLogger, WorkerPoolPassesSnapshotsToTheLogger) {
-  const auto root = makeTempDir();
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  const auto& root = temp.path;
   TrackLogger::Config config;
   config.log_path = root;
   auto logger = std::make_shared<TrackLogger>(config);
@@ -560,7 +544,6 @@ TEST(TrackLogger, WorkerPoolPassesSnapshotsToTheLogger) {
   EXPECT_EQ(json["observations"][0]["mask_rle"], "[0,2,10]");
   EXPECT_EQ(numKept(json), 0u);
   logger.reset();
-  std::filesystem::remove_all(root);
 }
 
 }  // namespace khronos

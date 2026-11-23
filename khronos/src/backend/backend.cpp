@@ -43,7 +43,6 @@
 
 #include <config_utilities/types/path.h>
 #include <glog/logging.h>
-#include <hydra/backend/merge_tracker.h>
 #include <hydra/backend/mst_factors.h>
 #include <hydra/common/global_info.h>
 #include <hydra/common/pipeline_queues.h>
@@ -138,6 +137,7 @@ void Backend::spinCallback(const hydra::BackendInput& input) {
     // measurement to a node aXXX not previously seen before"
     // fixInputPoses(input);
   }
+
   copyMeshDelta(input);
   updateFromLcdQueue();
   status_log_.back().total_loop_closures = num_loop_closures_;
@@ -242,6 +242,7 @@ size_t Backend::findClosestNode(size_t timestamp_ns) {
   if (it == timestamps_.end()) {
     return timestamps_.size() - 1;
   }
+
   return it - timestamps_.begin();
 }
 
@@ -254,21 +255,19 @@ bool Backend::saveProposedMerges(const hydra::DataDirectory& log_setup) {
 void Backend::save(const hydra::DataDirectory& log_setup) {
   const auto path = log_setup.path();
   unmerged_graph_->save(path / "shared_dsg.json", false);
-  private_dsg_->graph->save(path / "dsg.json", false);
+  {
+    std::lock_guard<std::mutex> lock(private_dsg_->mutex);
+    private_dsg_->updateMergesMetadata();
+    private_dsg_->graph->save(path / "dsg.json", false);
+  }
+
   const auto mesh = private_dsg_->graph->mesh();
   if (mesh && !mesh->empty()) {
     // mesh implements vertex and face traits
     kimera_pgmo::WriteMesh(path / "mesh.ply", *mesh, *mesh);
   }
-  deformation_graph_->save(path / "deformation_graph.dgrf");
 
-  // Save the final node merges (child -> parent) next to the DSG.
-  try {
-    std::lock_guard<std::mutex> lock(private_dsg_->mutex);
-    hydra::saveMerges(private_dsg_->merges, path / "merges.json");
-  } catch (const std::exception& e) {
-    LOG(ERROR) << "Failed to save merges: " << e.what();
-  }
+  deformation_graph_->save(path / "deformation_graph.dgrf");
 
   // Save the proposed merges.
   saveProposedMerges(log_setup);
@@ -278,6 +277,7 @@ void Backend::save(const hydra::DataDirectory& log_setup) {
   if (!changes.object_changes.empty()) {
     changes.object_changes.save(path / "object_changes.csv");
   }
+
   if (!changes.background_changes.empty()) {
     changes.background_changes.save(path / "background_changes.csv");
   }
@@ -334,6 +334,7 @@ void Backend::fixInputPoses(const hydra::BackendInput& input) {
            gtsam::Pose3(node.pose.matrix())});
     }
   }
+
   deformation_graph_->processNodeMeasurements(prior_measurements, config.fix_input_pose_variance);
 }
 
