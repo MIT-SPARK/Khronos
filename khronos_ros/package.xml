@@ -32,6 +32,8 @@
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-tk</exec_depend>
 
+  <test_depend>ament_cmake_gtest</test_depend>
+
   <export>
       <build_type>ament_cmake</build_type>
   </export>

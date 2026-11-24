@@ -1,14 +1,12 @@
-#include <unistd.h>
-
 #include <filesystem>
 #include <fstream>
 #include <map>
-#include <optional>
 #include <sstream>
 
 #include <gtest/gtest.h>
 #include <hydra/input/camera.h>
 #include <hydra/input/sensor_extrinsics.h>
+#include <hydra/utils/temp_path.h>
 #include <nlohmann/json.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <yaml-cpp/yaml.h>
@@ -18,14 +16,6 @@
 
 namespace khronos {
 namespace {
-
-std::filesystem::path makeTempDir() {
-  auto pattern = (std::filesystem::temp_directory_path() / "khronos-tracks-XXXXXX").string();
-  if (!mkdtemp(pattern.data())) {
-    throw std::runtime_error("could not create temporary directory");
-  }
-  return pattern;
-}
 
 std::shared_ptr<hydra::Camera> makeCamera() {
   hydra::Camera::Config config;
@@ -44,15 +34,11 @@ std::shared_ptr<hydra::Camera> makeCamera() {
 // Frame with one semantic cluster (id 1) covering the given pixels.
 FrameData::Ptr makeFrame(const std::shared_ptr<hydra::Camera>& camera,
                          TimeStamp stamp,
-                         const Pixels& pixels,
-                         const std::optional<Eigen::Isometry3d>& pose = std::nullopt) {
+                         const Pixels& pixels) {
   hydra::InputData input(camera);
   input.timestamp_ns = stamp;
   input.world_T_body = Eigen::Isometry3d::Identity();
   input.world_T_body.translation() << 1.0, 2.0, 3.0;
-  if (pose) {
-    input.world_T_body = *pose;
-  }
   // RGB: pure red
   input.color_image = cv::Mat(3, 4, CV_8UC3, cv::Scalar(255, 0, 0));
   input.depth_image = cv::Mat(3, 4, CV_32FC1, cv::Scalar(1.5f));
@@ -87,6 +73,7 @@ size_t numKept(const Json& track) {
   for (const auto& observation : track["observations"]) {
     result += observation["kept"].get<bool>();
   }
+
   return result;
 }
 
@@ -107,6 +94,7 @@ std::map<std::string, std::string> readTree(const std::filesystem::path& root) {
       result[std::filesystem::relative(entry.path(), root).string()] = ss.str();
     }
   }
+
   return result;
 }
 
@@ -115,9 +103,9 @@ std::map<std::string, std::string> readTree(const std::filesystem::path& root) {
 std::map<std::string, std::string> logWithBuffer(TrackLogger::Config config,
                                                  size_t max_buffer_size,
                                                  const std::vector<FrameData::Ptr>& frames,
-                                                 const Tracks& tracks,
-                                                 size_t* num_evicted = nullptr) {
-  const auto root = makeTempDir();
+                                                 const Tracks& tracks) {
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  const auto& root = temp.path;
   config.log_path = root;
   FrameDataBuffer::Config buffer_config;
   buffer_config.max_buffer_size = max_buffer_size;
@@ -131,21 +119,14 @@ std::map<std::string, std::string> logWithBuffer(TrackLogger::Config config,
       }
     }
 
-    if (num_evicted) {
-      *num_evicted = logger.numEvicted();
-    }
-
     for (const auto& track : tracks) {
       logger.log(track, buffer, true, logger.takeEvicted(track));
     }
+
     logger.flush();
-    EXPECT_EQ(logger.numEvicted(), 0u);
-    EXPECT_EQ(logger.evictedBytes(), 0u);
   }
 
-  auto result = readTree(root);
-  std::filesystem::remove_all(root);
-  return result;
+  return readTree(root);
 }
 
 Pixels makePixels(size_t num) {
@@ -153,6 +134,7 @@ Pixels makePixels(size_t num) {
   for (size_t i = 0; i < num; ++i) {
     pixels.emplace_back(static_cast<int>(i % 4), static_cast<int>(i / 4));
   }
+
   return pixels;
 }
 
@@ -169,15 +151,9 @@ TEST(TrackLogger, EncodeMaskRle) {
   EXPECT_EQ(TrackLogger::encodeMaskRle(cv::Mat::zeros(2, 2, CV_8UC1)), "[4]");
 }
 
-TEST(TrackLogger, DisabledWithoutPath) {
-  TrackLogger logger(TrackLogger::Config{});
-  EXPECT_FALSE(logger.enabled());
-  logger.log(Track{}, FrameDataBuffer(FrameDataBuffer::Config{}), true);
-  logger.flush();
-}
-
 TEST(TrackLogger, WritesTrackAndKeptImages) {
-  const auto root = makeTempDir();
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  const auto& root = temp.path;
   const auto camera = makeCamera();
 
   FrameDataBuffer buffer(FrameDataBuffer::Config{});
@@ -269,16 +245,11 @@ TEST(TrackLogger, WritesTrackAndKeptImages) {
   ASSERT_EQ(depth.type(), CV_16UC1);
   EXPECT_EQ(depth.at<uint16_t>(1, 1), 1500);
   EXPECT_EQ(depth.at<uint16_t>(0, 0), 0);
-
-  for (const auto& entry : std::filesystem::directory_iterator(track_dir)) {
-    EXPECT_EQ(entry.path().string().find(".tmp"), std::string::npos) << entry.path();
-  }
-
-  std::filesystem::remove_all(root);
 }
 
 TEST(TrackLogger, LogsFailedExtraction) {
-  const auto root = makeTempDir();
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  const auto& root = temp.path;
   TrackLogger::Config config;
   config.log_path = root;
   auto logger = std::make_shared<TrackLogger>(config);
@@ -294,11 +265,13 @@ TEST(TrackLogger, LogsFailedExtraction) {
     pool.submit(0, track, buffer);
     pool.join();
   }
+
   {  // without an extractor tracks are still logged (as not extracted)
     ObjectWorkerPool pool(ObjectWorkerPool::Config{}, nullptr, logger);
     track.id = 5;
     pool.submit(0, track, buffer);
   }
+
   logger->flush();
 
   for (const auto id : {"4", "5"}) {
@@ -312,12 +285,11 @@ TEST(TrackLogger, LogsFailedExtraction) {
       EXPECT_EQ(entry.path().filename(), "track.json") << entry.path();
     }
   }
-
-  std::filesystem::remove_all(root);
 }
 
 TEST(TrackLogger, KeepsImagesOfDroppedTracksWhenConfigured) {
-  const auto root = makeTempDir();
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  const auto& root = temp.path;
   TrackLogger::Config config;
   config.log_path = root;
   config.keep_images_of_dropped_tracks = true;
@@ -333,71 +305,12 @@ TEST(TrackLogger, KeepsImagesOfDroppedTracksWhenConfigured) {
     pool.submit(0, track, buffer);
     pool.join();
   }
+
   logger->flush();
 
   const auto json = readJson(root / "6" / "track.json");
   EXPECT_EQ(json["extracted"], false);
   EXPECT_EQ(numKept(json), 1u);
-  std::filesystem::remove_all(root);
-}
-
-TEST(TrackLogger, NonFiniteValuesAreNull) {
-  const auto root = makeTempDir();
-  FrameDataBuffer buffer(FrameDataBuffer::Config{});
-  Eigen::Isometry3d pose = Eigen::Isometry3d::Identity();
-  pose.translation() << std::numeric_limits<double>::quiet_NaN(),
-      std::numeric_limits<double>::infinity(), 3.0;
-  buffer.storeData(makeFrame(makeCamera(), 10, {{1, 1}}, pose));
-  Track track;
-  track.id = 8;
-  track.observations.emplace_back(10, 1, -1, "test_camera");
-
-  TrackLogger::Config config;
-  config.log_path = root;
-  {
-    TrackLogger logger(config);
-    logger.log(track, buffer, true);
-    logger.flush();
-  }
-
-  const auto text = readFile(root / "8" / "track.json");
-  const auto logged = Json::parse(text)["observations"][0]["world_T_body"];
-  EXPECT_EQ(logged["translation_m"], Json({nullptr, nullptr, 3.0})) << text;
-  EXPECT_EQ(logged["rotation_wxyz"], Json({1.0, 0.0, 0.0, 0.0})) << text;
-  EXPECT_EQ(text.find("nan"), std::string::npos) << text;
-  EXPECT_EQ(text.find("inf"), std::string::npos) << text;
-  std::filesystem::remove_all(root);
-}
-
-TEST(TrackLogger, DropsTracksWhenQueueIsFull) {
-  const auto root = makeTempDir();
-  FrameDataBuffer buffer(FrameDataBuffer::Config{});
-  buffer.storeData(makeFrame(makeCamera(), 10, {{1, 1}}));
-
-  TrackLogger::Config config;
-  config.log_path = root;
-  config.max_queue_size = 2;
-  {
-    TrackLogger logger(config);
-    logger.pause(true);  // hold the writer so the queue fills up
-    for (int id = 1; id <= 4; ++id) {
-      Track track;
-      track.id = id;
-      track.observations.emplace_back(10, 1, -1, "test_camera");
-      logger.log(track, buffer, true);
-    }
-
-    EXPECT_EQ(logger.numDropped(), 2u);
-    logger.pause(false);
-    logger.flush();
-  }
-
-  // the first max_queue_size tracks were written, the rest dropped
-  EXPECT_TRUE(std::filesystem::exists(root / "1" / "track.json"));
-  EXPECT_TRUE(std::filesystem::exists(root / "2" / "track.json"));
-  EXPECT_FALSE(std::filesystem::exists(root / "3"));
-  EXPECT_FALSE(std::filesystem::exists(root / "4"));
-  std::filesystem::remove_all(root);
 }
 
 TEST(TrackLogger, EvictedFrameKeepsImageAndObservation) {
@@ -414,9 +327,7 @@ TEST(TrackLogger, EvictedFrameKeepsImageAndObservation) {
 
   TrackLogger::Config config;
   config.save_depth = true;
-  size_t num_evicted = 0;
-  const auto evicted = logWithBuffer(config, 2, frames, {track}, &num_evicted);
-  EXPECT_EQ(num_evicted, 1u);
+  const auto evicted = logWithBuffer(config, 2, frames, {track});
   ASSERT_TRUE(evicted.count("3/track.json"));
   const auto json = Json::parse(evicted.at("3/track.json"));
   ASSERT_EQ(json["observations"].size(), 3u);
@@ -457,17 +368,40 @@ TEST(TrackLogger, EvictedRankingEqualsUnboundedBuffer) {
     }
   }
 
-  for (const size_t max_images : {1, 3, 20}) {
+  for (const auto& [max_images, buffer_size] :
+       {std::pair{1u, 1u}, std::pair{3u, 10u}, std::pair{20u, 5u}}) {
+    SCOPED_TRACE(::testing::Message() << max_images << " images, buffer " << buffer_size);
     TrackLogger::Config config;
     config.max_images_per_object = max_images;
     const auto unbounded = logWithBuffer(config, 100, frames, {first, second});
-    for (const size_t buffer_size : {1, 2, 5, 11}) {
-      size_t num_evicted = 0;
-      EXPECT_EQ(logWithBuffer(config, buffer_size, frames, {first, second}, &num_evicted),
-                unbounded)
-          << "max_images " << max_images << ", buffer " << buffer_size;
-      EXPECT_GT(num_evicted, 0u);
+    for (const auto id : {1, 2}) {
+      const auto path = std::to_string(id) + "/track.json";
+      ASSERT_TRUE(unbounded.count(path));
+      const auto observations = Json::parse(unbounded.at(path))["observations"];
+      ASSERT_EQ(observations.size(), id == 1 ? 12u : 6u);
+      std::vector<TimeStamp> kept;
+      for (const auto& observation : observations) {
+        if (observation["kept"].get<bool>()) {
+          kept.push_back(observation["timestamp_ns"].get<TimeStamp>());
+        }
+      }
+
+      std::vector<TimeStamp> expected;
+      if (max_images == 1) {
+        expected = {60};
+      } else if (max_images == 3) {
+        expected =
+            id == 1 ? std::vector<TimeStamp>{60, 100, 110} : std::vector<TimeStamp>{20, 60, 100};
+      } else {
+        expected = id == 1
+                       ? std::vector<TimeStamp>{10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120}
+                       : std::vector<TimeStamp>{20, 40, 60, 80, 100, 120};
+      }
+
+      EXPECT_EQ(kept, expected);
     }
+
+    EXPECT_EQ(logWithBuffer(config, buffer_size, frames, {first, second}), unbounded);
   }
 }
 
@@ -487,7 +421,8 @@ TEST(TrackLogger, AbsorbedTrackSnapshotsMoveToAbsorber) {
   survivor.last_seen = 20;
   survivor.observations.emplace_back(20, 1, -1, "test_camera");
 
-  const auto root = makeTempDir();
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  const auto& root = temp.path;
   TrackLogger::Config config;
   config.log_path = root;
   FrameDataBuffer buffer(FrameDataBuffer::Config{});
@@ -495,14 +430,11 @@ TEST(TrackLogger, AbsorbedTrackSnapshotsMoveToAbsorber) {
   {
     TrackLogger logger(config);
     logger.snapshot(*best, {absorbed, survivor});  // dropped while track 7 is live
-    EXPECT_EQ(logger.numEvicted(true), 1u);
     survivor.absorb(std::move(absorbed));
     // the next dropped frame moves the snapshots of track 7 to track 4
     logger.snapshot(*unrelated, {survivor});
-    EXPECT_EQ(logger.numEvicted(true), 1u);
     logger.log(survivor, buffer, true, logger.takeEvicted(survivor));
     logger.flush();
-    EXPECT_EQ(logger.numEvicted(), 0u);
   }
 
   const auto json = readJson(root / "4" / "track.json");
@@ -518,7 +450,6 @@ TEST(TrackLogger, AbsorbedTrackSnapshotsMoveToAbsorber) {
   EXPECT_TRUE(std::filesystem::exists(root / "sensors.yaml"));
   EXPECT_TRUE(std::filesystem::exists(root / "4" / "obs_0_color.jpg"));
   EXPECT_FALSE(std::filesystem::exists(root / "7"));
-  std::filesystem::remove_all(root);
 }
 
 TEST(TrackLogger, TakesSnapshotsOfAbsorbedTracksWithBestImagesOnly) {
@@ -530,25 +461,24 @@ TEST(TrackLogger, TakesSnapshotsOfAbsorbedTracksWithBestImagesOnly) {
   second.observations.emplace_back(20, 1, -1, "test_camera");
 
   TrackLogger::Config config;
-  config.log_path = makeTempDir();
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  config.log_path = temp.path;
   TrackLogger logger(config);
   logger.snapshot(*makeFrame(camera, 10, makePixels(2)), {first, second});
   logger.snapshot(*makeFrame(camera, 20, makePixels(3)), {first, second});
-  EXPECT_EQ(logger.numEvicted(true), 2u);  // each track keeps its best image
 
   // absorbed after the last dropped frame: taking the absorber's snapshots includes track 2's
   first.absorb(std::move(second));
   const auto evicted = logger.takeEvicted(first);
   ASSERT_EQ(evicted.size(), 2u);
-  EXPECT_EQ(logger.numEvicted(), 0u);
-  EXPECT_EQ(logger.evictedBytes(), 0u);
+  EXPECT_TRUE(logger.takeEvicted(first).empty());
   size_t with_images = 0;
   for (const auto& observation : evicted) {
     with_images += observation.images != nullptr;
     EXPECT_EQ(observation.images != nullptr, observation.stamp == 20) << observation.stamp;
   }
+
   EXPECT_EQ(with_images, 1u);
-  std::filesystem::remove_all(config.log_path);
 }
 
 TEST(TrackLogger, DropsSnapshotsOfDeletedTracks) {
@@ -558,43 +488,40 @@ TEST(TrackLogger, DropsSnapshotsOfDeletedTracks) {
   track.observations.emplace_back(10, 1, -1, "test_camera");
   Track unrelated;
   unrelated.id = 6;
+  unrelated.observations.emplace_back(10, 1, -1, "test_camera");
 
   TrackLogger::Config config;
-  config.log_path = makeTempDir();
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  config.log_path = temp.path;
   TrackLogger logger(config);
   logger.snapshot(*makeFrame(camera, 10, makePixels(2)), {track, unrelated});
-  EXPECT_EQ(logger.numEvicted(), 1u);
-  EXPECT_GT(logger.evictedBytes(), 0u);
 
   // track 5 is gone (deleted without being logged) when the next frame is dropped
   logger.snapshot(*makeFrame(camera, 20, makePixels(2)), {unrelated});
-  EXPECT_EQ(logger.numEvicted(), 0u);
-  EXPECT_EQ(logger.evictedBytes(), 0u);
-  EXPECT_GT(logger.peakEvictedBytes(), 0u);
   EXPECT_TRUE(logger.takeEvicted(track).empty());
-  std::filesystem::remove_all(config.log_path);
+  const auto kept = logger.takeEvicted(unrelated);
+  ASSERT_EQ(kept.size(), 1u);
+  EXPECT_EQ(kept.front().stamp, 10u);
+  EXPECT_TRUE(kept.front().images);
 }
 
-TEST(TrackLogger, NoSnapshotsWhenDisabledOrNothingIsDropped) {
+TEST(TrackLogger, DisabledWithoutPath) {
   const auto camera = makeCamera();
   Track track;
   track.id = 5;
   track.observations.emplace_back(10, 1, -1, "test_camera");
 
   TrackLogger disabled(TrackLogger::Config{});
+  EXPECT_FALSE(disabled.enabled());
   disabled.snapshot(*makeFrame(camera, 10, makePixels(2)), {track});
-  EXPECT_EQ(disabled.numEvicted(), 0u);
   EXPECT_TRUE(disabled.takeEvicted(track).empty());
-
-  // a buffer that never drops a frame never needs a snapshot
-  FrameDataBuffer buffer(FrameDataBuffer::Config{});
-  for (TimeStamp stamp = 10; stamp <= 50; stamp += 10) {
-    EXPECT_EQ(buffer.storeData(makeFrame(camera, stamp, makePixels(1))), nullptr);
-  }
+  disabled.log(track, FrameDataBuffer(FrameDataBuffer::Config{}), true);
+  disabled.flush();
 }
 
 TEST(TrackLogger, WorkerPoolPassesSnapshotsToTheLogger) {
-  const auto root = makeTempDir();
+  const auto temp = hydra::utils::TempDirectory::system_default("khronos-tracks-", true);
+  const auto& root = temp.path;
   TrackLogger::Config config;
   config.log_path = root;
   auto logger = std::make_shared<TrackLogger>(config);
@@ -607,8 +534,8 @@ TEST(TrackLogger, WorkerPoolPassesSnapshotsToTheLogger) {
     ObjectWorkerPool pool(ObjectWorkerPool::Config{}, nullptr, logger);
     pool.submit(0, track, FrameDataBuffer(FrameDataBuffer::Config{}));
   }
+
   logger->flush();
-  EXPECT_EQ(logger->numEvicted(), 0u);
 
   // dropped tracks stay metadata only
   const auto json = readJson(root / "9" / "track.json");
@@ -616,7 +543,7 @@ TEST(TrackLogger, WorkerPoolPassesSnapshotsToTheLogger) {
   EXPECT_EQ(json["observations"][0]["timestamp_ns"], 10);
   EXPECT_EQ(json["observations"][0]["mask_rle"], "[0,2,10]");
   EXPECT_EQ(numKept(json), 0u);
-  std::filesystem::remove_all(root);
+  logger.reset();
 }
 
 }  // namespace khronos

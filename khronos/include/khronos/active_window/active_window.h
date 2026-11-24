@@ -92,10 +92,6 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     // perform full updates on every frame.
     float min_output_separation = 0.0f;
 
-    // If true, also pass the inputs skipped by min_output_separation with the next output
-    // (intermediate_inputs, oldest first) for the keyframe selector; sensor_data is unchanged.
-    bool forward_intermediate_inputs = false;
-
     // If true, run object extraction in detached threads to avoid blocking the active window.
     bool detach_object_extraction = true;
 
@@ -113,7 +109,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     //! Minimum confidence before object is forwarded to graph builder
     float min_object_confidence = 0.5f;
 
-    //! Give active-track nodes the accumulated bounding box (once valid) instead of the last one.
+    //! Use the accumulated bounding box for live tracks once valid.
     bool live_accumulated_bounding_box = false;
 
     // override layer defaults of Hydra
@@ -208,7 +204,6 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   // Ids of tracks absorbed by other tracks (MaxIoUTracker::mergeTracks) since the last output,
   // whose object nodes are deleted downstream with the next output.
   std::vector<int> pending_retractions_;
-  std::vector<hydra::InputData::ConstPtr> intermediate_inputs_;
 };
 
 void declare_config(ActiveWindow::Config& config);

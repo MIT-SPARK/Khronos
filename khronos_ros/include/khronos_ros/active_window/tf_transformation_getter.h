@@ -37,6 +37,8 @@
 
 #pragma once
 
+#include <condition_variable>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -51,10 +53,9 @@ namespace khronos {
 /**
  * @brief TransformationGetter that obtains odom_T_prior by querying TF2.
  *
- * Looks up `prior_frame_id` -> `robot_frame_id` (odom frame) via hydra::TFLookup each
- * call, computes odom_T_prior = inverse(map_T_odom), and applies a change-
- * threshold filter: returns nullopt when neither the translation change nor the
- * rotation change since the last reported transform exceeds its threshold.
+ * Polls `prior_frame_id` -> `robot_frame_id` (odom frame) in the background.
+ * getTransformation() returns the cached inverse when its translation or rotation
+ * changes beyond the configured thresholds.
  */
 class TFTransformationGetter : public TransformationGetter {
  public:
@@ -64,27 +65,24 @@ class TFTransformationGetter : public TransformationGetter {
 
     //! Frame ID of the prior map (hydra_multi world_frame, typically "map").
     std::string prior_frame_id = "map";
-    //! Robot odometry frame published by hydra_multi.
-    //! If empty, falls back to hydra::GlobalInfo::instance().getFrames().odom.
+    //! Robot odometry frame (empty uses GlobalInfo's odom frame).
     std::string robot_frame_id = "";
     //! Minimum translation change [m] before reporting a new transform.
     double tf_change_threshold_m = 0.05;
     //! Minimum rotation change [rad] before reporting a new transform.
     double tf_change_threshold_rad = 0.05;
-    //! Underlying TF lookup config. max_tries defaults to 1 (non-blocking): TF being
-    //! unavailable is the expected steady state before relocalization fires, and the
-    //! default TFLookup retry loop would otherwise stall the AWCD call() path.
-    struct NonBlockingTfLookupConfig : hydra::TFLookup::Config {
-      NonBlockingTfLookupConfig() { max_tries = 1; }
-    };
-    hydra::TFLookup::Config tf_lookup = NonBlockingTfLookupConfig();
+    /**
+     * TF buffer settings. wait_duration_s is the polling interval; max_tries is
+     * ignored because each poll makes one nonblocking attempt.
+     */
+    hydra::TFLookup::Config tf_lookup;
   } const config;
 
   explicit TFTransformationGetter(const Config& config);
   ~TFTransformationGetter();
 
   /**
-   * @brief Look up map→odom TF and return odom_T_map = current_T_prior.
+   * @brief Read cached TF and return odom_T_map = current_T_prior.
    * Returns nullopt on TF failure or if change is below threshold.
    */
   std::optional<Eigen::Isometry3d> getTransformation() const override;
@@ -95,8 +93,9 @@ class TFTransformationGetter : public TransformationGetter {
   void spin();
 
   mutable std::mutex mutex_;
-  std::unique_ptr<std::thread> lookup_thread_;
-  std::atomic<bool> should_shutdown_;
+  std::condition_variable lookup_cv_;
+  std::thread lookup_thread_;
+  bool should_shutdown_ = false;
 
   hydra::PoseStatus last_status_;
   hydra::TFLookup tf_lookup_;

@@ -93,7 +93,6 @@ void declare_config(ActiveWindow::Config& config) {
   field(config.verbosity, "verbosity");
   field(config.detach_object_extraction, "detach_object_extraction");
   field(config.min_output_separation, "min_output_separation", "s");
-  field(config.forward_intermediate_inputs, "forward_intermediate_inputs");
   // intentionally avoid descend into namespace to keep backwards compatability
   field(config.processors, "processors", false);
   field(config.tracking_integrator, "tracking_integrator");
@@ -136,6 +135,7 @@ ActiveWindow::ActiveWindow(const Config& config,
     LOG(WARNING) << "[Khronos Active Window] map_window is required. Set active_window.map_window "
                     "in config (e.g. type: spatial or type: temporal).";
   }
+
   if (!map_.config.with_tracking) {
     LOG(WARNING) << "[Khronos Active Window] Tracking layer disabled for volumetric map! Tracking "
                     "layer is strongly recommended as block archival and motion detection may not "
@@ -226,6 +226,7 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
             << stamp << "). Queues: " << input_queue_->size() << " input,  "
             << output_queue_->size() << " frontend.";
   }
+
   ++num_frames_processed_;
 
   Timer sink_timer("active_window/sinks", stamp);
@@ -235,10 +236,6 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
   // TODO(lschmid): Double check this does what's intended. Check whether we can move mesh
   // extraction here and whether it makes sense to move launching object threads before this.
   if (last_full_upated_ + fromSeconds(config.min_output_separation) > stamp) {
-    if (config.forward_intermediate_inputs) {
-      intermediate_inputs_.push_back(std::make_shared<hydra::InputData>(data->input));
-    }
-
     return nullptr;
   }
 
@@ -246,8 +243,6 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
   CLOG(5) << "[Khronos Active Window] Extracting output data.";
   auto output = extractOutputData(*data, config.detach_object_extraction);
   last_full_upated_ = stamp;
-  output->intermediate_inputs = std::move(intermediate_inputs_);
-  intermediate_inputs_.clear();
 
   // unset update flags
   for (const auto& block : map_.getTsdfLayer()) {
@@ -273,23 +268,11 @@ void ActiveWindow::finishMapping() {
   // Extract objects and wait for them to finish extraction.
   const auto latest = frame_data_buffer_.getLatestData();
   if (!latest) {
-    intermediate_inputs_.clear();
     LOG_IF(WARNING, num_frames_processed_ > 0) << "Unable to get last frame from buffer!";
     return;
   }
 
   auto output = extractOutputData(*latest, false);
-  if (output) {
-    // Forwarded inputs still pending; the newest of them is the latest frame, already
-    // the output's sensor data.
-    for (const auto& input : intermediate_inputs_) {
-      if (input->timestamp_ns < output->timestamp_ns) {
-        output->intermediate_inputs.push_back(input);
-      }
-    }
-  }
-
-  intermediate_inputs_.clear();
   if (output && output_queue_) {
     output_queue_->push(output);
   }
@@ -345,6 +328,7 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::extractOutputData(const FrameData& 
     update->updates.push_back(hydra::NodeUpdate{
         nullptr, static_cast<size_t>(absorbed_id), hydra::NodeUpdate::UpdateType::Delete});
   }
+
   pending_retractions_.clear();
 
   for (const auto& track : tracks_) {
@@ -368,6 +352,7 @@ void ActiveWindow::extractInactiveObjects() {
       it++;
       continue;
     }
+
     // NOTE(lschmid) Move the track and copy the frame data buffer to the thread. The buffer will
     // keep relevant frames alive while the AW updates.
     extraction_worker_.submit(latest_stamp_, std::move(*it), frame_data_buffer_);
