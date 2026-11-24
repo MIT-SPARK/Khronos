@@ -1,49 +1,63 @@
 ---
 renderer:
-  layer_z_step: 5.5  # unit separation between layers
-  collapse_layers: false  # whether or not to apply offsets to each of the layers
+  graph:
+    layer_z_step: 5.5
+    collapse_layers: false
   layers:
-    1:  # Agents layer
-      z_offset_scale: 0.0
-      visualize: true
-      nodes: {scale: 0.3, alpha: 0.9, use_sphere: true}
-      text: {draw: false}  # Disable agent name labels
-      edges: {scale: 0.05, alpha: 0.8}
     2:  # Objects layer
       z_offset_scale: 2.0
       visualize: true
       nodes: {scale: 0.40, color: {type: LabelColorAdapter}, alpha: 0.8, use_sphere: false}
       text: {draw: true, collapse: true, height: 0.5, scale: 0.45}
       bounding_boxes: {draw: true, collapse: true, scale: 0.05, edge_scale: 0.05, alpha: 0.9}
-      edges: {scale: 0.03, alpha: 0.6, interlayer_use_source: true, interlayer_scale: 0.08, interlayer_alpha: 0.9}
+      edges: {scale: 0.03, alpha: 0.6}
     3:  # Places layer
       z_offset_scale: 3.0
       visualize: true
       nodes: {scale: 0.2, color: {type: ParentColorAdapter}, alpha: 0.9, use_sphere: true}
-      edges: {scale: 0.01, alpha: 0.5, interlayer_scale: 0.08, interlayer_alpha: 0.4}
+      edges: {scale: 0.01, alpha: 0.5}
     4:  # Rooms layer
       z_offset_scale: 4.2
       visualize: true
       nodes: {scale: 0.6, color: {type: IdColorAdapter}, alpha: 0.8, use_sphere: false}
       text: {draw: true, height: 1.25, scale: 1.0}
-      edges: {scale: 0.1, alpha: 0.2, interlayer_scale: 0.08, interlayer_alpha: 0.4}
+      edges: {scale: 0.1, alpha: 0.2}
     5:  # Buildings layer
       z_offset_scale: 5.5
       visualize: true
       nodes: {scale: 1.0, alpha: 1.0, use_sphere: false}
       text: {draw: true, height: 1.5, scale: 1.25}
       edges: {scale: 0.05, alpha: 1.0}
-    20:  # Mesh/Voxel layer
+    3p1: # Mesh/Voxel layer
       z_offset_scale: 3.0
       visualize: true
       nodes: {scale: 0.2, color: {type: LabelColorAdapter}, alpha: 0.9, use_sphere: true}
-      boundaries: {draw: true, wireframe_scale: 0.1, use_node_color: true, alpha: 1.0}
-      edges: {scale: 0.01, alpha: 0.5, interlayer_scale: 0.08, interlayer_alpha: 0.4}
-  # Dynamic layers configuration
-  partitions:
-    2:  # Dynamic objects/agents
+      edges: {scale: 0.01, alpha: 0.5}
+    2p*: # Dynamic objects/agents
       z_offset_scale: 0.0
       visualize: true
       nodes: {scale: 0.2, alpha: 0.9, use_sphere: true}
-      edges: {scale: 0.05, alpha: 0.9, draw_interlayer: false}
+      edges: {scale: 0.05, alpha: 0.9}
       text: {draw: false}  # Disable text labels for dynamic agents
+  layer_plugins:
+    - layer: 3p1
+      plugins:
+        - {draw: true, wireframe_scale: 0.1, alpha: 1.0, type: MeshPlacesPlugin}
+    - layer: 3
+      plugins:
+        - type: BasisPointPlugin
+          use_voxblox: false
+          point_scale: 0.1
+  interlayer_edges:
+    - from: 3*
+      to: 2p*
+      draw: false
+    - from: 3*
+      to: 2
+      use_child_color: true
+      scale: 0.08
+      alpha: 0.9
+    - from: 4
+      to: 3*
+      scale: 0.08
+      alpha: 0.4

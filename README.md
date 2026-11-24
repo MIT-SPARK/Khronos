@@ -139,6 +139,11 @@ To run Khronos with the apartment dataset, change the `dataset` from `tesse_cd_o
 
 ### Run configuration and output
 
+Configuration files use `config_utilities` variables (`$<var sensor_min_range>`,
+`$<var sensor_max_range>`, and `$<var sensor_frame>`); the common launch file
+supplies them with `--config-utilities-var`. Dataset input files are loaded under
+`input`, and labelspace files under `labelspace`.
+
 Khronos uses Hydra's `RunContext` for each run's labelspace, robot configuration,
 and base `log_path`. Process defaults such as verbosity and thread counts come
 from `RunSettings`. C++ pipeline construction takes a shared, const context;

@@ -48,6 +48,9 @@ launch:
         - { from: ~/input/left_cam/semantic/image_raw, to: $(var label_topic) }
         - { from: ~/bow_vectors, to: /kimera_vio_ros/bow_query }
       args: >
+        --config-utilities-var sensor_min_range=$(var sensor_min_range)
+        --config-utilities-var sensor_max_range=$(var sensor_max_range)
+        --config-utilities-var sensor_frame=$(var sensor_frame)
         --config-utilities-file $(var input_config)@input
         --config-utilities-file $(var mapper_config)
         --config-utilities-file $(var labelspace_config)@labelspace
@@ -57,7 +60,6 @@ launch:
         --config-utilities-yaml $(var extra_yaml)
         --config-utilities-yaml {backend: {fix_input_poses: $(var use_gt_frame)}}
         --config-utilities-yaml {input: {inputs: {left_cam: {sensor: {min_range: $(var sensor_min_range), max_range: $(var sensor_max_range), extrinsics: {sensor_frame: $(var sensor_frame)}}}}}}
-        --config-utilities-yaml {sensor_frame: $(var sensor_frame)}
   # Visualization - Launch hydra_visualizer with custom topic remapping
   - arg: { name: visualizer_config, default: $(find-pkg-share khronos_ros)/config/visualization/visualizer_config.yaml }
   - arg:

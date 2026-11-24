@@ -28,30 +28,28 @@ launch:
   # Semantics: Use these for ground truth semantic labels from uH2
   - arg:
       name: labelspace_config
-      if: $(var use_gt_semantics)
+      if: $(and $(var use_gt_semantics) $(not $(var use_openset_semantics)))
       default: $(find-pkg-share hydra)/config/label_spaces/$(var dataset)_label_space.yaml
   - arg:
       name: label_remap_config
-      if: $(var use_gt_semantics)
+      if: $(and $(var use_gt_semantics) $(not $(var use_openset_semantics)))
       default: $(find-pkg-share hydra)/config/label_remaps/$(var dataset).yaml
   - arg:
       name: labelspace_config
-      unless: $(var use_gt_semantics)
+      unless: $(and $(var use_gt_semantics) $(not $(var use_openset_semantics)))
       default: $(find-pkg-share hydra)/config/label_spaces/ade20k_indoor_label_space.yaml
-  - arg: {name: label_remap_config, default: '', unless: $(var use_gt_semantics)}
-  - arg: {name: semantic_colormap_config, default: ''}
+  - arg: {name: label_remap_config, default: '', unless: $(and $(var use_gt_semantics) $(not $(var use_openset_semantics)))}
   # Construct extra_yaml based on whether we have GT semantics
   - let:
       name: extra_yaml_gt
-      value: '{semantic_label_remap_filepath: $(var label_remap_config), semantic_colormap_file: $(var semantic_colormap_config)}'
-  - let: {name: extra_yaml_no_gt, value: '{semantic_colormap_file: $(var semantic_colormap_config)}'}
-  - let: {name: extra_yaml, value: $(if $(var use_gt_semantics) $(var extra_yaml_gt) $(var extra_yaml_no_gt))}
+      value: '{input: {inputs: {left_cam: {receiver: {adapters: [{type: LabelRemapper, remap_path: $(var label_remap_config)}]}}}}}'
+  - let: {name: extra_yaml_no_gt, value: '{}'}
+  - let: {name: extra_yaml, value: $(if $(and $(var use_gt_semantics) $(not $(var use_openset_semantics))) $(var extra_yaml_gt) $(var extra_yaml_no_gt))}
   # Input topics
   - arg: {name: rgb_topic, default: /tesse/left_cam/rgb/image_raw}
   - arg: {name: rgb_info_topic, default: /tesse/left_cam/camera_info}
   - arg: {name: depth_topic, default: /tesse/depth_cam/mono/image_raw}
-  - arg: {name: label_topic, default: /tesse/seg_cam/converted/image_raw, if: $(var use_gt_semantics)}
-  - let: {name: label_topic, value: /semantic_inference/semantic/image_raw, unless: $(var use_gt_semantics)}
+  - arg: {name: label_topic, default: $(if $(and $(var use_gt_semantics) $(not $(var use_openset_semantics))) /tesse/seg_cam/converted/image_raw /semantic_inference/semantic/image_raw)}
   - arg: {name: prerecorded_topic, default: /oneformer/labels/image_raw}
   # Dataset
   - arg: {name: bag_path, default: $(var bag_dir)/$(var dataset)}
@@ -84,6 +82,11 @@ launch:
       arg:
         - {name: extrinsics, value: $(find-pkg-share hydra)/config/extrinsics/uhumans2.yaml}
         - {name: labelspace_config, value: $(var labelspace_config)}
+        - {name: input_config, value: $(var input_config)}
+        - {name: mapper_config, value: $(var mapper_config)}
+        - {name: robot_frame, value: $(var robot_frame)}
+        - {name: sensor_frame, value: $(var sensor_frame)}
+        - {name: use_gt_frame, value: $(var use_gt_frame)}
         - {name: extra_yaml, value: $(var extra_yaml)}
         - {name: output_dir, value: $(var output_dir)}
         - {name: evaluate, value: $(var evaluate)}
