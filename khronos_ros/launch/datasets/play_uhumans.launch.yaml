@@ -23,7 +23,7 @@ launch:
           arg:
             - {name: labelspace_name, value: ade20k_indoor}
       - include:
-          if: $(and $(var use_openset_semantics) $(not $(var use_gt_semantics)))
+          if: $(var use_openset_semantics)
           file: $(find-pkg-share semantic_inference_ros)/launch/open_set.launch.yaml
           arg:
             - {name: config_path, value: $(var segmenter_config)}

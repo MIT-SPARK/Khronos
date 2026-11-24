@@ -54,8 +54,9 @@ namespace {
 static const auto registration =
     config::RegistrationWithConfig<ActiveWindowChangeDetector::ActiveWindowCDSink,
                                    ActiveWindowChangeDetectorVisualizer,
-                                   ActiveWindowChangeDetectorVisualizer::Config>(
-        "ActiveWindowChangeDetectorVisualizer");
+                                   ActiveWindowChangeDetectorVisualizer::Config,
+                                   hydra::RobotConfig,
+                                   hydra::Labelspace>("ActiveWindowChangeDetectorVisualizer");
 
 }
 
@@ -84,8 +85,11 @@ void declare_config(ActiveWindowChangeDetectorVisualizer::Config& config) {
 
 ActiveWindowChangeDetectorVisualizer::ActiveWindowChangeDetectorVisualizer(
     const Config& config,
+    const hydra::RobotConfig& robot,
+    const hydra::Labelspace&,
     const ianvs::NodeHandle* nh)
     : config(config::checkValid(config)),
+      frame_(config.global_frame_name.empty() ? robot.frames.map : config.global_frame_name),
       nh_(nh ? *nh / "change_detector_visualizer"
              : ianvs::NodeHandle::this_node("change_detector_visualizer")) {
   // Initialize renderer and mesh plugin
@@ -169,7 +173,7 @@ void ActiveWindowChangeDetectorVisualizer::drawPriorGraph(const DynamicSceneGrap
   MLOG(2) << "[ChangeDetectorVisualizer] Drawing prior graph";
 
   std_msgs::msg::Header header;
-  header.frame_id = config.global_frame_name;
+  header.frame_id = frame_;
   header.stamp = rclcpp::Time(0);
 
   if (renderer_) {
@@ -194,7 +198,7 @@ void ActiveWindowChangeDetectorVisualizer::visualizeChangedObjects(
   new_markers.markers.reserve(removed_objects.size());
 
   std_msgs::msg::Header header;
-  header.frame_id = config.global_frame_name;
+  header.frame_id = frame_;
   header.stamp = getStamp();
   for (const auto& obj : removed_objects) {
     const auto& object_node = dsg->getNode(obj.id);
@@ -232,7 +236,7 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedObjects(
   new_markers.markers.reserve(newly_added_objects.size());
 
   std_msgs::msg::Header header;
-  header.frame_id = config.global_frame_name;
+  header.frame_id = frame_;
   header.stamp = getStamp();
   for (const auto& obj : newly_added_objects) {
     MLOG(2) << "[ActiveWindowChangeDetectorVisualizer] Visualizing newly added object with id "
@@ -354,7 +358,7 @@ void ActiveWindowChangeDetectorVisualizer::visualizeRemovedStatus(
   }
 
   std_msgs::msg::Header header;
-  header.frame_id = config.global_frame_name;
+  header.frame_id = frame_;
   header.stamp = getStamp();
 
   // Candidates never measured have no accumulated state yet: show an empty filter. While detection
@@ -416,7 +420,7 @@ void ActiveWindowChangeDetectorVisualizer::visualizeRemovedVoxels(
   }
 
   std_msgs::msg::Header header;
-  header.frame_id = config.global_frame_name;
+  header.frame_id = frame_;
   header.stamp = getStamp();
 
   // Voxels are map voxels in the current frame. Placing the marker at prior_T_current draws them
@@ -473,7 +477,7 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedStatus(
   }
 
   std_msgs::msg::Header header;
-  header.frame_id = config.global_frame_name;
+  header.frame_id = frame_;
   header.stamp = getStamp();
 
   // Track boxes are in the current frame: build them there, then move the marker poses into the
@@ -536,7 +540,7 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedVoxels(
   }
 
   std_msgs::msg::Header header;
-  header.frame_id = config.global_frame_name;
+  header.frame_id = frame_;
   header.stamp = getStamp();
 
   const Eigen::Isometry3d prior_T_current = current_T_prior.inverse();

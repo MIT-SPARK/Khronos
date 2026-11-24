@@ -45,7 +45,7 @@
 #include <config_utilities/config_utilities.h>
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
-#include <hydra/common/global_info.h>
+#include <hydra/common/run_settings.h>
 #include <hydra/input/sensor_map.h>
 #include <hydra_ros/utils/input_data_to_messages.h>
 #include <hydra_visualizer/utils/marker_tracker.h>
@@ -65,15 +65,15 @@ class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
   struct SensorDisplay {
     using Config = hydra::DisplayConfig;
     const Config config;
-    SensorDisplay(const Config& config) : config(config) {}
+    explicit SensorDisplay(const Config& config) : config(config) {}
   };
 
   // Config.
   struct Config {
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+    int verbosity = hydra::RunSettings::instance().default_verbosity;
 
     // Global frame name in which the map is visualized.
-    std::string global_frame_name = hydra::GlobalInfo::instance().getFrames().map;
+    std::string global_frame_name;
 
     // Publisher queue sizes.
     int queue_size = 10;
@@ -101,14 +101,14 @@ class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
     // Height in meters of the track id labels drawn above the accumulated bounding boxes.
     float track_label_scale = 0.2f;
 
-    // Observation threshold shown as `<observations>/<threshold>` in the track labels; set it to the
-    // tracker's min_num_observations (confidence 0.5). 0 shows only the observation count.
+    // Observation threshold shown as `<observations>/<threshold>` in the track labels; set it to
+    // the tracker's min_num_observations (confidence 0.5). 0 shows only the observation count.
     int track_label_min_observations = 0;
 
     // Map of configs for display sensor information.
     hydra::SensorMap<SensorDisplay>::Config sensor_displays;
 
-    // Control the marker array opacity 
+    // Control the marker array opacity
     uint8_t marker_opacity = 255;
 
     // Number of slice to visualize
@@ -119,7 +119,10 @@ class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
   } const config;
 
   // Construction.
-  explicit ActiveWindowVisualizer(const Config& config, const ianvs::NodeHandle* nh = nullptr);
+  explicit ActiveWindowVisualizer(const Config& config,
+                                  const hydra::RobotConfig& robot,
+                                  const hydra::Labelspace& /* labelspace */,
+                                  const ianvs::NodeHandle* nh = nullptr);
   virtual ~ActiveWindowVisualizer() = default;
 
   // Visualization.
@@ -157,6 +160,7 @@ class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
   spark_dsg::Color getIdColor(int id) const;
 
  private:
+  const std::string frame_;
   // ROS.
   ianvs::NodeHandle nh_;
   ianvs::RosPublisherGroup<sensor_msgs::msg::Image> image_pubs_;

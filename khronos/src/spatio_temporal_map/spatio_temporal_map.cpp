@@ -50,6 +50,26 @@
 #include <spark_dsg/serialization/versioning.h>
 
 namespace khronos {
+namespace {
+
+void trimAgentNodes(DynamicSceneGraph& graph, TimeStamp stamp) {
+  const auto key = graph.getLayerKey(DsgLayers::AGENTS);
+  std::vector<NodeId> nodes_to_remove;
+  for (const auto& layer : graph.layer_partition(key->layer)) {
+    for (const auto& node : layer.nodes()) {
+      const auto& attrs = node.attributes<spark_dsg::AgentNodeAttributes>();
+      if (static_cast<TimeStamp>(attrs.timestamp.count()) > stamp) {
+        nodes_to_remove.push_back(node.id);
+      }
+    }
+  }
+
+  for (const auto id : nodes_to_remove) {
+    graph.removeNode(id);
+  }
+}
+
+}  // namespace
 
 void declare_config(SpatioTemporalMap::Config& config) {
   using namespace config;
@@ -130,7 +150,10 @@ void SpatioTemporalMap::finalize() {
 }
 
 void SpatioTemporalMap::finalizeDsg(DynamicSceneGraph& dsg) {
-  finalizeMesh(*dsg.mesh());
+  if (dsg.hasMesh()) {
+    finalizeMesh(*dsg.mesh());
+  }
+
   updateTimingInfo(dsg);
 }
 
@@ -145,7 +168,7 @@ DynamicSceneGraph::Ptr SpatioTemporalMap::getDsgPtr(TimeStamp robot_time) {
   current_time_ = std::clamp(robot_time, earliest_, latest_);
 
   // If no change in time no change in DSG is needed.
-  if (previous_time_ == current_time_) {
+  if (current_dsg_ && previous_time_ == current_time_) {
     return current_dsg_;
   }
 
@@ -220,24 +243,19 @@ void SpatioTemporalMap::moveMeshForward() {
 }
 
 void SpatioTemporalMap::moveAgentForward() {
-  // Add nodes starting from the current one.
-  const auto src_layer = dsgs_[current_dsg_idx_]->findLayer(
-      dsgs_[current_dsg_idx_]->getLayerKey(DsgLayers::AGENTS)->layer, robot_prefix_.key);
-  if (!src_layer) {
-    return;
-  }
+  const auto& source = *dsgs_[current_dsg_idx_];
+  const auto key = source.getLayerKey(DsgLayers::AGENTS);
+  for (const auto& layer : source.layer_partition(key->layer)) {
+    for (const auto& node : layer.nodes()) {
+      if (current_dsg_->hasNode(node.id)) {
+        continue;
+      }
 
-  for (const auto& node : src_layer->nodes()) {
-    if (current_dsg_->hasNode(node.id)) {
-      continue;
+      const auto& attrs = node.attributes<spark_dsg::AgentNodeAttributes>();
+      if (static_cast<TimeStamp>(attrs.timestamp.count()) <= current_time_) {
+        current_dsg_->emplaceNode(node.layer, node.id, attrs.clone());
+      }
     }
-
-    const auto& attrs = node.attributes<spark_dsg::AgentNodeAttributes>();
-    if (static_cast<size_t>(attrs.timestamp.count()) > current_time_) {
-      return;
-    }
-
-    current_dsg_->emplaceNode(node.layer, node.id, attrs.clone());
   }
 }
 
@@ -349,29 +367,7 @@ void SpatioTemporalMap::moveMeshBackward() {
   updateMeshFaces(mesh, src_mesh);
 }
 
-void SpatioTemporalMap::moveAgentBackward() {
-  const auto agent_layer = current_dsg_->findLayer(
-      current_dsg_->getLayerKey(DsgLayers::AGENTS)->layer, robot_prefix_.key);
-  if (!agent_layer) {
-    return;
-  }
-
-  // Remove all nodes that are newer than the robot time.
-  std::unordered_set<NodeId> nodes_to_remove;
-  for (const auto& node : agent_layer->nodes()) {
-    if (static_cast<size_t>(node.attributes<spark_dsg::AgentNodeAttributes>().timestamp.count()) >
-        current_time_) {
-      nodes_to_remove.insert(node.id);
-    } else {
-      // NOTE(lschmid): The agent nodes are ordered by timestamp.
-      break;
-    }
-  }
-
-  for (const auto& node_id : nodes_to_remove) {
-    current_dsg_->removeNode(node_id);
-  }
-}
+void SpatioTemporalMap::moveAgentBackward() { trimAgentNodes(*current_dsg_, current_time_); }
 
 void SpatioTemporalMap::moveObjectsBackward() {
   if (!current_dsg_->hasLayer(DsgLayers::OBJECTS)) {
@@ -428,20 +424,7 @@ void SpatioTemporalMap::trimDsgToTime(TimeStamp target_time) {
     updateMeshFaces(mesh, src_mesh);
   }
 
-  const auto agent_layer = current_dsg_->findLayer(
-      current_dsg_->getLayerKey(DsgLayers::AGENTS)->layer, robot_prefix_.key);
-  if (agent_layer) {
-    std::unordered_set<NodeId> nodes_to_remove;
-    for (const auto& node : agent_layer->nodes()) {
-      const auto& attrs = node.attributes<spark_dsg::AgentNodeAttributes>();
-      if (static_cast<size_t>(attrs.timestamp.count()) > target_time) {
-        nodes_to_remove.insert(node.id);
-      }
-    }
-    for (const auto& node_id : nodes_to_remove) {
-      current_dsg_->removeNode(node_id);
-    }
-  }
+  trimAgentNodes(*current_dsg_, target_time);
 
   // Objects appear based on their effective timestamps
   if (current_dsg_->hasLayer(DsgLayers::OBJECTS)) {

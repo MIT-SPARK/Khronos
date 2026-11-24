@@ -49,7 +49,6 @@
 #include <config_utilities/types/path.h>
 #include <config_utilities/validation.h>
 #include <glog/logging.h>
-#include <hydra/common/global_info.h>
 #include <hydra/input/input_data_io.h>
 #include <hydra/utils/data_directory.h>
 #include <nlohmann/json.hpp>
@@ -176,7 +175,8 @@ void declare_config(TrackLogger::Config& config) {
   checkInRange(config.jpeg_quality, 0, 100, "jpeg_quality");
 }
 
-TrackLogger::TrackLogger(const Config& config) : config(config::checkValid(config)) {
+TrackLogger::TrackLogger(const Config& config, const hydra::RobotConfig& robot)
+    : config(config::checkValid(config)), robot_id_(robot.robot_id) {
   if (config.log_path.empty()) {
     return;
   }
@@ -548,7 +548,7 @@ void TrackLogger::write(const Request& request) const {
   writeSensors();
 
   Json record{{"version", 1},
-              {"robot_id", hydra::GlobalInfo::instance().getRobotPrefix().id},
+              {"robot_id", robot_id_},
               {"track_id", track.id},
               {"absorbed_track_ids", track.absorbed_track_ids},
               {"extracted", request.extracted},

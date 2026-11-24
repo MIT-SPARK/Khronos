@@ -6,6 +6,7 @@ enable_testing()
 add_executable(
   test_${PROJECT_NAME}
   main.cpp
+  test_spatio_temporal_map.cpp
   active_window/tracking/test_max_iou_tracker.cpp
   active_window/data/test_frame_data_buffer.cpp
   active_window/object_extraction/test_accumulated_object_extractor.cpp

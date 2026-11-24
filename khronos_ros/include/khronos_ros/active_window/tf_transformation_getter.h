@@ -42,7 +42,6 @@
 #include <string>
 #include <thread>
 
-#include <hydra/common/global_info.h>
 #include <hydra/utils/logging.h>
 #include <hydra_ros/utils/tf_lookup.h>
 
@@ -60,12 +59,11 @@ namespace khronos {
 class TFTransformationGetter : public TransformationGetter {
  public:
   struct Config : hydra::VerbosityConfig {
-    Config()
-        : hydra::VerbosityConfig{hydra::GlobalInfo::instance().getConfig().default_verbosity} {}
+    Config() : hydra::VerbosityConfig(hydra::VerbosityConfig::default_verbosity()) {}
 
     //! Frame ID of the prior map (hydra_multi world_frame, typically "map").
     std::string prior_frame_id = "map";
-    //! Robot odometry frame (empty uses GlobalInfo's odom frame).
+    //! Robot odometry frame (empty uses the robot odom frame).
     std::string robot_frame_id = "";
     //! Minimum translation change [m] before reporting a new transform.
     double tf_change_threshold_m = 0.05;
@@ -78,7 +76,7 @@ class TFTransformationGetter : public TransformationGetter {
     hydra::TFLookup::Config tf_lookup;
   } const config;
 
-  explicit TFTransformationGetter(const Config& config);
+  explicit TFTransformationGetter(const Config& config, const hydra::RobotConfig& robot);
   ~TFTransformationGetter();
 
   /**
@@ -88,7 +86,7 @@ class TFTransformationGetter : public TransformationGetter {
   std::optional<Eigen::Isometry3d> getTransformation() const override;
 
  private:
-  //! Returns robot_frame_id from config if set, otherwise GlobalInfo odom frame.
+  //! Returns robot_frame_id from config if set, otherwise the robot odom frame.
   std::string getRobotFrame() const;
   void spin();
 

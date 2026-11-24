@@ -57,7 +57,7 @@ class ExperimentManager {
   struct Config {
     int verbosity = 4;
 
-    // Directory to save the output. Leave empty to not save.
+    // Override the run output directory; empty uses the pipeline log directory.
     std::string output_dir = "";
 
     // True: replace the existing output directory if it exists. False: Create a time
@@ -91,7 +91,8 @@ class ExperimentManager {
   // Construction.
   ExperimentManager(const Config& config,
                     ianvs::NodeHandle nh,
-                    std::shared_ptr<KhronosPipeline> khronos);
+                    std::shared_ptr<KhronosPipeline> khronos,
+                    const hydra::DataDirectory& default_output = {});
   virtual ~ExperimentManager();
 
   // Run the experiment.

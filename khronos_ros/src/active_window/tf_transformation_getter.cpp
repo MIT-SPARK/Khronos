@@ -43,7 +43,6 @@
 #include <config_utilities/config.h>
 #include <config_utilities/validation.h>
 #include <glog/logging.h>
-#include <hydra/common/global_info.h>
 #include <hydra/utils/logging.h>
 
 namespace khronos {
@@ -52,7 +51,8 @@ namespace {
 static const auto registration =
     config::RegistrationWithConfig<TransformationGetter,
                                    TFTransformationGetter,
-                                   TFTransformationGetter::Config>("TFTransformationGetter");
+                                   TFTransformationGetter::Config,
+                                   hydra::RobotConfig>("TFTransformationGetter");
 
 }  // namespace
 
@@ -68,8 +68,8 @@ void declare_config(TFTransformationGetter::Config& config) {
   check(config.tf_lookup.wait_duration_s, GT, 0.0, "tf_lookup.wait_duration_s");
 }
 
-TFTransformationGetter::TFTransformationGetter(const Config& cfg)
-    : config(config::checkValid(cfg)), tf_lookup_(config.tf_lookup) {
+TFTransformationGetter::TFTransformationGetter(const Config& cfg, const hydra::RobotConfig& robot)
+    : config(config::checkValid(cfg)), tf_lookup_(config.tf_lookup, robot.frames) {
   MLOG(1) << "[TFTransformationGetter] TF listener created (" << config.prior_frame_id << " -> "
           << getRobotFrame() << ")";
 
@@ -142,7 +142,7 @@ std::string TFTransformationGetter::getRobotFrame() const {
     return config.robot_frame_id;
   }
 
-  return hydra::GlobalInfo::instance().getFrames().odom;
+  return tf_lookup_.frames.odom;
 }
 
 }  // namespace khronos

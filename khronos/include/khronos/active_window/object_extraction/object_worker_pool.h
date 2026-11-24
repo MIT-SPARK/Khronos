@@ -41,9 +41,9 @@
 #include <memory>
 #include <thread>
 
-#include <hydra/common/global_info.h>
 #include <hydra/common/graph_update.h>
 #include <hydra/common/message_queue.h>
+#include <hydra/common/run_settings.h>
 
 #include "khronos/active_window/object_extraction/object_extractor.h"
 #include "khronos/active_window/track_logger.h"
@@ -61,7 +61,7 @@ class ObjectWorkerPool {
     //! Poll period
     size_t poll_time_us = 1000;
     //! Verbosity for worker pool
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+    int verbosity = hydra::RunSettings::instance().default_verbosity;
   } const config;
 
   struct Request {

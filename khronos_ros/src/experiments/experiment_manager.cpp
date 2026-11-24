@@ -95,9 +95,16 @@ void declare_config(ExperimentManager::Config& config) {
 
 ExperimentManager::ExperimentManager(const Config& config,
                                      ianvs::NodeHandle nh,
-                                     std::shared_ptr<KhronosPipeline> khronos)
+                                     std::shared_ptr<KhronosPipeline> khronos,
+                                     const hydra::DataDirectory& default_output)
     : config(config::checkValid(config)),
-      data_dir_(config.output_dir, hydra::DataDirectory::Config{true, config.overwrite}),
+      data_dir_(config.output_dir.empty()
+                    ? default_output
+                    : hydra::DataDirectory(
+                          config.output_dir,
+                          hydra::DataDirectory::Config{.overwrite = config.overwrite,
+                                                       .allocate = true,
+                                                       .use_timestamp = !config.overwrite})),
       khronos_(std::move(khronos)),
       nh_(nh) {
   // Verify output directory.
@@ -148,12 +155,12 @@ ExperimentManager::~ExperimentManager() { CLOG(1) << "[ExperimentManager] Finish
 
 void ExperimentManager::run() {
   // Run
-  logConfigs();
   if (logger_) {
     logger_->log("Starting experiment.");
   }
   LOG(INFO) << "[ExperimentManager] Initializing pipeline...";
   khronos_->init();
+  logConfigs();
   LOG(INFO) << "[ExperimentManager] Starting pipeline...";
   khronos_->start();
   ianvs::spinAndWait(nh_, config.exit_after_clock);

@@ -42,12 +42,10 @@ launch:
   - arg: {name: sensor_max_range, default: '5.0'}
 
   # Semantics: Use these for ground truth semantic labels from uH2
-  - arg: {name: semantic_colormap_config, default: ''}
   - arg: {name: labelspace_name, default: ade20k_indoor}
   - arg: {name: labelspace_config, default: $(find-pkg-share hydra)/config/label_spaces/$(var labelspace_name)_label_space.yaml}
-  # OneFormer outputs standard ADE20k label IDs, so no remapping needed.
-  # Use extra_yaml to pass semantic config inline
-  - let: {name: extra_yaml, value: '{semantic_colormap_file: $(var semantic_colormap_config)}'}
+  # OneFormer outputs standard ADE20k label IDs, so no remapping is needed.
+  - let: {name: extra_yaml, value: '{}'}
 
   # Input topics
   - arg: {name: rgb_topic, default: /$(var robot_ns)/forward/color/image_raw}
@@ -95,7 +93,6 @@ launch:
         - {name: robot_frame, value: $(var robot_frame)}
         - {name: map_frame, value: $(var map_frame)}
         - {name: odom_frame, value: $(var odom_frame)}
-        - {name: semantic_colormap_config, value: $(var semantic_colormap_config)}
         - {name: labelspace_config, value: $(var labelspace_config)}
         - {name: extra_yaml, value: $(var extra_yaml)}
         - {name: rgb_topic, value: $(var rgb_topic)}

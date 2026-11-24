@@ -49,7 +49,9 @@ namespace {
 static const auto registration =
     config::RegistrationWithConfig<ActiveWindowChangeDetector::ActiveWindowCDSink,
                                    TfIcpPublisher,
-                                   TfIcpPublisher::Config>("TfIcpPublisher");
+                                   TfIcpPublisher::Config,
+                                   hydra::RobotConfig,
+                                   hydra::Labelspace>("TfIcpPublisher");
 
 }  // namespace
 
@@ -62,10 +64,13 @@ void declare_config(TfIcpPublisher::Config& config) {
   field(config.tf_lookup, "tf_lookup");
 }
 
-TfIcpPublisher::TfIcpPublisher(const Config& cfg, const ianvs::NodeHandle* nh)
+TfIcpPublisher::TfIcpPublisher(const Config& cfg,
+                               const hydra::RobotConfig& robot,
+                               const hydra::Labelspace&,
+                               const ianvs::NodeHandle* nh)
     : config(config::checkValid(cfg)),
       nh_(nh ? *nh / "tf_icp_publisher" : ianvs::NodeHandle::this_node("tf_icp_publisher")),
-      tf_lookup_(config.tf_lookup) {
+      tf_lookup_(config.tf_lookup, robot.frames) {
   tf_broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(nh_.node());
 
   // Seed identity so map → odom TF chain is resolvable before the first ICP result.
@@ -74,11 +79,11 @@ TfIcpPublisher::TfIcpPublisher(const Config& cfg, const ianvs::NodeHandle* nh)
           << getOdomFrame() << "). Seeded identity transform.";
 }
 
-void TfIcpPublisher::call(const DynamicSceneGraph::Ptr& /*dsg*/,
-                          const std::vector<ActiveWindowChangeDetector::RemovedObject>& /*removed_objects*/,
-                          const std::vector<ActiveWindowChangeDetector::AddedObject>& /*newly_added_objects*/,
+void TfIcpPublisher::call(const DynamicSceneGraph::Ptr&,
+                          const std::vector<ActiveWindowChangeDetector::RemovedObject>&,
+                          const std::vector<ActiveWindowChangeDetector::AddedObject>&,
                           const Eigen::Isometry3d& current_T_prior,
-                          const ActiveWindowChangeDetector::ChangeDetectionStatus& /*status*/) const {
+                          const ActiveWindowChangeDetector::ChangeDetectionStatus&) const {
   // Look up map -> pre_icp_odom (the ROMAN-only result, published upstream).
   std::string err;
   const auto status = hydra::lookupTransform(tf_lookup_.buffer,
@@ -110,7 +115,7 @@ std::string TfIcpPublisher::getOdomFrame() const {
   if (!config.odom_frame.empty()) {
     return config.odom_frame;
   }
-  return hydra::GlobalInfo::instance().getFrames().odom;
+  return tf_lookup_.frames.odom;
 }
 
 void TfIcpPublisher::broadcastTransform(const Eigen::Isometry3d& pre_icp_odom_T_odom) const {

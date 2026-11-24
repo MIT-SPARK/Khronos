@@ -43,7 +43,7 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/common/global_info.h>
+#include <hydra/common/run_settings.h>
 #include <hydra/input/sensor_map.h>
 #include <hydra/reconstruction/mesh_integrator.h>
 
@@ -58,7 +58,7 @@ namespace khronos {
 class MeshObjectExtractor : public ObjectExtractor {
  public:
   struct Config {
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+    int verbosity = hydra::RunSettings::instance().default_verbosity;
 
     // Extract only objects with an existence confidence larger than this value [0, 1].
     float min_object_allocation_confidence = 0.5f;
@@ -100,7 +100,7 @@ class MeshObjectExtractor : public ObjectExtractor {
     enum class BBoxType { kAABB, kRAABB } bbox_type = BBoxType::kAABB;
 
     hydra::SensorMap<ObjectIntegrator>::Config projective_integrator;
-    hydra::MeshIntegratorConfig mesh_integrator;
+    hydra::MeshIntegrator::Config mesh_integrator;
   } const config;
 
   // Construction.

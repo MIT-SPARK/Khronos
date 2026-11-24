@@ -174,7 +174,9 @@ TEST(TrackLogger, WritesTrackAndKeptImages) {
   config.log_path = root / "tracks";
   config.save_depth = true;
   {
-    TrackLogger logger(config);
+    hydra::RobotConfig robot;
+    robot.robot_id = 3;
+    TrackLogger logger(config, robot);
     ASSERT_TRUE(logger.enabled());
     logger.log(track, buffer, true);
     logger.flush();
@@ -184,7 +186,7 @@ TEST(TrackLogger, WritesTrackAndKeptImages) {
   const auto text = readFile(track_dir / "track.json");
   EXPECT_EQ(text.rfind("{\n  \"version\": 1,", 0), 0u) << text;  // version first
   const auto json = Json::parse(text);
-  EXPECT_EQ(json["robot_id"], 0);
+  EXPECT_EQ(json["robot_id"], 3);
   EXPECT_EQ(json["track_id"], 12);
   EXPECT_EQ(json["absorbed_track_ids"], Json({7, 9}));
   EXPECT_EQ(json["extracted"], true);

@@ -46,14 +46,8 @@
 int main(int argc, char** argv) {
   config::initContext(argc, argv, true);
   config::setConfigSettingsFromContext();
-  rclcpp::init(argc, argv);
-
-  // Start Ros.
-  auto node = std::make_shared<rclcpp::Node>("khronos_node");
-  ianvs::NodeHandle nh(*node);
-
-  // Register node as current node so ianvs::NodeHandle::this_node() works
-  ianvs::CurrentNode::init(node);
+  [[maybe_unused]] const auto node = ianvs::init_node(argc, argv, "khronos_node");
+  auto nh = ianvs::NodeHandle::this_node();
 
   // Setup logging.
   FLAGS_alsologtostderr = true;
@@ -61,13 +55,19 @@ int main(int argc, char** argv) {
   google::InitGoogleLogging(argv[0]);
   google::InstallFailureSignalHandler();
 
-  // Setup node.
-  const auto khronos_config = config::fromContext<khronos::KhronosPipeline::Config>();
-  auto khronos = std::make_shared<khronos::KhronosPipeline>(khronos_config, nh);
-  // Don't add experiment namespace to avoid double namespacing
+  // Allocate the run directory before modules start logging.
   const auto experiment_config =
       config::fromContext<khronos::ExperimentManager::Config>(khronos::RosNs::EXPERIMENT);
-  khronos::ExperimentManager manager(experiment_config, nh, khronos);
+  auto run_config = config::fromContext<hydra::RunContext::Config>();
+  if (experiment_config.output_dir.empty()) {
+    run_config.output.overwrite = experiment_config.overwrite;
+    run_config.output.use_timestamp = !experiment_config.overwrite;
+  }
+
+  const auto context = std::make_shared<hydra::RunContext>(run_config);
+  const auto khronos_config = config::fromContext<khronos::KhronosPipeline::Config>();
+  auto khronos = std::make_shared<khronos::KhronosPipeline>(khronos_config, context, nh);
+  khronos::ExperimentManager manager(experiment_config, nh, khronos, context->logs);
 
   // Run the experiment.
   manager.run();

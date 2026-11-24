@@ -43,8 +43,8 @@ namespace {
 static const auto registration =
     config::RegistrationWithConfig<TransformationGetter,
                                    IdentityTransformationGetter,
-                                   IdentityTransformationGetter::Config>(
-        "IdentityTransformationGetter");
+                                   IdentityTransformationGetter::Config,
+                                   hydra::RobotConfig>("IdentityTransformationGetter");
 
 }  // namespace
 
@@ -53,7 +53,8 @@ void declare_config(IdentityTransformationGetter::Config&) {
   name("IdentityTransformationGetter");
 }
 
-IdentityTransformationGetter::IdentityTransformationGetter(const Config& config)
+IdentityTransformationGetter::IdentityTransformationGetter(const Config& config,
+                                                           const hydra::RobotConfig&)
     : config(config::checkValid(config)) {}
 
 std::optional<Eigen::Isometry3d> IdentityTransformationGetter::getTransformation() const {

@@ -42,6 +42,7 @@
 
 #include <Eigen/Geometry>
 #include <config_utilities/config_utilities.h>
+#include <hydra/common/robot_config.h>
 
 namespace khronos {
 
@@ -70,9 +71,11 @@ class TransformationGetter {
  */
 class IdentityTransformationGetter : public TransformationGetter {
  public:
-  struct Config {} const config;
+  struct Config {
+  } const config;
 
-  explicit IdentityTransformationGetter(const Config& config);
+  explicit IdentityTransformationGetter(const Config& config,
+                                        const hydra::RobotConfig& /* robot */ = {});
 
   /**
    * @brief Returns nullopt — the transform remains at its default (Identity).

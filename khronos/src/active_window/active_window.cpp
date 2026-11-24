@@ -37,7 +37,6 @@
 
 #include "khronos/active_window/active_window.h"
 
-#include <hydra/common/global_info.h>
 #include <hydra/input/sensor_utilities.h>
 #include <hydra/reconstruction/integration_masking.h>
 
@@ -48,6 +47,7 @@ static const auto registration =
     config::RegistrationWithConfig<hydra::ActiveWindowModule,
                                    ActiveWindow,
                                    ActiveWindow::Config,
+                                   hydra::RunContext::ConstPtr,
                                    hydra::ActiveWindowModule::OutputQueue::Ptr,
                                    std::unique_ptr<hydra::VolumetricWindow>>("ActiveWindow");
 
@@ -106,11 +106,11 @@ void declare_config(ActiveWindow::Config& config) {
   field(config.live_accumulated_bounding_box, "live_accumulated_bounding_box");
 }
 
-SensorProcessor::SensorProcessor(const Config& config)
+SensorProcessor::SensorProcessor(const Config& config, const hydra::Labelspace& labelspace)
     : config(config::checkValid(config)),
-      integrator(config.projective_integrator),
+      integrator(config.projective_integrator, &labelspace),
       motion_detector(config.motion_detector.create()),
-      object_detector(config.object_detector.create()),
+      object_detector(config.object_detector.create(&labelspace)),
       tracker(config.tracker.create()) {
   if (!tracker && (config.motion_detector || config.object_detector)) {
     LOG(WARNING)
@@ -120,16 +120,19 @@ SensorProcessor::SensorProcessor(const Config& config)
 }
 
 ActiveWindow::ActiveWindow(const Config& config,
+                           hydra::RunContext::ConstPtr context,
                            const OutputQueue::Ptr& output_queue,
                            std::unique_ptr<hydra::VolumetricWindow>&& window)
-    : hydra::ActiveWindowModule(config, output_queue, std::move(window)),
+    : hydra::ActiveWindowModule(config, context, output_queue, std::move(window)),
       config(config::checkValid(config)),
-      processors_(config.processors),
+      processors_(config.processors, context->labelspace()),
       tracking_integrator_(config.tracking_integrator, map_window_.get()),
       mesh_integrator_(config.mesh_integrator),
-      track_logger_(std::make_shared<TrackLogger>(config.track_logger)),
+      track_logger_(std::make_shared<TrackLogger>(config.track_logger, context->config.robot)),
       extraction_worker_(config.extraction_worker, config.object_extractor.create(), track_logger_),
-      sinks_(KhronosSink::instantiate(config.khronos_sinks)),
+      sinks_(KhronosSink::instantiate(config.khronos_sinks,
+                                      context->config.robot,
+                                      context->labelspace())),
       frame_data_buffer_(config.frame_data_buffer) {
   if (!map_window_) {
     LOG(WARNING) << "[Khronos Active Window] map_window is required. Set active_window.map_window "
@@ -143,7 +146,7 @@ ActiveWindow::ActiveWindow(const Config& config,
   }
 }
 
-std::string ActiveWindow::printInfo() const {
+std::string ActiveWindow::show() const {
   return config::toString(config) + "\n" + KhronosSink::printSinks(sinks_);
 }
 
@@ -153,9 +156,18 @@ void ActiveWindow::addKhronosSink(const KhronosSink::Ptr& sink) {
   }
 }
 
-void ActiveWindow::stop() {
-  ActiveWindowModule::stop();
-  finishMapping();
+ActiveWindow::~ActiveWindow() { stop(); }
+
+void ActiveWindow::stop(bool force) {
+  if (should_shutdown_) {
+    return;
+  }
+
+  ActiveWindowModule::stop(force);
+  if (!force) {
+    finishMapping();
+  }
+
   track_logger_->flush();
 }
 
