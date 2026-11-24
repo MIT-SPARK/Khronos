@@ -137,28 +137,6 @@ You can now terminate Khronos.
 
 To run Khronos with the apartment dataset, change the `dataset` from `tesse_cd_office` to `tesse_cd_apartment` and change the rosbag path accordingly. You can then run the launch file as before.
 
-### Run configuration and output
-
-Configuration files use `config_utilities` variables (`$<var sensor_min_range>`,
-`$<var sensor_max_range>`, and `$<var sensor_frame>`); the common launch file
-supplies them with `--config-utilities-var`. Dataset input files are loaded under
-`input`, and labelspace files under `labelspace`.
-
-Khronos uses Hydra's `RunContext` for each run's labelspace, robot configuration,
-and base `log_path`. Process defaults such as verbosity and thread counts come
-from `RunSettings`. C++ pipeline construction takes a shared, const context;
-frontend update functors share the `RunContext::ConstPtr` factory argument.
-Their callback sinks receive focused inputs such as `RobotConfig`. ROS publishers
-use the configured robot frames unless their own frame override is provided.
-
-`save()` uses the run's `log_path`, and an explicit output directory overrides
-the destination for that save. The experiment manager's `output_dir` overrides
-`log_path` for experiment artifacts; when omitted, it uses the run directory.
-`experiment.overwrite` controls replacement of the experiment directory, including
-the base run directory when `output_dir` is omitted. When false, output goes into
-a timestamped subdirectory. Allocation happens before modules start logging.
-An empty base path disables default saving.
-
 ## Run Khronos on Real Data
 
 Download the mezzanine rosbag [here](https://drive.google.com/drive/folders/1Qja6KVHCfT6PaYcj2NcQy4o3LJxXc8Kc?usp=drive_link).
