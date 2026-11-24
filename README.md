@@ -189,3 +189,15 @@ cd ~/ros2_ws/src/khronos
 pip install pre-commit
 pre-commit install
 ```
+
+## Logging
+
+Khronos modules inherit Hydra's `default_verbosity` unless their `verbosity`
+is set. Use `log_name` to choose the component label and `log_prefix` and
+`log_suffix` for its delimiters. The delimiters default to `[` and `] `.
+Set `log_name: ''` to omit the label.
+
+Use level 1 for lifecycle messages and summaries, level 2 for per-update
+output, and level 3 for normal diagnostic details. Reserve level 4 for very
+detailed traces and level 5 for data dumps or test diagnostics. Level 0 remains
+available for essential messages.

@@ -36,7 +36,6 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <limits>
 #include <memory>
 #include <unordered_map>
@@ -46,6 +45,7 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/run_settings.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos/backend/change_detection/ray_verificator.h"
 #include "khronos/backend/change_state.h"
@@ -65,9 +65,7 @@ class RayChangeDetector {
   using ConstPtr = std::shared_ptr<const RayChangeDetector>;
 
   // Config.
-  struct Config {
-    int verbosity = hydra::RunSettings::instance().default_verbosity;
-
+  struct Config : hydra::VerbosityConfig {
     // Granularity of change detection in seconds.
     float temporal_resolution = 1.f;
 

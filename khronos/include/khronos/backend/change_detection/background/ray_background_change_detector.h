@@ -36,10 +36,10 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos/backend/change_detection/background/background_change_detector.h"
 #include "khronos/backend/change_detection/ray_change_detector.h"
@@ -54,8 +54,8 @@ namespace khronos {
 class RayBackgroundChangeDetector : public BackgroundChangeDetector {
  public:
   // Config.
-  struct Config {
-    int verbosity = 0;
+  struct Config : hydra::VerbosityConfig {
+    Config() : VerbosityConfig("background_change") {}
 
     // Only check for changes in meshes that have been observed at least this far apart [s].
     float time_filtering_threshold = 5.f;

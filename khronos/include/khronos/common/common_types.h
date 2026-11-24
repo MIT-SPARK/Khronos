@@ -137,7 +137,5 @@ using Timer = hydra::timing::ScopedTimer;
  * 4+ - DETAILS (e.g. for debugging/performance)
  */
 // NOTE(lschmid): This assumes that the object using this macro has a config member
-// with field verbosity to avoid duplicating this code all the time.
-#define CLOG(v) LOG_IF(INFO, config.verbosity >= v)
 
 }  // namespace khronos

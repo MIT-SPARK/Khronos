@@ -45,7 +45,6 @@
  * Environments", in ArXiv Preprint, 2023.
  */
 #pragma once
-
 #include <memory>
 #include <thread>
 #include <unordered_set>
@@ -53,6 +52,7 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/run_settings.h>
+#include <hydra/utils/logging.h>
 #include <spatial_hash/neighbor_utils.h>
 
 #include "khronos/active_window/data/frame_data.h"
@@ -69,8 +69,8 @@ namespace khronos {
 class FreeSpaceMotionDetector : public MotionDetector {
  public:
   // Config.
-  struct Config {
-    int verbosity = hydra::RunSettings::instance().default_verbosity;
+  struct Config : hydra::VerbosityConfig {
+    Config() : VerbosityConfig("free_space_motion") {}
 
     // Number of neighbors to consider for clustering of dynamic voxels.
     int neighbor_connectivity = 26;

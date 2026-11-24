@@ -64,9 +64,9 @@ using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
 
 void declare_config(ActiveWindowChangeDetectorVisualizer::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("ActiveWindowChangeDetectorVisualizer");
-  field(config.verbosity, "verbosity");
   field(config.global_frame_name, "global_frame_name");
   field(config.renderer, "renderer");
   field(config.mesh, "mesh");
@@ -108,7 +108,7 @@ ActiveWindowChangeDetectorVisualizer::ActiveWindowChangeDetectorVisualizer(
   status_pub_ = nh_.create_publisher<MarkerArray>("change_detection/status", config.queue_size);
   status_voxels_pub_ =
       nh_.create_publisher<MarkerArray>("change_detection/voxels", config.queue_size);
-  MLOG(1) << "[ActiveWindowChangeDetectorVisualizer] Initialized.";
+  MLOG(1) << "Initialized.";
 }
 
 void ActiveWindowChangeDetectorVisualizer::call(
@@ -129,12 +129,15 @@ void ActiveWindowChangeDetectorVisualizer::call(
 
   drawPriorGraph(dsg);
 
-  // print out removed object ids
-  MLOG(3) << "[ActiveWindowChangeDetectorVisualizer] Object ";
-  for (const auto& obj : removed_objects) {
-    MLOG(3) << spark_dsg::NodeSymbol(obj.id).str() << ", ";
+  if (config.enabled(2)) {
+    std::ostringstream removed;
+    for (const auto& obj : removed_objects) {
+      removed << spark_dsg::NodeSymbol(obj.id).str() << ", ";
+    }
+
+    MLOG(2) << "Removed objects: " << removed.str();
   }
-  MLOG(3) << " are removed";
+
   // set stamps for all visualizations
   stamp_ = rclcpp::Time(0);
   stamp_is_set_ = true;
@@ -155,7 +158,7 @@ void ActiveWindowChangeDetectorVisualizer::call(
 
 void ActiveWindowChangeDetectorVisualizer::drawPriorGraph(const DynamicSceneGraph::Ptr& dsg) const {
   if (!dsg) {
-    MLOG(2) << "[ChangeDetectorVisualizer] No prior graph provided, skipping draw";
+    MLOG(2) << "No prior graph provided, skipping draw";
     return;
   }
   if (!renderer_ && !mesh_plugin_) {
@@ -165,12 +168,12 @@ void ActiveWindowChangeDetectorVisualizer::drawPriorGraph(const DynamicSceneGrap
   // Only redraw if renderer has changes or we haven't drawn yet. The prior graph is static, so
   // without a renderer it is drawn once.
   if (has_drawn_ && (!renderer_ || !renderer_->hasChange())) {
-    MLOG(3) << "[ChangeDetectorVisualizer] Prior graph already drawn and no changes detected, "
+    MLOG(2) << "Prior graph already drawn and no changes detected, "
                "skipping draw";
     return;
   }
 
-  MLOG(2) << "[ChangeDetectorVisualizer] Drawing prior graph";
+  MLOG(2) << "Drawing prior graph";
 
   std_msgs::msg::Header header;
   header.frame_id = frame_;
@@ -239,8 +242,8 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedObjects(
   header.frame_id = frame_;
   header.stamp = getStamp();
   for (const auto& obj : newly_added_objects) {
-    MLOG(2) << "[ActiveWindowChangeDetectorVisualizer] Visualizing newly added object with id "
-            << obj.id << " (" << obj.absorbed_track_ids.size() + 1 << " merged track(s))";
+    MLOG(2) << "Visualizing newly added object with id " << obj.id << " ("
+            << obj.absorbed_track_ids.size() + 1 << " merged track(s))";
     const BoundingBox& bbox = obj.prior_bounding_box;
     if (!bbox.isValid()) {
       continue;

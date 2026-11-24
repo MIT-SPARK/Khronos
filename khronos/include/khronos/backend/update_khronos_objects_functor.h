@@ -1,10 +1,13 @@
 #pragma once
+#include <unordered_map>
+
 #include <config_utilities/factory.h>
 #include <hydra/backend/association_strategies.h>
 #include <hydra/backend/deformation_interpolator.h>
 #include <hydra/backend/merge_tracker.h>
 #include <hydra/backend/update_functions.h>
 #include <hydra/utils/active_window_tracker.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos/common/common_types.h"
 namespace khronos {
@@ -13,7 +16,7 @@ using hydra::SharedDsgInfo;
 using hydra::UpdateInfo;
 using spark_dsg::LayerView;
 struct UpdateKhronosObjectsFunctor : public hydra::UpdateFunctor {
-  struct Config {
+  struct Config : hydra::VerbosityConfig {
     //! Interpolator for object nodes using deformation graph
     hydra::DeformationInterpolator::Config deformation_interpolator;
     //! Require merges to have same semantic label

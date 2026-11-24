@@ -1,5 +1,5 @@
 # General params.
-verbosity: 4
+verbosity: 3
 
 # Ray verificator params.
 ray_verificator:

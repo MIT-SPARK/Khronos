@@ -61,9 +61,9 @@ static const auto registration =
 }
 
 void declare_config(ActiveWindowChangeDetectorPublisher::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("ActiveWindowChangeDetectorPublisher");
-  field(config.verbosity, "verbosity");
   field(config.global_frame_name, "global_frame_name");
   field(config.robot_name, "robot_name");
   field(config.topic, "topic");
@@ -83,7 +83,7 @@ ActiveWindowChangeDetectorPublisher::ActiveWindowChangeDetectorPublisher(
   // once the robot is rediscovered, even though the robot only publishes on change.
   changes_pub_ = nh_.create_publisher<khronos_msgs::msg::AwcdChanges>(
       config.topic, rclcpp::QoS(1).transient_local().reliable());
-  MLOG(1) << "[ActiveWindowChangeDetectorPublisher] Initialized.";
+  MLOG(1) << "Initialized.";
 }
 
 void ActiveWindowChangeDetectorPublisher::call(

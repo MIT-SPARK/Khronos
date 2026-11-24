@@ -59,9 +59,9 @@ static const auto registration =
 }
 
 void declare_config(ActiveWindowChangeDetector::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("ActiveWindowChangeDetector");
-  field(config.verbosity, "verbosity");
   field(config.removal_ema_alpha, "removal_ema_alpha");
   field(config.removal_probability_threshold, "removal_probability_threshold");
   field(config.removal_min_frames_observed, "removal_min_frames_observed");
@@ -106,13 +106,12 @@ ActiveWindowChangeDetector::ActiveWindowChangeDetector(const Config& config,
       controller_(config.controller.create()),
       sinks_(ActiveWindowCDSink::instantiate(config.awcd_sinks, robot, labelspace)) {
   controller_->setEnabled(config.start_enabled);
-  MLOG(1) << "[Khronos Active Window Change Detector] Initialized with prior map path: "
-          << config.prior_map_path;
+  MLOG(1) << "Initialized with prior map path: " << config.prior_map_path;
   loadPriorMap();
-  MLOG(1) << "[Khronos Active Window Change Detector] Loaded prior scene graph with "
+  MLOG(1) << "Loaded prior scene graph with "
           << (prior_graph_ ? std::to_string(prior_graph_->numNodes()) + " nodes." : "0 nodes.");
   // print out the config
-  MLOG(1) << "[Khronos Active Window Change Detector] Config: " << config;
+  MLOG(1) << "Config: " << config;
 }
 
 void ActiveWindowChangeDetector::ChangeFilter::update(float measurement, float alpha, int frame) {
@@ -179,7 +178,7 @@ std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::compute
     // prior_object_geometry_ holds exactly the objects with KhronosObjectAttributes and a mesh.
     const auto geometry_it = prior_object_geometry_.find(object_id);
     if (geometry_it == prior_object_geometry_.end()) {
-      MLOG(5) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+      MLOG(3) << "Object " << spark_dsg::NodeSymbol(object_id).str()
               << " has no KhronosObjectAttributes or an empty mesh, skipping";
       continue;
     }
@@ -228,9 +227,9 @@ std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::compute
 
     // Too little of the object has been observed for its free ratio to be meaningful.
     if (!observed) {
-      MLOG(5) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
-              << " observed fraction " << observed_fraction << " (" << num_voxels_observed << "/"
-              << num_voxels << " voxels) below " << config.removal_min_observed_fraction
+      MLOG(3) << "Object " << spark_dsg::NodeSymbol(object_id).str() << " observed fraction "
+              << observed_fraction << " (" << num_voxels_observed << "/" << num_voxels
+              << " voxels) below " << config.removal_min_observed_fraction
               << ", skipping measurement";
       continue;
     }
@@ -238,7 +237,7 @@ std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::compute
     // Guard division: if no known samples observed this frame, there is no valid measurement.
     // Skip to avoid feeding NaN/garbage into the EMA filter.
     if (num_known == 0) {
-      MLOG(5) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+      MLOG(3) << "Object " << spark_dsg::NodeSymbol(object_id).str()
               << " has no known vertices this frame, skipping measurement";
       continue;
     }
@@ -250,7 +249,7 @@ std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::compute
     }
 
     measurements[object_id] = free_ratio;
-    MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+    MLOG(3) << "Object " << spark_dsg::NodeSymbol(object_id).str()
             << " raw free ratio: " << free_ratio;
   }
 
@@ -266,7 +265,7 @@ void ActiveWindowChangeDetector::updateRemovedFilter(
     auto& object = removed_candidates_[object_id];
     object.id = object_id;
     object.filter.update(free_ratio, config.removal_ema_alpha, frame_index_);
-    MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+    MLOG(3) << "Object " << spark_dsg::NodeSymbol(object_id).str()
             << " EMA update: raw=" << free_ratio << " smoothed=" << object.filter.change_confidence
             << " frames=" << object.filter.num_frames_observed;
   }
@@ -280,18 +279,18 @@ void ActiveWindowChangeDetector::updateRemovedFilter(
         config.removal_probability_threshold, config.removal_min_frames_observed, stamp);
     if (filter.is_changed) {
       ++num_removed;
-      MLOG(3) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+      MLOG(2) << "Object " << spark_dsg::NodeSymbol(object_id).str()
               << " REMOVED (p=" << filter.change_confidence
               << ", frames=" << filter.num_frames_observed << ")";
     } else {
-      MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(object_id).str()
+      MLOG(3) << "Object " << spark_dsg::NodeSymbol(object_id).str()
               << " not removed (p=" << filter.change_confidence
               << ", frames=" << filter.num_frames_observed << ")";
     }
   }
 
-  MLOG(2) << "[ActiveWindowChangeDetector] Removed-object filter: " << num_removed
-          << " removed out of " << removed_candidates_.size() << " tracked candidates";
+  MLOG(2) << "Removed-object filter: " << num_removed << " removed out of "
+          << removed_candidates_.size() << " tracked candidates";
 }
 
 GlobalIndex ActiveWindowChangeDetector::to2DIndex(const Point& point, float voxel_size_inv) {
@@ -306,8 +305,8 @@ GlobalIndexSet ActiveWindowChangeDetector::getPriorFreeFootprint2D(
   GlobalIndexSet free_footprint;
 
   if (!prior_graph_ || !prior_graph_->hasLayer(DsgLayers::MESH_PLACES)) {
-    LOG(WARNING) << "[ActiveWindowChangeDetector] Prior graph has no MESH_PLACES layer; "
-                    "newly-added object detection requires traversability places.";
+    MLOG_NAMED(WARN) << "Prior graph has no MESH_PLACES layer; "
+                        "newly-added object detection requires traversability places.";
     return free_footprint;
   }
 
@@ -354,14 +353,14 @@ GlobalIndexSet ActiveWindowChangeDetector::getPriorFreeFootprint2D(
   }
 
   if (num_trav_nodes == 0) {
-    LOG(WARNING)
-        << "[ActiveWindowChangeDetector] MESH_PLACES layer exists but contains no "
+    MLOG_NAMED(WARN)
+        << "MESH_PLACES layer exists but contains no "
            "TravNodeAttributes nodes. Prior map may have been built without traversability "
            "places; newly-added object detection will be a no-op.";
   }
 
-  MLOG(3) << "[ActiveWindowChangeDetector] Prior free 2D footprint: " << free_footprint.size()
-          << " voxels from " << num_trav_nodes << " traversability place nodes.";
+  MLOG(2) << "Prior free 2D footprint: " << free_footprint.size() << " voxels from "
+          << num_trav_nodes << " traversability place nodes.";
   return free_footprint;
 }
 
@@ -442,8 +441,7 @@ std::unordered_map<int, float> ActiveWindowChangeDetector::computeContainmentRat
     }
 
     measurements[track.id] = containment;
-    MLOG(4) << "[ActiveWindowChangeDetector] Track " << track.id
-            << " raw containment: " << containment;
+    MLOG(3) << "Track " << track.id << " raw containment: " << containment;
   }
 
   return measurements;
@@ -457,7 +455,8 @@ std::unordered_map<int, float> ActiveWindowChangeDetector::computeMeshFreeRatios
   const float voxel_size = map.config.voxel_size;
   updatePriorMeshVoxels(voxel_size);
   if (prior_mesh_voxels_.empty()) {
-    LOG_FIRST_N(WARNING, 1) << "[ActiveWindowChangeDetector] Prior graph has no background or "
+    LOG_FIRST_N(WARNING, 1) << config.get_log_prefix()
+                            << "Prior graph has no background or "
                                "object mesh; mesh-based added-object detection is a no-op.";
     return measurements;
   }
@@ -515,8 +514,7 @@ std::unordered_map<int, float> ActiveWindowChangeDetector::computeMeshFreeRatios
     }
 
     measurements[track.id] = free_ratio;
-    MLOG(4) << "[ActiveWindowChangeDetector] Track " << track.id
-            << " raw mesh free ratio: " << free_ratio;
+    MLOG(3) << "Track " << track.id << " raw mesh free ratio: " << free_ratio;
   }
 
   return measurements;
@@ -548,8 +546,7 @@ void ActiveWindowChangeDetector::updatePriorMeshVoxels(float voxel_size) const {
     }
   }
 
-  MLOG(1) << "[ActiveWindowChangeDetector] Prior mesh occupancy: " << prior_mesh_voxels_.size()
-          << " voxels.";
+  MLOG(1) << "Prior mesh occupancy: " << prior_mesh_voxels_.size() << " voxels.";
 }
 
 void ActiveWindowChangeDetector::updateAddedFilter(
@@ -570,8 +567,7 @@ void ActiveWindowChangeDetector::updateAddedFilter(
       auto& object = added_candidates_[track.id];
       object.id = track.id;
       object.filter.takeOver(absorbed);
-      MLOG(3) << "[ActiveWindowChangeDetector] Track " << track.id << " took over absorbed track "
-              << absorbed_id;
+      MLOG(2) << "Track " << track.id << " took over absorbed track " << absorbed_id;
     }
   }
 
@@ -602,8 +598,8 @@ void ActiveWindowChangeDetector::updateAddedFilter(
     object.semantics = track.semantics;
     object.confidence = track.confidence;
 
-    MLOG(4) << "[ActiveWindowChangeDetector] Track " << track_id
-            << " EMA update: raw=" << containment << " smoothed=" << object.filter.change_confidence
+    MLOG(3) << "Track " << track_id << " EMA update: raw=" << containment
+            << " smoothed=" << object.filter.change_confidence
             << " frames=" << object.filter.num_frames_observed;
   }
 
@@ -619,14 +615,13 @@ void ActiveWindowChangeDetector::updateAddedFilter(
     filter.updateGate(config.added_probability_threshold, config.added_min_frames_observed, stamp);
     if (filter.is_changed) {
       ++num_added;
-      MLOG(3) << "[ActiveWindowChangeDetector] Track " << object.id
-              << " ADDED (confidence=" << object.confidence
+      MLOG(2) << "Track " << object.id << " ADDED (confidence=" << object.confidence
               << ", change_confidence=" << filter.change_confidence
               << ", frames=" << filter.num_frames_observed
               << ", absorbed=" << object.absorbed_track_ids.size() << ")";
     } else if (!filter.everChanged() &&
                (frame_index_ - filter.last_updated_frame) > config.added_prune_after_frames) {
-      MLOG(4) << "[ActiveWindowChangeDetector] Pruning stale non-added track " << object.id;
+      MLOG(3) << "Pruning stale non-added track " << object.id;
       it = added_candidates_.erase(it);
       // TODO(multy): rethink if ever_changed is need and the prune strategy
       continue;
@@ -634,8 +629,8 @@ void ActiveWindowChangeDetector::updateAddedFilter(
     ++it;
   }
 
-  MLOG(2) << "[ActiveWindowChangeDetector] Added-object filter: " << num_added << " added out of "
-          << added_candidates_.size() << " tracked candidates";
+  MLOG(2) << "Added-object filter: " << num_added << " added out of " << added_candidates_.size()
+          << " tracked candidates";
 }
 
 void ActiveWindowChangeDetector::call(const FrameData& data,
@@ -657,8 +652,7 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
     // ICP converges; a large or oscillating value means the TF chain disagrees with
     // current_T_prior_.
     const Eigen::Isometry3d loop_residual = current_T_prior_.inverse() * tf.value();
-    MLOG(2) << "[ActiveWindowChangeDetector] TF readback loop residual: "
-            << loop_residual.translation().norm() << " m, "
+    MLOG(2) << "TF readback loop residual: " << loop_residual.translation().norm() << " m, "
             << Eigen::AngleAxisd(loop_residual.linear()).angle() << " rad.";
     if (config.enable_icp_refinement) {
       runIcpRefinement(data, map, tf.value());
@@ -695,10 +689,10 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
   const bool has_accumulation = std::any_of(
       tracks.begin(), tracks.end(), [](const Track& t) { return !t.accumulated_voxels.empty(); });
   if (has_static_tracks && !has_accumulation) {
-    LOG_FIRST_N(WARNING, 1)
-        << "[ActiveWindowChangeDetector] Tracks have no accumulated voxels: run "
-           "the tracker with accumulate_voxels: true. No added objects will be "
-           "detected.";
+    LOG_FIRST_N(WARNING, 1) << config.get_log_prefix()
+                            << "Tracks have no accumulated voxels: run "
+                               "the tracker with accumulate_voxels: true. No added objects will be "
+                               "detected.";
   }
 
   const auto added_measurements =
@@ -725,8 +719,8 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
     }
   }
 
-  MLOG(2) << "[ActiveWindowChangeDetector] Detected " << removed_objects.size()
-          << " removed objects and " << newly_added_objects.size() << " newly added objects.";
+  MLOG(2) << "Detected " << removed_objects.size() << " removed objects and "
+          << newly_added_objects.size() << " newly added objects.";
 
   // Call all sinks with removed objects, newly-added objects, and the prior-to-current transform.
   ActiveWindowCDSink::callAll(
@@ -734,9 +728,8 @@ void ActiveWindowChangeDetector::call(const FrameData& data,
 }
 
 void ActiveWindowChangeDetector::resetHistory() const {
-  MLOG(1) << "[ActiveWindowChangeDetector] Resetting change detection history ("
-          << removed_candidates_.size() << " removal and " << added_candidates_.size()
-          << " added candidates).";
+  MLOG(1) << "Resetting change detection history (" << removed_candidates_.size() << " removal and "
+          << added_candidates_.size() << " added candidates).";
   removed_candidates_.clear();
   added_candidates_.clear();
 }
@@ -746,8 +739,7 @@ void ActiveWindowChangeDetector::loadPriorMap() {
   // TODO(multy): in documentation might require to set a prior map path that's different from the
   // DCIST env variable.
   prior_graph_ = DynamicSceneGraph::load(config.prior_map_path);
-  MLOG(1) << "[ActiveWindowChangeDetector] Loaded prior graph from " << config.prior_map_path
-          << " with "
+  MLOG(1) << "Loaded prior graph from " << config.prior_map_path << " with "
           << (prior_graph_ ? std::to_string(prior_graph_->numNodes()) + " nodes." : "0 nodes.");
 }
 
@@ -776,7 +768,7 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
   std::vector<spark_dsg::NodeId> objects_in_bounds;
 
   if (!prior_graph_ || !prior_graph_->hasLayer(DsgLayers::OBJECTS)) {
-    LOG(WARNING) << "[ActiveWindowChangeDetector] Prior graph has no OBJECTS layer";
+    MLOG_NAMED(WARN) << "Prior graph has no OBJECTS layer";
     return objects_in_bounds;
   }
 
@@ -802,7 +794,7 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
           candidate.id = node.id;
           candidate.in_bounds = true;
         }
-        MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node.id).str()
+        MLOG(3) << "Object " << spark_dsg::NodeSymbol(node.id).str()
                 << " (no mesh) is within map bounds at position (current frame): "
                 << position_in_current.transpose();
       }
@@ -834,14 +826,13 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
       candidate.num_voxels_in_bounds = num_in_bounds;
       candidate.in_bounds = in_bounds;
     }
-    MLOG(4) << "[ActiveWindowChangeDetector] Object " << spark_dsg::NodeSymbol(node.id).str()
-            << (in_bounds ? " is" : " is not") << " within map bounds (" << num_in_bounds << "/"
-            << geometry.voxels.size() << " voxels = " << in_bounds_fraction
+    MLOG(3) << "Object " << spark_dsg::NodeSymbol(node.id).str() << (in_bounds ? " is" : " is not")
+            << " within map bounds (" << num_in_bounds << "/" << geometry.voxels.size()
+            << " voxels = " << in_bounds_fraction
             << ") at position (current frame): " << position_in_current.transpose();
   }
 
-  MLOG(4) << "[ActiveWindowChangeDetector] Found " << objects_in_bounds.size()
-          << " prior objects within current map bounds";
+  MLOG(3) << "Found " << objects_in_bounds.size() << " prior objects within current map bounds";
 
   return objects_in_bounds;
 }
@@ -850,7 +841,7 @@ void ActiveWindowChangeDetector::setCurrentToPriorTransform(
     const Eigen::Isometry3d& current_T_prior) const {
   current_T_prior_ = current_T_prior;
   prior_geometry_blocks_dirty_ = true;
-  MLOG(1) << "[ActiveWindowChangeDetector] Updated current_T_prior transform:\n"
+  MLOG(1) << "Updated current_T_prior transform:\n"
           << "  Translation: " << current_T_prior_.translation().transpose() << "\n"
           << "  Rotation (quaternion wxyz): "
           << Eigen::Quaterniond(current_T_prior_.rotation()).coeffs().transpose();
@@ -924,7 +915,7 @@ void ActiveWindowChangeDetector::runIcpRefinement(const FrameData& data,
                                                   const VolumetricMap& map,
                                                   const Eigen::Isometry3d& initial) const {
   if (!prior_graph_ || !prior_graph_->mesh() || prior_graph_->mesh()->points.empty()) {
-    LOG(WARNING) << "[ActiveWindowChangeDetector] No prior background mesh for ICP.";
+    MLOG_NAMED(WARN) << "No prior background mesh for ICP.";
     return;
   }
 
@@ -952,11 +943,10 @@ void ActiveWindowChangeDetector::runIcpRefinement(const FrameData& data,
   }
 
   if (source.empty() || target.empty()) {
-    LOG(WARNING) << "[ActiveWindowChangeDetector] Insufficient mesh points for ICP.";
+    MLOG_NAMED(WARN) << "Insufficient mesh points for ICP.";
     return;
   }
-  MLOG(1) << "[ActiveWindowChangeDetector] ICP: " << source.size() << " src, " << target.size()
-          << " tgt pts.";
+  MLOG(1) << "ICP: " << source.size() << " src, " << target.size() << " tgt pts.";
 
   const auto res = ICPRegistrationUtils::registerPointClouds(source,
                                                              target,
@@ -966,14 +956,12 @@ void ActiveWindowChangeDetector::runIcpRefinement(const FrameData& data,
                                                              config.icp_max_iterations);
 
   if (!res.converged || res.num_inliers < config.icp_min_inliers) {
-    LOG(WARNING) << "[ActiveWindowChangeDetector] ICP failed: converged=" << res.converged
-                 << " inliers=" << res.num_inliers;
+    MLOG_NAMED(WARN) << "ICP failed: converged=" << res.converged << " inliers=" << res.num_inliers;
     return;
   }
 
   setCurrentToPriorTransform(initial * res.T_target_source.inverse());
-  MLOG(1) << "[ActiveWindowChangeDetector] ICP refined transform. Inliers: " << res.num_inliers
-          << ", translation delta: "
+  MLOG(1) << "ICP refined transform. Inliers: " << res.num_inliers << ", translation delta: "
           << (current_T_prior_.translation() - initial.translation()).norm() << " m.";
 
   // print initial guess and refined transform for debugging in x,y,z and euler angles x,y,z
@@ -982,10 +970,10 @@ void ActiveWindowChangeDetector::runIcpRefinement(const FrameData& data,
   const Eigen::Vector3d refined_trans = current_T_prior_.translation();
   const Eigen::Vector3d refined_euler = current_T_prior_.rotation().eulerAngles(0, 1, 2);
 
-  MLOG(1) << "[ActiveWindowChangeDetector] Initial guess - Translation (x,y,z): "
-          << initial_trans.transpose() << ", Euler angles (x,y,z): " << initial_euler.transpose();
-  MLOG(1) << "[ActiveWindowChangeDetector] Refined transform - Translation (x,y,z): "
-          << refined_trans.transpose() << ", Euler angles (x,y,z): " << refined_euler.transpose();
+  MLOG(1) << "Initial guess - Translation (x,y,z): " << initial_trans.transpose()
+          << ", Euler angles (x,y,z): " << initial_euler.transpose();
+  MLOG(1) << "Refined transform - Translation (x,y,z): " << refined_trans.transpose()
+          << ", Euler angles (x,y,z): " << refined_euler.transpose();
 }
 
 }  // namespace khronos

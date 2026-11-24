@@ -65,8 +65,8 @@ void OverwriteMesh::merge(DynamicSceneGraph& dsg, const BackgroundChanges& /* ch
   const auto& colors = dsg.mesh()->colors;
   const std::vector<uint64_t>& time_stamps = dsg.mesh()->stamps;
   if (time_stamps.size() != vertices.size()) {
-    LOG(ERROR) << "[OverwriteMesh] Time stamps and vertices do not match (" << time_stamps.size()
-               << " vs " << vertices.size() << ").";
+    MLOG_NAMED(ERROR) << "Time stamps and vertices do not match (" << time_stamps.size() << " vs "
+                      << vertices.size() << ").";
     return;
   }
 
@@ -130,20 +130,20 @@ void OverwriteMesh::merge(DynamicSceneGraph& dsg, const BackgroundChanges& /* ch
 
   // Write mesh.
   dsg.setMesh(new_mesh);
-  CLOG(3) << "[OverwriteMesh] Removed " << faces.size() - new_mesh->numFaces() << " faces and "
+  MLOG(2) << "Removed " << faces.size() - new_mesh->numFaces() << " faces and "
           << vertices.size() - new_mesh->numVertices() << " vertices.";
 
   removeObjectsFromBackground(dsg);
 
   // Some additional verbose printing for debugging / tuning.
-  if (config.verbosity >= 4) {
-    LOG(INFO) << "[OverwriteMesh] Min time: "
-              << static_cast<float>(*std::min_element(time_stamps.begin(), time_stamps.end()) /
-                                    1e9);
-    LOG(INFO) << "[OverwriteMesh] Max time: "
-              << static_cast<float>(*std::max_element(time_stamps.begin(), time_stamps.end()) /
-                                    1e9);
-    LOG(INFO) << "[OverwriteMesh] Num voxels: " << most_recent_measrements.size();
+  if (config.get_verbosity() >= 4) {
+    MLOG_NAMED(INFO) << "Min time: "
+                     << static_cast<float>(
+                            *std::min_element(time_stamps.begin(), time_stamps.end()) / 1e9);
+    MLOG_NAMED(INFO) << "Max time: "
+                     << static_cast<float>(
+                            *std::max_element(time_stamps.begin(), time_stamps.end()) / 1e9);
+    MLOG_NAMED(INFO) << "Num voxels: " << most_recent_measrements.size();
   }
 }
 

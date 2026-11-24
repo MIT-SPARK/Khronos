@@ -48,9 +48,9 @@
 namespace khronos {
 
 void declare_config(MeshObjectExtractor::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("MeshObjectExtractor::Config");
-  field(config.verbosity, "verbosity");
   field(config.min_object_allocation_confidence, "min_object_allocation_confidence");
   field(config.min_object_volume, "min_object_volume");
   field(config.max_object_volume, "max_object_volume");
@@ -159,14 +159,12 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractDynamicObject(
 
   // Aggregate all results.
   if (object->trajectory_positions.empty()) {
-    CLOG(5) << "[MeshObjectExtractor] Dropping dynamic " << getTrackName(track)
-            << ": no obesrvations.";
+    MLOG(3) << "Dropping dynamic " << getTrackName(track) << ": no obesrvations.";
     return nullptr;
   }
   if (max_displacement < config.min_dynamic_displacement) {
-    CLOG(5) << "[MeshObjectExtractor] Dropping dynamic " << getTrackName(track)
-            << ": low displacement (" << max_displacement << " < "
-            << config.min_dynamic_displacement << ").";
+    MLOG(3) << "Dropping dynamic " << getTrackName(track) << ": low displacement ("
+            << max_displacement << " < " << config.min_dynamic_displacement << ").";
     return nullptr;
   }
   object->bounding_box = BoundingBox(bbox_extent / object->trajectory_positions.size(),
@@ -184,21 +182,19 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
 
   const auto frames = collectSemanticFrames(track, frame_data);
   if (frames.empty()) {
-    CLOG(5) << "[MeshObjectExtractor] Dropping " << getTrackName(track)
-            << ": no semantic observations.";
+    MLOG(3) << "Dropping " << getTrackName(track) << ": no semantic observations.";
     return nullptr;
   }
 
   // Compute the maximal extent and resolution.
   BoundingBox extent = computeExtent(frames);
   if (extent.volume() < config.min_object_volume) {
-    CLOG(5) << "[MeshObjectExtractor] Dropping " << getTrackName(track)
-            << ": small maximal volume (" << extent.volume() << " < " << config.min_object_volume
-            << ").";
+    MLOG(3) << "Dropping " << getTrackName(track) << ": small maximal volume (" << extent.volume()
+            << " < " << config.min_object_volume << ").";
     return nullptr;
   }
 
-  CLOG(5) << "[MeshObjectExtractor] Using extents of " << extent << " for " << getTrackName(track)
+  MLOG(3) << "Using extents of " << extent << " for " << getTrackName(track)
           << " during extraction";
 
   // Setup a volumetric map to reconstruct this object.
@@ -234,7 +230,7 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
   // Print info if desired.
   const Eigen::IOFormat fmt(
       Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "; ", "", "", "[", "]");
-  CLOG(5) << "[MeshObjectExtractor] Allocated TSDF layer for " << getTrackName(track) << " with "
+  MLOG(3) << "Allocated TSDF layer for " << getTrackName(track) << " with "
           << tsdf_layer.numBlocks() << " blocks (min_index=" << min_block_index.format(fmt)
           << ", max_index=" << max_block_index.format(fmt) << ") with voxel size "
           << map_config.voxel_size << " [m]";
@@ -245,7 +241,7 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
     const auto sensor_name = frame_data->input.getSensor().name;
     const auto integrator = integrator_map.get(sensor_name);
     if (!integrator) {
-      CLOG(2) << "Skipping Unknown sensor '" << sensor_name << "'";
+      MLOG(2) << "Skipping Unknown sensor '" << sensor_name << "'";
       continue;
     }
 
@@ -280,8 +276,7 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
   object->mesh = utils::combineMeshLayer(map.getMeshLayer());
 
   if (object->mesh.points.empty() && config.only_extract_reconstructed_objects) {
-    CLOG(5) << "[MeshObjectExtractor] Dropping " << getTrackName(track)
-            << ": no reconstructed mesh.";
+    MLOG(3) << "Dropping " << getTrackName(track) << ": no reconstructed mesh.";
     return nullptr;
   }
 
@@ -295,19 +290,19 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
     object->bounding_box = BoundingBox(object->mesh.points, bbox_type);
   }
   if (object->bounding_box.volume() > config.max_object_volume) {
-    CLOG(5) << "[MeshObjectExtractor] Dropping " << getTrackName(track) << ": large volume ("
+    MLOG(3) << "Dropping " << getTrackName(track) << ": large volume ("
             << object->bounding_box.volume() << " > " << config.max_object_volume << ").";
     return nullptr;
   }
   if (object->bounding_box.volume() < config.min_object_volume) {
-    CLOG(5) << "[MeshObjectExtractor] Dropping " << getTrackName(track) << ": small volume ("
+    MLOG(3) << "Dropping " << getTrackName(track) << ": small volume ("
             << object->bounding_box.volume() << " < " << config.min_object_volume << ").";
     return nullptr;
   }
 
-  CLOG(5) << "[MeshObjectExtractor] Extracted " << getTrackName(track) << " with volume "
-          << object->bounding_box.volume() << ", confidence " << track.confidence << ", mesh size "
-          << object->mesh.points.size() << ".";
+  MLOG(3) << "Extracted " << getTrackName(track) << " with volume " << object->bounding_box.volume()
+          << ", confidence " << track.confidence << ", mesh size " << object->mesh.points.size()
+          << ".";
 
   // Move the object mesh to bbox frame.
   const Point offset = object->bounding_box.world_P_center;
@@ -372,8 +367,8 @@ float MeshObjectExtractor::computeConfidence(const TsdfVoxel& /* tsdf_voxel */,
 bool MeshObjectExtractor::trackIsValid(const Track& track) const {
   // Check the track is valid for extraction.
   if (track.confidence <= config.min_object_allocation_confidence) {
-    CLOG(5) << "[MeshObjectExtractor] Dropping " << getTrackName(track) << ": low confidence ("
-            << track.confidence << " < " << config.min_object_allocation_confidence << ").";
+    MLOG(3) << "Dropping " << getTrackName(track) << ": low confidence (" << track.confidence
+            << " < " << config.min_object_allocation_confidence << ").";
     return false;
   }
   return true;

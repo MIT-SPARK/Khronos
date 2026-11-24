@@ -44,6 +44,7 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/run_settings.h>
+#include <hydra/utils/logging.h>
 #include <spark_dsg/dynamic_scene_graph.h>
 
 #include "khronos/active_window/active_window.h"
@@ -63,9 +64,7 @@ class Reconciler {
   using ChangeMap = std::unordered_map<NodeId, ObjectChange>;
 
   // Config.
-  struct Config {
-    int verbosity = hydra::RunSettings::instance().default_verbosity;
-
+  struct Config : hydra::VerbosityConfig {
     // If true only estimate times when there's evidence. If false extend open ended times to
     // infinity.
     bool time_estimates_conservative = false;

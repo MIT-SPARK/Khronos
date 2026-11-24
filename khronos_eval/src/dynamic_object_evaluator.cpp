@@ -9,9 +9,9 @@
 namespace khronos {
 
 void declare_config(DynamicObjectEvaluator::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("DynamicObjectEvaluator");
-  field(config.verbosity, "verbosity");
   field(config.compensate_missegmentation, "compensate_missegmentation");
   field(config.max_matching_distance, "max_matching_distance", "m");
 }
@@ -180,13 +180,13 @@ DynamicObjectEvaluator::RawMetrics DynamicObjectEvaluator::computeAssociationsCe
       size_t index;
       if (!search.search(from_centroid, distance_squared, index) ||
           distance_squared > max_distance_sq) {
-        CLOG(4) << NodeSymbol(id) << ": no candidates found. dist squared: " << distance_squared;
+        MLOG(3) << NodeSymbol(id) << ": no candidates found. dist squared: " << distance_squared;
         result.failed[timestamp].emplace(id);
         continue;
       }
 
       result.associations[timestamp][id] = ids[index];
-      CLOG(4) << NodeSymbol(id) << " -> " << NodeSymbol(ids[index]) << " ("
+      MLOG(3) << NodeSymbol(id) << " -> " << NodeSymbol(ids[index]) << " ("
               << std::sqrt(distance_squared) << "m).";
     }
   }

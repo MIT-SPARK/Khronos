@@ -36,7 +36,6 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <map>
 #include <memory>
 #include <mutex>
@@ -48,6 +47,7 @@
 #include <hydra/backend/backend_module.h>
 #include <hydra/common/run_settings.h>
 #include <hydra/common/shared_module_state.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos/backend/change_detection/sequential_change_detector.h"
 #include "khronos/backend/change_state.h"
@@ -62,7 +62,7 @@ class Backend : public hydra::BackendModule {
  public:
   // Config.
   struct Config : public hydra::BackendModule::Config {
-    int verbosity = hydra::RunSettings::instance().default_verbosity;
+    Config() { log_name = "backend"; }
 
     double max_dt_merge_proposal = 3.0;
     bool optimize_on_new_merge = true;

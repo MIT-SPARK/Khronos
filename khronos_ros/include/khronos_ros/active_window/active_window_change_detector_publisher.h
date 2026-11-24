@@ -62,7 +62,7 @@ namespace khronos {
 class ActiveWindowChangeDetectorPublisher : public ActiveWindowChangeDetector::ActiveWindowCDSink {
  public:
   struct Config : hydra::VerbosityConfig {
-    Config() : hydra::VerbosityConfig(hydra::VerbosityConfig::default_verbosity()) {}
+    Config() : VerbosityConfig("aw_change_pub") {}
 
     //! Frame in which reported object attributes (centroid, bbox) are expressed.
     std::string global_frame_name;

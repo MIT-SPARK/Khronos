@@ -55,6 +55,7 @@ class ChangeMerger : public MeshMerger {
  public:
   // Config.
   struct Config : public MeshMerger::Config {
+    Config() { log_name = "change_merger"; }
   } const config;
 
   void merge(DynamicSceneGraph& dsg, const BackgroundChanges& changes) override;

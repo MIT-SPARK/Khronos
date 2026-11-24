@@ -53,9 +53,9 @@ static const auto registration =
 }  // namespace
 
 void declare_config(ExternalTracker::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("ExternalTracker");
-  field(config.verbosity, "verbosity");
   field(config.min_num_observations, "min_num_observations", "frames");
 }
 

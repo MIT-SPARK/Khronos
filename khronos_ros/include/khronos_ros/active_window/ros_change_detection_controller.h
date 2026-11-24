@@ -36,10 +36,10 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <string>
 
 #include <config_utilities/config_utilities.h>
+#include <hydra/utils/logging.h>
 #include <ianvs/node_handle.h>
 #include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/trigger.hpp>
@@ -55,7 +55,9 @@ namespace khronos {
  */
 class RosChangeDetectionController : public ChangeDetectionController {
  public:
-  struct Config {
+  struct Config : hydra::VerbosityConfig {
+    Config() : VerbosityConfig("change_control") {}
+
     //! Namespace of the services and state topic, relative to the node namespace.
     std::string ns = "change_detection";
   } const config;

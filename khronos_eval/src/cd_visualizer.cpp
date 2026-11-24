@@ -23,7 +23,7 @@ void declare_config(ChangeDetectionVisualizer::DynamicConfig& config) {
 void declare_config(ChangeDetectionVisualizer::StaticConfig& config) {
   using namespace config;
   name("RayVerificator");
-  field(config.verbosity, "verbosity");
+  base<hydra::VerbosityConfig>(config);
   field(config.ray_verificator, "ray_verificator");
 }
 
@@ -202,7 +202,7 @@ void ChangeDetectionVisualizer::drawRays() {
     point_marker_ = std::make_unique<Marker>(points_marker);
     line_marker_ = std::make_unique<Marker>(lines_marker);
 
-    CLOG(1) << "Showing O(" << dynamic_config.object_id << ") point " << idx << "/"
+    MLOG(1) << "Showing O(" << dynamic_config.object_id << ") point " << idx << "/"
             << object_->mesh.numVertices() << " (" << data.start.size() - num_no_overlap << "/"
             << data.start.size() << " rays active).";
   }
@@ -266,7 +266,7 @@ void ChangeDetectionVisualizer::setupRayVerificator() {
   config_rv.ray_policy = static_cast<RayVerificator::Config::RayPolicy>(dynamic_config.ray_policy);
   ray_verificator_ = std::make_unique<RayVerificator>(config_rv);
   ray_verificator_->setDsg(graph_);
-  CLOG(1) << "Setup Ray verificator:\n" << config_rv << std::endl;
+  MLOG(1) << "Setup Ray verificator:\n" << config_rv << std::endl;
   previous_ray_policy_ = dynamic_config.ray_policy;
 }
 

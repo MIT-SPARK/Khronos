@@ -125,8 +125,7 @@ void declare_config(MaxIoUTracker::Config& config) {
   checkInRange(config.merge_min_cosine_sim, -1.0f, 1.0f, "merge_min_cosine_sim");
 }
 
-MaxIoUTracker::Config::Config()
-    : hydra::VerbosityConfig(VerbosityConfig::default_verbosity("IoU Tracker")) {}
+MaxIoUTracker::Config::Config() : VerbosityConfig("iou_tracker") {}
 
 MaxIoUTracker::MaxIoUTracker(const Config& config)
     : config(config::checkValid(config)), grid(config.voxel_size) {}
@@ -168,7 +167,7 @@ std::vector<int> MaxIoUTracker::processInput(FrameData& data, Tracks& tracks) {
     retracted_ids = mergeTracks(tracks);
   }
 
-  MLOG(3) << "Previous tracks: " << prev_num_tracks << " Current tracks: " << tracks.size();
+  MLOG(2) << "Previous tracks: " << prev_num_tracks << " Current tracks: " << tracks.size();
   ++sequence_number_;
   return retracted_ids;
 }
@@ -196,7 +195,7 @@ void MaxIoUTracker::associateTracks(const FrameData& data, Tracks& tracks) {
 
 // Assign dynamic tracks to closest dynamic clusters that moved less than the maximum.
 void MaxIoUTracker::associateDynamicTracks(const FrameData& data, Tracks& tracks) {
-  MLOG(4) << "Associating " << data.dynamic_clusters.size() << " dynamic detections to tracks";
+  MLOG(3) << "Associating " << data.dynamic_clusters.size() << " dynamic detections to tracks";
 
   size_t num_assoc = 0;
   for (auto& track : tracks) {
@@ -249,7 +248,7 @@ void MaxIoUTracker::associateDynamicTracks(const FrameData& data, Tracks& tracks
     track.last_centroid = computeCentroid(data, cluster);
   }
 
-  MLOG(4) << "Associated " << num_assoc << " dynamic detections with " << num_new << " new tracks";
+  MLOG(3) << "Associated " << num_assoc << " dynamic detections with " << num_new << " new tracks";
 }
 
 void MaxIoUTracker::preassociateSemanticTracks(const FrameData& data, Tracks& tracks) {
@@ -314,7 +313,7 @@ void MaxIoUTracker::preassociateSemanticTracks(const FrameData& data, Tracks& tr
 }
 
 void MaxIoUTracker::crossAssociateTracks(const FrameData& data, Tracks& tracks) {
-  MLOG(4) << "Cross associating " << data.semantic_clusters.size() << " semantic clusters";
+  MLOG(3) << "Cross associating " << data.semantic_clusters.size() << " semantic clusters";
 
   // First assign all semantic tracks to dynamic tracks where possible to avoid
   // allocating many semantic tracks for moving objects.
@@ -361,7 +360,7 @@ void MaxIoUTracker::crossAssociateTracks(const FrameData& data, Tracks& tracks) 
     }
   }
 
-  MLOG(4) << "Associated " << num_associated << " static detections to dynamic tracks";
+  MLOG(3) << "Associated " << num_associated << " static detections to dynamic tracks";
 }
 
 void MaxIoUTracker::associateSemanticTracks(const FrameData& data, Tracks& tracks) {
@@ -397,7 +396,7 @@ void MaxIoUTracker::assignClustersToStaticTrack(const FrameData& data, Tracks& t
       const auto& cluster = data.semantic_clusters[i];
       const auto ret = semanticsMatch(cluster.semantics, track.semantics, config.min_cosine_sim);
       if (!ret) {
-        MLOG(6) << "Rejected object " << cluster.id << " for " << track.id << ": " << toString(ret);
+        MLOG(4) << "Rejected object " << cluster.id << " for " << track.id << ": " << toString(ret);
         continue;
       }
 
@@ -406,7 +405,7 @@ void MaxIoUTracker::assignClustersToStaticTrack(const FrameData& data, Tracks& t
         best_cluster = i;
         best_iou = iou;
       } else {
-        MLOG(6) << "Rejected object " << cluster.id << " for " << track.id << ": low IoU (" << iou
+        MLOG(4) << "Rejected object " << cluster.id << " for " << track.id << ": low IoU (" << iou
                 << " < " << best_iou << ")";
       }
     }
@@ -430,7 +429,7 @@ void MaxIoUTracker::assignClustersToStaticTrack(const FrameData& data, Tracks& t
     addNewTrack(data, data.semantic_clusters[i], tracks, false);
   }
 
-  MLOG(4) << "Associated " << num_associated << " static detections to tracks and creating "
+  MLOG(3) << "Associated " << num_associated << " static detections to tracks and creating "
           << num_new << " new tracks";
 }
 
@@ -456,18 +455,18 @@ void MaxIoUTracker::assignStaticTracksToCluster(const FrameData& data, Tracks& t
 
       const auto ret = semanticsMatch(cluster.semantics, track.semantics, config.min_cosine_sim);
       if (!ret) {
-        MLOG(6) << "rejected " << track.id << " for object " << cluster.id << ": " << toString(ret);
+        MLOG(4) << "rejected " << track.id << " for object " << cluster.id << ": " << toString(ret);
         continue;
       }
 
       const float iou = computeIoU(data, cluster, track);
       if (iou < config.min_semantic_iou) {
-        MLOG(6) << "rejected " << track.id << " for object " << cluster.id << ": low IoU (" << iou
+        MLOG(4) << "rejected " << track.id << " for object " << cluster.id << ": low IoU (" << iou
                 << " < " << config.min_semantic_iou << ")";
         continue;
       }
 
-      MLOG(6) << "accepted track " << track.id << " for cluster " << cluster.id << ": IoU=" << iou
+      MLOG(4) << "accepted track " << track.id << " for cluster " << cluster.id << ": IoU=" << iou
               << ", Sim=" << ret.similiarity.value_or(std::numeric_limits<float>::quiet_NaN());
 
       assigned = true;
@@ -483,7 +482,7 @@ void MaxIoUTracker::assignStaticTracksToCluster(const FrameData& data, Tracks& t
     }
   }
 
-  MLOG(4) << "Associated " << num_associated << " static detections to tracks and creating "
+  MLOG(3) << "Associated " << num_associated << " static detections to tracks and creating "
           << num_new << " new tracks";
 }
 
@@ -677,7 +676,7 @@ std::vector<int> MaxIoUTracker::mergeTracks(Tracks& tracks) const {
                           std::make_pair(tracks[*best].first_seen, tracks[*best].id);
       const size_t survivor = keep_i ? i : *best;
       const size_t victim = keep_i ? *best : i;
-      MLOG(3) << "Merging track " << tracks[victim].id << " into track " << tracks[survivor].id
+      MLOG(2) << "Merging track " << tracks[victim].id << " into track " << tracks[survivor].id
               << " (containment " << best_containment << ")";
       absorbed_ids.push_back(tracks[victim].id);
       tracks[survivor].absorb(std::move(tracks[victim]));
@@ -701,7 +700,7 @@ std::vector<int> MaxIoUTracker::mergeTracks(Tracks& tracks) const {
     }
   }
   tracks.erase(tracks.begin() + num_kept, tracks.end());
-  MLOG(3) << "Merged " << absorbed_ids.size() << " tracks, " << tracks.size() << " remaining";
+  MLOG(2) << "Merged " << absorbed_ids.size() << " tracks, " << tracks.size() << " remaining";
   return absorbed_ids;
 }
 

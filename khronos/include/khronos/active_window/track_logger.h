@@ -50,6 +50,7 @@
 #include <vector>
 
 #include <hydra/common/robot_config.h>
+#include <hydra/utils/logging.h>
 #include <nlohmann/json.hpp>
 #include <opencv2/core.hpp>
 
@@ -73,7 +74,9 @@ namespace khronos {
  */
 class TrackLogger {
  public:
-  struct Config {
+  struct Config : hydra::VerbosityConfig {
+    Config() : VerbosityConfig("track_logger") {}
+
     //! Directory to write tracks to (empty = off)
     std::filesystem::path log_path;
     //! Number of observations per track that keep their images (ranked by score)

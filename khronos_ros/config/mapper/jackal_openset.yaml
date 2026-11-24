@@ -22,7 +22,7 @@ default_num_threads: -1 # -1 for all, 1 sets the program to single threaded. Can
 store_visualization_details: true
 
 # Pipeline properties.
-verbosity: 3
+verbosity: 2
 
 # =============================== Khronos Active Window ===============================
 # Active Window.

@@ -43,9 +43,9 @@
 namespace khronos {
 
 void declare_config(AccumulatedObjectExtractor::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("AccumulatedObjectExtractor");
-  field(config.verbosity, "verbosity");
   field(config.min_object_allocation_confidence, "min_object_allocation_confidence");
   field(config.min_object_volume, "min_object_volume", "m^3");
   field(config.max_object_volume, "max_object_volume", "m^3");
@@ -63,8 +63,8 @@ KhronosObjectAttributes::Ptr AccumulatedObjectExtractor::extractObject(
     const Track& track,
     const FrameDataBuffer& /* frame_data */) {
   if (track.confidence <= config.min_object_allocation_confidence) {
-    CLOG(5) << "[AccumulatedObjectExtractor] Dropping track " << track.id << ": low confidence ("
-            << track.confidence << " <= " << config.min_object_allocation_confidence << ").";
+    MLOG(3) << "Dropping track " << track.id << ": low confidence (" << track.confidence
+            << " <= " << config.min_object_allocation_confidence << ").";
     return nullptr;
   }
 
@@ -87,20 +87,19 @@ KhronosObjectAttributes::Ptr AccumulatedObjectExtractor::extractStaticObject(
     const Track& track) const {
   if (!track.accumulated_bounding_box.isValid()) {
     if (track.accumulated_voxels.empty()) {
-      LOG_FIRST_N(WARNING, 1) << "[AccumulatedObjectExtractor] Track " << track.id
+      LOG_FIRST_N(WARNING, 1) << config.get_log_prefix() << "Track " << track.id
                               << " has no accumulated voxels. Run the tracker with "
                                  "accumulate_voxels: true.";
     }
-    CLOG(5) << "[AccumulatedObjectExtractor] Dropping track " << track.id
-            << ": no confirmed voxels.";
+    MLOG(3) << "Dropping track " << track.id << ": no confirmed voxels.";
     return nullptr;
   }
 
   const BoundingBox& bbox = track.accumulated_bounding_box;
   const float volume = bbox.volume();
   if (volume < config.min_object_volume || volume > config.max_object_volume) {
-    CLOG(5) << "[AccumulatedObjectExtractor] Dropping track " << track.id << ": volume " << volume
-            << " outside [" << config.min_object_volume << ", " << config.max_object_volume << "].";
+    MLOG(3) << "Dropping track " << track.id << ": volume " << volume << " outside ["
+            << config.min_object_volume << ", " << config.max_object_volume << "].";
     return nullptr;
   }
 
@@ -116,8 +115,8 @@ KhronosObjectAttributes::Ptr AccumulatedObjectExtractor::extractStaticObject(
     object->mesh.setPos(i++, center - bbox.world_P_center);
   }
 
-  CLOG(5) << "[AccumulatedObjectExtractor] Extracted track " << track.id << " with volume "
-          << volume << " and " << voxels.size() << " points.";
+  MLOG(3) << "Extracted track " << track.id << " with volume " << volume << " and " << voxels.size()
+          << " points.";
   return object;
 }
 
@@ -127,7 +126,7 @@ KhronosObjectAttributes::Ptr AccumulatedObjectExtractor::extractDynamicObject(
   object->bounding_box = track.last_bounding_box;
   object->trajectory_positions = {track.last_centroid};
   object->trajectory_timestamps = {track.last_seen};
-  CLOG(5) << "[AccumulatedObjectExtractor] Extracted dynamic track " << track.id << ".";
+  MLOG(3) << "Extracted dynamic track " << track.id << ".";
   return object;
 }
 

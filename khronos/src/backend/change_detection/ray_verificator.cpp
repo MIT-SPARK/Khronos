@@ -44,9 +44,9 @@
 namespace khronos {
 
 void declare_config(RayVerificator::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("RayVerificator");
-  field(config.verbosity, "verbosity");
   field(config.block_size, "block_size", "m");
   field(config.radial_tolerance, "radial_tolerance", "m");
   field(config.depth_tolerance, "depth_tolerance", "m");
@@ -71,14 +71,14 @@ RayVerificator::CheckResult RayVerificator::check(const Point& point,
   CheckResult result;
 
   if (rays_.empty()) {
-    CLOG(6) << "Point unobserved: no measurements.";
+    MLOG(4) << "Point unobserved: no measurements.";
     return result;
   }
 
   // Lookup all candidate views that could have observed the point.
   const auto it = block_seen_by_rays_.find(grid_.toIndex(point));
   if (it == block_seen_by_rays_.end()) {
-    CLOG(6) << "Point unobserved: no measurements_.";
+    MLOG(4) << "Point unobserved: no measurements_.";
     return result;
   }
 

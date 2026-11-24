@@ -1,9 +1,9 @@
 #pragma once
-
 #include <map>
 #include <string>
 
 #include <Eigen/Dense>
+#include <hydra/utils/logging.h>
 #include <hydra_visualizer/adapters/node_color.h>
 #include <hydra_visualizer/plugins/visualizer_plugin.h>
 #include <ianvs/node_handle.h>
@@ -21,7 +21,7 @@ class ImplicitShapePlugin : public VisualizerPlugin {
  public:
   using ReconstructionSrv = khronos_msgs::srv::ReconstructImplicitObject;
 
-  struct Config {
+  struct Config : hydra::VerbosityConfig {
     //! Minimum difference in embedding before requesting new mesh
     float min_embedding_diff = 0.0f;
     //! Queue size for publishing.

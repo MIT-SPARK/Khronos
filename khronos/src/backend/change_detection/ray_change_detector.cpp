@@ -40,9 +40,9 @@
 namespace khronos {
 
 void declare_config(RayChangeDetector::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("RayChangeDetector");
-  field(config.verbosity, "verbosity");
   field(config.temporal_resolution, "temporal_resolution", "s");
   field(config.window_size, "window_size");
   field(config.use_relative_confidence, "use_relative_confidence");

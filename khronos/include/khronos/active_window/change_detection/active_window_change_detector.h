@@ -201,7 +201,7 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
 
   // Config.
   struct Config : hydra::VerbosityConfig {
-    Config() : hydra::VerbosityConfig(hydra::VerbosityConfig::default_verbosity()) {}
+    Config() : VerbosityConfig("aw_change") {}
 
     //! Path to prior map to use for change detection.
     std::filesystem::path prior_map_path;

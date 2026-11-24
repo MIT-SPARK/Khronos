@@ -49,9 +49,9 @@
 namespace khronos {
 
 void declare_config(TrackingIntegrator::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("TrackingIntegrator");
-  field(config.verbosity, "verbosity");
   field(config.temporal_buffer, "temporal_buffer", "s");
   field(config.burn_in_period, "burn_in_period", "s");
   field(config.tsdf_occupancy_threshold, "tsdf_occupancy_threshold", "m");
@@ -64,10 +64,11 @@ void declare_config(TrackingIntegrator::Config& config) {
   check(config.tsdf_occupancy_threshold, NE, 0, "tsdf_occupancy_threshold");
 }
 
-TrackingIntegrator::TrackingIntegrator(const TrackingIntegrator::Config& config, hydra::VolumetricWindow* window)
+TrackingIntegrator::TrackingIntegrator(const TrackingIntegrator::Config& config,
+                                       hydra::VolumetricWindow* window)
     : config(config::checkValid(config)) {
-      window_ = window;
-    }
+  window_ = window;
+}
 
 void TrackingIntegrator::updateBlocks(const FrameData& data, VolumetricMap& map) const {
   Timer timer("integration/tracking", data.input.timestamp_ns);
@@ -76,9 +77,8 @@ void TrackingIntegrator::updateBlocks(const FrameData& data, VolumetricMap& map)
   const BlockIndices all_blocks = map.getTsdfLayer().allocatedBlockIndices();
   const BlockIndices updated_blocks =
       map.getTsdfLayer().blockIndicesWithCondition(TsdfBlock::trackingUpdated);
-  LOG_IF(INFO, config.verbosity >= 4)
-      << "[Tracking Integrator] Updating " << all_blocks.size() << " total blocks and "
-      << updated_blocks.size() << " ever-free blocks.";
+  MLOG(3) << "Updating " << all_blocks.size() << " total blocks and " << updated_blocks.size()
+          << " ever-free blocks.";
 
   // Update tracking information and occupancy counter in parallel by block.
   BlockIndexGetter all_indices(all_blocks);
@@ -135,7 +135,8 @@ void TrackingIntegrator::updateBlockTracking(const FrameData* data,
                                              BlockIndexGetter* index_getter,
                                              VolumetricMap* map) const {
   if (window_ == nullptr) {
-    LOG(FATAL) << "[Tracking Integrator] map_window is required. Call setWindow() with a valid "
+    LOG(FATAL) << config.get_log_prefix()
+               << "map_window is required. Call setWindow() with a valid "
                   "VolumetricWindow before updateBlocks.";
   }
   const float tsdf_threshold = config.tsdf_occupancy_threshold < 0
@@ -162,12 +163,10 @@ void TrackingIntegrator::updateBlockTracking(const FrameData* data,
       TsdfVoxel& tsdf_voxel = tsdf_block->getVoxel(linear_index);
       TrackingVoxel& tracking_voxel = tracking_block->getVoxel(linear_index);
       updateLastOccupied(tsdf_voxel, tracking_voxel, timestamp_ns, tsdf_threshold);
-      const Eigen::Vector3d voxel_pos =
-          tsdf_block->getVoxelPosition(linear_index).cast<double>();
+      const Eigen::Vector3d voxel_pos = tsdf_block->getVoxelPosition(linear_index).cast<double>();
       const bool was_active = tracking_voxel.active;
       tracking_voxel.active =
-          window_->inBounds(timestamp_ns, world_T_body,
-                            tracking_voxel.last_observed, voxel_pos);
+          window_->inBounds(timestamp_ns, world_T_body, tracking_voxel.last_observed, voxel_pos);
       if (was_active && !tracking_voxel.active) {
         tracking_voxel.to_remove = true;
       }
@@ -238,9 +237,9 @@ void TrackingIntegrator::updateBlockEverFree(const FrameData* data,
 }
 
 void TrackingIntegrator::updateLastOccupied(TsdfVoxel& tsdf_voxel,
-                                                TrackingVoxel& tracking_voxel,
-                                                const TimeStamp& time_stamp,
-                                                float tsdf_threshold) const {
+                                            TrackingVoxel& tracking_voxel,
+                                            const TimeStamp& time_stamp,
+                                            float tsdf_threshold) const {
   // TODO(lschmid): This integrator can probably be simplified.
   // Allow for breaks of temporal_buffer between occupied observations to
   // compensate for lidar sparsity.

@@ -1,15 +1,16 @@
 #include "khronos_eval/mesh_evaluator.h"
 
 #include <filesystem>
+#include <fstream>
 #include <future>
 #include <vector>
-#include <fstream>
 
 #include <pcl/io/ply_io.h>
 
 namespace khronos {
 
 void declare_config(MeshEvaluator::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("MeshEvaluator");
   field<ThreadNumConversion>(config.num_threads, "num_threads");
@@ -99,8 +100,7 @@ bool MeshEvaluator::loadDSG(const std::string& file_path) {
     return false;
   }
 
-  std::cout << "[Mesh Evaluator] Loaded DSG mesh with " << dsg_mesh_vertices_.size() << " vertices."
-            << std::endl;
+  log("Loaded DSG mesh with " + std::to_string(dsg_mesh_vertices_.size()) + " vertices.");
   return true;
 }
 

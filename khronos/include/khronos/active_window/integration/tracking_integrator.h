@@ -36,7 +36,6 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <memory>
 #include <thread>
 
@@ -44,6 +43,7 @@
 #include <hydra/active_window/volumetric_window.h>
 #include <hydra/common/run_settings.h>
 #include <hydra/reconstruction/index_getter.h>
+#include <hydra/utils/logging.h>
 #include <spatial_hash/neighbor_utils.h>
 
 #include "khronos/active_window/data/frame_data.h"
@@ -57,8 +57,8 @@ class TrackingIntegrator {
   using BlockIndexGetter = hydra::IndexGetter<BlockIndex>;
 
   // Config.
-  struct Config {
-    int verbosity = hydra::RunSettings::instance().default_verbosity;
+  struct Config : hydra::VerbosityConfig {
+    Config() : VerbosityConfig("tracking") {}
 
     // Duration in seconds a voxel can be not observed to still count as occupied for
     // motion detection to compensate sensor sparsity or noise. Note that this value

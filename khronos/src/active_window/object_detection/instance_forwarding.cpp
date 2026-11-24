@@ -102,6 +102,7 @@ std::optional<SemanticClusterInfo> extractSemantics(const FrameData& data,
 }  // namespace
 
 void declare_config(CategoryFilter::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("CategoryFilter::Config");
   field(config.invalid, "invalid");
@@ -121,6 +122,7 @@ bool CategoryFilter::valid(const FrameData& data, int32_t, const Pixels& pixels)
 }
 
 void declare_config(OpenVocabBackgroundFilter::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("OpenVocabBackgroundFilter::Config");
   field(config.max_background_score, "max_background_score");
@@ -170,8 +172,7 @@ void declare_config(InstanceForwarding::Config& config) {
   }
 }
 
-InstanceForwarding::Config::Config()
-    : hydra::VerbosityConfig(VerbosityConfig::default_verbosity("instance_forwarding")) {}
+InstanceForwarding::Config::Config() : VerbosityConfig("instance_forwarding") {}
 
 InstanceForwarding::InstanceForwarding(const Config& config, const hydra::Labelspace* labelspace)
     : config(config::checkValid(config)),

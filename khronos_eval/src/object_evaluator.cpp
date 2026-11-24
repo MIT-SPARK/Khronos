@@ -12,9 +12,9 @@
 namespace khronos {
 
 void declare_config(ObjectEvaluator::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("ObjectEvaluator");
-  field(config.verbosity, "verbosity");
   field(config.match_require_semantics, "match_require_semantics");
   field(config.max_matching_distance, "max_matching_distance", "m");
   field(config.surface_subsampling_rate, "surface_subsampling_rate");
@@ -191,7 +191,7 @@ ObjectEvaluator::RawMetrics ObjectEvaluator::computeAssociationsSurface(const Ds
 
     // Extract the highest vote.
     if (votes.empty()) {
-      CLOG(4) << NodeSymbol(id) << ": no candidates found.";
+      MLOG(3) << NodeSymbol(id) << ": no candidates found.";
       result.failed.emplace(id);
       continue;
     }
@@ -199,7 +199,7 @@ ObjectEvaluator::RawMetrics ObjectEvaluator::computeAssociationsSurface(const Ds
       return a.second < b.second;
     });
     result.associations[id] = it->first;
-    CLOG(4) << NodeSymbol(id) << " -> " << NodeSymbol(it->first) << " ("
+    MLOG(3) << NodeSymbol(id) << " -> " << NodeSymbol(it->first) << " ("
             << it->second * 100 / attrs.mesh.numVertices() << "%).";
   }
 
@@ -232,12 +232,12 @@ ObjectEvaluator::RawMetrics ObjectEvaluator::computeAssociationsCentroid(const D
                        distance_squared,
                        index) ||
         distance_squared > max_distance_sq) {
-      CLOG(4) << NodeSymbol(id) << ": no candidates found.";
+      MLOG(3) << NodeSymbol(id) << ": no candidates found.";
       continue;
     }
 
     result.associations[id] = ids[index];
-    CLOG(4) << NodeSymbol(id) << " -> " << NodeSymbol(ids[index]) << " ("
+    MLOG(3) << NodeSymbol(id) << " -> " << NodeSymbol(ids[index]) << " ("
             << std::sqrt(distance_squared) << "m).";
   }
 
@@ -272,10 +272,10 @@ ObjectEvaluator::RawMetrics ObjectEvaluator::computeAssociationsBoundingBox(
 
     if (max_iou == 0.f) {
       result.failed.emplace(from_id);
-      CLOG(4) << NodeSymbol(from_id) << ": no candidates found.";
+      MLOG(3) << NodeSymbol(from_id) << ": no candidates found.";
     } else {
       result.associations[from_id] = max_id;
-      CLOG(4) << NodeSymbol(from_id) << " -> " << NodeSymbol(max_id) << " (" << max_iou << ").";
+      MLOG(3) << NodeSymbol(from_id) << " -> " << NodeSymbol(max_id) << " (" << max_iou << ").";
     }
   }
 
@@ -438,7 +438,7 @@ ObjectEvaluator::ChangeMetrics ObjectEvaluator::computeChangeMetrics(
       result.disappeared_missed_p++;
     }
   }
-  CLOG(4) << info.str();
+  MLOG(3) << info.str();
   return result;
 }
 

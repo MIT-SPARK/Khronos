@@ -59,7 +59,7 @@ namespace khronos {
 class TFTransformationGetter : public TransformationGetter {
  public:
   struct Config : hydra::VerbosityConfig {
-    Config() : hydra::VerbosityConfig(hydra::VerbosityConfig::default_verbosity()) {}
+    Config() : VerbosityConfig("tf_transform") {}
 
     //! Frame ID of the prior map (hydra_multi world_frame, typically "map").
     std::string prior_frame_id = "map";

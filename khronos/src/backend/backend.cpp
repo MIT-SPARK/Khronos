@@ -59,7 +59,6 @@ void declare_config(Backend::Config& config) {
   using namespace config;
   name("Backend");
   base<hydra::BackendModule::Config>(config);
-  field(config.verbosity, "verbosity");
   field(config.max_dt_merge_proposal, "max_dt_merge_proposal");
   field(config.optimize_on_new_merge, "optimize_on_new_merge");
   field(config.add_merge_factor, "add_merge_factor");
@@ -150,7 +149,7 @@ void Backend::spinCallback(const hydra::BackendInput& input) {
 
   // TODO(lschmid): Update the hydra logic to not just drop packages in the counting.
   if (!updatePrivateDsg(timestamp_ns, false)) {
-    CLOG(5) << "[Backend] skipping input @" << timestamp_ns << ".";
+    MLOG(3) << "skipping input @" << timestamp_ns << ".";
     // we only read from the frontend dsg if we've processed all the
     // factor graph update packets (as long as force_update is false)
     // we still log the status for each received frontend packet
@@ -173,7 +172,7 @@ void Backend::spinCallback(const hydra::BackendInput& input) {
     dsg_updater_->callUpdateFunctions(timestamp_ns, info);
   }
 
-  CLOG(3) << "Proposed " << new_proposed_merges_.size() << " node merges.";
+  MLOG(2) << "Proposed " << new_proposed_merges_.size() << " node merges.";
 
   // Run incremental change detection if desired. -1: disabled, 0: on LC only, >0: every n frames
   if (config.run_change_detection_every_n_frames >= 0) {
@@ -217,7 +216,7 @@ void Backend::runChangeDetectionThread(DynamicSceneGraph::Ptr dsg,
   map_.update(dsg, stamp);
 
   ChangeSink::callAll(change_sinks_, last_timestamp_received_, changes);
-  CLOG(3) << "Change detection completed: " << map_.numTimeSteps() << " time steps in 4D map.";
+  MLOG(2) << "Change detection completed: " << map_.numTimeSteps() << " time steps in 4D map.";
 }
 
 void Backend::finishProcessing() {
@@ -302,7 +301,7 @@ void Backend::save(const hydra::DataDirectory* output) {
   {
     std::lock_guard<std::mutex> lock(map_mutex_);
     if (map_.save(path / "final.4dmap")) {
-      CLOG(1) << "Saved 4D map with " << map_.numTimeSteps() << " time steps to '" << path << "'.";
+      MLOG(1) << "Saved 4D map with " << map_.numTimeSteps() << " time steps to '" << path << "'.";
     }
 
     // Save individual DSGs from the 4D map
@@ -325,7 +324,7 @@ void Backend::save(const hydra::DataDirectory* output) {
     }
 
     if (map_.numTimeSteps() > 0) {
-      CLOG(1) << "Saved " << map_.numTimeSteps() << " individual DSGs to '" << maps_path << "'.";
+      MLOG(1) << "Saved " << map_.numTimeSteps() << " individual DSGs to '" << maps_path << "'.";
     }
   }
 }
