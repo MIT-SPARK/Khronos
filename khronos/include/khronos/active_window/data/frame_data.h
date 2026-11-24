@@ -41,7 +41,6 @@
 #include <string>
 #include <vector>
 
-#include <hydra/common/global_info.h>
 #include <hydra/input/input_data.h>
 #include <opencv2/core.hpp>
 

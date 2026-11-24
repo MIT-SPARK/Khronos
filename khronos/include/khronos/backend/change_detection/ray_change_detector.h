@@ -45,7 +45,7 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/common/global_info.h>
+#include <hydra/common/run_settings.h>
 
 #include "khronos/backend/change_detection/ray_verificator.h"
 #include "khronos/backend/change_state.h"
@@ -66,7 +66,7 @@ class RayChangeDetector {
 
   // Config.
   struct Config {
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+    int verbosity = hydra::RunSettings::instance().default_verbosity;
 
     // Granularity of change detection in seconds.
     float temporal_resolution = 1.f;

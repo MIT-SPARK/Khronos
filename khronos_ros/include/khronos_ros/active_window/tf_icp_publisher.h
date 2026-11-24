@@ -36,12 +36,11 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/common/global_info.h>
 #include <hydra/utils/logging.h>
 #include <hydra_ros/utils/tf_lookup.h>
 #include <ianvs/node_handle.h>
@@ -57,9 +56,10 @@ namespace khronos {
  *
  * Publishes pre_icp_odom -> odom (StaticTF), splitting the full odom_T_map
  * transform (received as current_T_prior from AWCD) into:
- *   - map -> pre_icp_odom: published externally by upper level pose estimation modules (ROMAN, etc.)
+ *   - map -> pre_icp_odom: published externally by upper level pose estimation modules (ROMAN,
+ * etc.)
  *   - pre_icp_odom -> odom: published here (ICP delta on top of estimated pose)
- *  
+ *
  * On startup, seeds identity so the TF chain map -> odom is immediately resolvable.
  * When enable_icp_refinement=false in AWCD, current_T_prior equals the estimated pose
  * and the ICP delta is identity.
@@ -67,12 +67,11 @@ namespace khronos {
 class TfIcpPublisher : public ActiveWindowChangeDetector::ActiveWindowCDSink {
  public:
   struct Config : hydra::VerbosityConfig {
-    Config()
-        : hydra::VerbosityConfig{hydra::GlobalInfo::instance().getConfig().default_verbosity} {}
+    Config() : hydra::VerbosityConfig(hydra::VerbosityConfig::default_verbosity()) {}
 
     //! Frame published by upper stream pose estimation modules (usually child of map).
     std::string pre_icp_odom_frame = "";
-    //! Robot odometry frame (child of pre_icp_odom_frame). Empty = GlobalInfo odom frame.
+    //! Child of pre_icp_odom_frame; empty uses RobotConfig odometry.
     std::string odom_frame = "";
     //! Underlying TF lookup config. max_tries defaults to 1 (non-blocking): TF being
     //! unavailable is the expected steady state before relocalization fires, and the
@@ -83,7 +82,10 @@ class TfIcpPublisher : public ActiveWindowChangeDetector::ActiveWindowCDSink {
     hydra::TFLookup::Config tf_lookup = NonBlockingTfLookupConfig();
   } const config;
 
-  explicit TfIcpPublisher(const Config& config, const ianvs::NodeHandle* nh = nullptr);
+  explicit TfIcpPublisher(const Config& config,
+                          const hydra::RobotConfig& robot,
+                          const hydra::Labelspace& /* labelspace */,
+                          const ianvs::NodeHandle* nh = nullptr);
   virtual ~TfIcpPublisher() = default;
 
   void call(const DynamicSceneGraph::Ptr& dsg,

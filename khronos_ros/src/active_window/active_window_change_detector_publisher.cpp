@@ -54,8 +54,9 @@ namespace {
 static const auto registration =
     config::RegistrationWithConfig<ActiveWindowChangeDetector::ActiveWindowCDSink,
                                    ActiveWindowChangeDetectorPublisher,
-                                   ActiveWindowChangeDetectorPublisher::Config>(
-        "ActiveWindowChangeDetectorPublisher");
+                                   ActiveWindowChangeDetectorPublisher::Config,
+                                   hydra::RobotConfig,
+                                   hydra::Labelspace>("ActiveWindowChangeDetectorPublisher");
 
 }
 
@@ -70,8 +71,12 @@ void declare_config(ActiveWindowChangeDetectorPublisher::Config& config) {
 
 ActiveWindowChangeDetectorPublisher::ActiveWindowChangeDetectorPublisher(
     const Config& config,
+    const hydra::RobotConfig& robot,
+    const hydra::Labelspace& labelspace,
     const ianvs::NodeHandle* nh)
     : config(config::checkValid(config)),
+      frame_(config.global_frame_name.empty() ? robot.frames.map : config.global_frame_name),
+      label_names_(labelspace.label_names),
       nh_(nh ? *nh / "change_detector_publisher"
              : ianvs::NodeHandle::this_node("change_detector_publisher")) {
   // Latched: a base station that cleared this robot or lost the link gets the last message again
@@ -111,7 +116,7 @@ void ActiveWindowChangeDetectorPublisher::call(
 
   khronos_msgs::msg::AwcdChanges msg;
   msg.header.stamp = nh_.now();
-  msg.header.frame_id = config.global_frame_name;
+  msg.header.frame_id = frame_;
   msg.robot_name = config.robot_name;
 
   msg.removed_objects.reserve(removed_objects.size());
@@ -170,7 +175,7 @@ ChangedObjectInfo ActiveWindowChangeDetectorPublisher::makeAddedInfo(const Added
   if (obj.semantics.has_value()) {
     info.semantic_label = obj.semantics->category_id;
     // The base station matches labels by name: robots may run different label spaces.
-    const auto& names = hydra::GlobalInfo::instance().labelspace().label_names;
+    const auto& names = label_names_;
     const auto it = names.find(obj.semantics->category_id);
     if (it != names.end()) {
       info.name = it->second;

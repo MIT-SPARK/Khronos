@@ -56,7 +56,7 @@ class TFTransformationGetterTest : public ::testing::Test {
 
 TEST_F(TFTransformationGetterTest, ReportsInverseTransformAfterTranslationOrRotationChanges) {
   const auto config = makeConfig("thresholds");
-  TFTransformationGetter getter(config);
+  TFTransformationGetter getter(config, hydra::RobotConfig{});
   EXPECT_FALSE(getter.getTransformation());
   tf2_ros::StaticTransformBroadcaster broadcaster(ianvs::CurrentNode::get()->shared_from_this());
 
@@ -85,11 +85,26 @@ TEST_F(TFTransformationGetterTest, ReportsInverseTransformAfterTranslationOrRota
   EXPECT_TRUE(transform->isApprox(expected));
 }
 
+TEST_F(TFTransformationGetterTest, UsesTheRunOdomFrameWhenNoOverrideIsSet) {
+  const auto frames = makeConfig("run_frames");
+  auto config = frames;
+  config.robot_frame_id.clear();
+  hydra::RobotConfig robot;
+  robot.frames.odom = frames.robot_frame_id;
+  TFTransformationGetter getter(config, robot);
+  tf2_ros::StaticTransformBroadcaster broadcaster(ianvs::CurrentNode::get());
+  publish(broadcaster, frames, 3.0);
+
+  const auto transform = waitForTransform(getter);
+  ASSERT_TRUE(transform);
+  EXPECT_TRUE(transform->translation().isApprox(Eigen::Vector3d(-3.0, 0.0, 0.0)));
+}
+
 TEST_F(TFTransformationGetterTest, ShutdownInterruptsPollingWithoutTransform) {
   auto config = makeConfig("shutdown");
   config.tf_lookup.max_tries = 0;
   config.tf_lookup.wait_duration_s = 5.0;
-  auto getter = std::make_unique<TFTransformationGetter>(config);
+  auto getter = std::make_unique<TFTransformationGetter>(config, hydra::RobotConfig{});
   // Let the worker enter its polling wait; no TF will ever arrive for these frames.
   std::this_thread::sleep_for(50ms);
   const auto start = std::chrono::steady_clock::now();

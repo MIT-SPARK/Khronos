@@ -44,7 +44,6 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/common/global_info.h>
 #include <hydra/utils/logging.h>
 #include <ianvs/node_handle.h>
 #include <khronos_msgs/msg/awcd_changes.hpp>
@@ -63,11 +62,10 @@ namespace khronos {
 class ActiveWindowChangeDetectorPublisher : public ActiveWindowChangeDetector::ActiveWindowCDSink {
  public:
   struct Config : hydra::VerbosityConfig {
-    Config()
-        : hydra::VerbosityConfig{hydra::GlobalInfo::instance().getConfig().default_verbosity} {}
+    Config() : hydra::VerbosityConfig(hydra::VerbosityConfig::default_verbosity()) {}
 
     //! Frame in which reported object attributes (centroid, bbox) are expressed.
-    std::string global_frame_name = hydra::GlobalInfo::instance().getFrames().map;
+    std::string global_frame_name;
 
     //! Name of the robot reporting the changes, forwarded into AwcdChanges::robot_name.
     std::string robot_name;
@@ -79,6 +77,8 @@ class ActiveWindowChangeDetectorPublisher : public ActiveWindowChangeDetector::A
   } const config;
 
   explicit ActiveWindowChangeDetectorPublisher(const Config& config,
+                                               const hydra::RobotConfig& robot,
+                                               const hydra::Labelspace& labelspace,
                                                const ianvs::NodeHandle* nh = nullptr);
   virtual ~ActiveWindowChangeDetectorPublisher() = default;
 
@@ -92,6 +92,8 @@ class ActiveWindowChangeDetectorPublisher : public ActiveWindowChangeDetector::A
             const ActiveWindowChangeDetector::ChangeDetectionStatus& status) const override;
 
  private:
+  const std::string frame_;
+  const std::map<uint32_t, std::string> label_names_;
   //! Fills in a ChangedObjectInfo entry for a removed object (id + latched first-removed time).
   khronos_msgs::msg::ChangedObjectInfo makeRemovedInfo(
       const ActiveWindowChangeDetector::RemovedObject& obj) const;

@@ -32,10 +32,10 @@
  * Government is authorized to reproduce and distribute reprints for Government
  * purposes notwithstanding any copyright notation herein.
  * -------------------------------------------------------------------------- */
-#include <glog/logging.h>
 #include <limits>
+
+#include <glog/logging.h>
 #include <gtest/gtest.h>
-#include <hydra/common/global_info.h>
 #include <khronos/active_window/object_detection/instance_forwarding.h>
 
 namespace khronos {

@@ -126,7 +126,7 @@ void declare_config(MaxIoUTracker::Config& config) {
 }
 
 MaxIoUTracker::Config::Config()
-    : hydra::VerbosityConfig(hydra::VerbosityConfig::default_verbosity("IoU Tracker")) {}
+    : hydra::VerbosityConfig(VerbosityConfig::default_verbosity("IoU Tracker")) {}
 
 MaxIoUTracker::MaxIoUTracker(const Config& config)
     : config(config::checkValid(config)), grid(config.voxel_size) {}

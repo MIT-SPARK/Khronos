@@ -36,7 +36,6 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <condition_variable>
 #include <deque>
 #include <filesystem>
@@ -50,6 +49,7 @@
 #include <utility>
 #include <vector>
 
+#include <hydra/common/robot_config.h>
 #include <nlohmann/json.hpp>
 #include <opencv2/core.hpp>
 
@@ -92,7 +92,7 @@ class TrackLogger {
     size_t max_queue_size = 100;
   } const config;
 
-  explicit TrackLogger(const Config& config);
+  explicit TrackLogger(const Config& config, const hydra::RobotConfig& robot = {});
   ~TrackLogger();
 
   //! Encoded images; observations in one frame share color and depth files.
@@ -150,6 +150,7 @@ class TrackLogger {
   static std::string encodeMaskRle(const cv::Mat& mask);
 
  private:
+  const size_t robot_id_;
   //! An observation to write: its buffered frame and cluster id, or its snapshot
   struct Source {
     FrameData::Ptr frame;

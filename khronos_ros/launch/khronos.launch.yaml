@@ -50,10 +50,10 @@ launch:
       args: >
         --config-utilities-file $(var input_config)@input
         --config-utilities-file $(var mapper_config)
-        --config-utilities-file $(var labelspace_config)
+        --config-utilities-file $(var labelspace_config)@labelspace
         --config-utilities-yaml {robot_id: $(var robot_id), odom_frame: $(var odom_frame), robot_frame: $(var robot_frame), map_frame: $(var map_frame)}
         --config-utilities-yaml {glog_level: $(var min_glog_level), glog_verbosity: $(var verbosity)}
-        --config-utilities-yaml {experiment: {output_dir: $(var output_dir)}}
+        --config-utilities-yaml {log_path: $(var output_dir)}
         --config-utilities-yaml $(var extra_yaml)
         --config-utilities-yaml {backend: {fix_input_poses: $(var use_gt_frame)}}
         --config-utilities-yaml {input: {inputs: {left_cam: {sensor: {min_range: $(var sensor_min_range), max_range: $(var sensor_max_range), extrinsics: {sensor_frame: $(var sensor_frame)}}}}}}

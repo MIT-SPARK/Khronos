@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <iostream>
 
+#include <hydra/common/run_settings.h>
 #include <khronos/spatio_temporal_map/spatio_temporal_map.h>
 #include <khronos/utils/output_file_utils.h>
 #include <pcl/io/ply_io.h>
@@ -51,10 +52,9 @@ void PipelineEvaluator::run() {
     return;
   }
 
-  hydra::PipelineConfig global_config;
-  global_config.store_visualization_details = config.store_visualization_details;
-  hydra::GlobalInfo::reset();
-  hydra::GlobalInfo::init(global_config);
+  auto settings = hydra::RunSettings::instance();
+  settings.store_visualization_details = config.store_visualization_details;
+  hydra::RunSettings::init(settings);
 
   // Run evaluations.
   if (!config.run_evaluation) {

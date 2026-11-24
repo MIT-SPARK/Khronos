@@ -44,7 +44,7 @@ author    = {Lukas Schmid and Marcus Abate and Yun Chang and Luca Carlone},
 booktitle = {Proc. of Robotics: Science and Systems (RSS)},
 year      = {2024},
 month     = {July},
-address   = {Delft, Netherlands}, 
+address   = {Delft, Netherlands},
 doi       = {10.15607/RSS.2024.XX.081}
 }
 ```
@@ -137,6 +137,23 @@ You can now terminate Khronos.
 
 To run Khronos with the apartment dataset, change the `dataset` from `tesse_cd_office` to `tesse_cd_apartment` and change the rosbag path accordingly. You can then run the launch file as before.
 
+### Run configuration and output
+
+Khronos uses Hydra's `RunContext` for each run's labelspace, robot configuration,
+and base `log_path`. Process defaults such as verbosity and thread counts come
+from `RunSettings`. C++ pipeline construction takes a shared, const context;
+frontend update functors share the `RunContext::ConstPtr` factory argument.
+Their callback sinks receive focused inputs such as `RobotConfig`. ROS publishers
+use the configured robot frames unless their own frame override is provided.
+
+`save()` uses the run's `log_path`, and an explicit output directory overrides
+the destination for that save. The experiment manager's `output_dir` overrides
+`log_path` for experiment artifacts; when omitted, it uses the run directory.
+`experiment.overwrite` controls replacement of the experiment directory, including
+the base run directory when `output_dir` is omitted. When false, output goes into
+a timestamped subdirectory. Allocation happens before modules start logging.
+An empty base path disables default saving.
+
 ## Run Khronos on Real Data
 
 Download the mezzanine rosbag [here](https://drive.google.com/drive/folders/1Qja6KVHCfT6PaYcj2NcQy4o3LJxXc8Kc?usp=drive_link).
@@ -147,7 +164,7 @@ To run Khronos on real data, use the `jackal_khronos.launch.yaml` file. To use p
 ros2 launch khronos_ros jackal_khronos.launch.yaml bag_path:=PATH_TO_BAG_DIR use_prerecorded_semantics:=true
 ```
 
-**Note:** The ROS2 version uses `ianvs` for bag playback. Kimera-VIO is not yet ported to ROS2, so odometry transforms are published from recorded odometry messages via the `odom_to_tf.py` node. 
+**Note:** The ROS2 version uses `ianvs` for bag playback. Kimera-VIO is not yet ported to ROS2, so odometry transforms are published from recorded odometry messages via the `odom_to_tf.py` node.
 
 Your ouptut will look something like this:
 

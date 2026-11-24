@@ -39,6 +39,7 @@
 
 #include <sstream>
 
+#include <hydra/common/run_settings.h>
 #include <spark_dsg/colormaps.h>
 
 #include "khronos/active_window/data/reconstruction_types.h"
@@ -110,7 +111,7 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractDynamicObject(
     const FrameDataBuffer& frame_data) const {
   auto object = std::make_unique<KhronosObjectAttributes>();
   const bool store_visualization_details =
-      hydra::GlobalInfo::instance().getConfig().store_visualization_details;
+      hydra::RunSettings::instance().store_visualization_details;
   Point bbox_extent = Point::Zero();  // Accumulated size to average.
   float max_displacement = 0;
   for (const Observation& observation : track.observations) {

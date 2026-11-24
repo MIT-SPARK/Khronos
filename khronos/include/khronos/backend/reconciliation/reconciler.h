@@ -36,14 +36,14 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
+#include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/common/global_info.h>
+#include <hydra/common/run_settings.h>
 #include <spark_dsg/dynamic_scene_graph.h>
 
 #include "khronos/active_window/active_window.h"
@@ -64,7 +64,7 @@ class Reconciler {
 
   // Config.
   struct Config {
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+    int verbosity = hydra::RunSettings::instance().default_verbosity;
 
     // If true only estimate times when there's evidence. If false extend open ended times to
     // infinity.

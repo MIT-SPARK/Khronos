@@ -44,7 +44,6 @@
 #include <config_utilities/types/path.h>
 #include <glog/logging.h>
 #include <hydra/backend/mst_factors.h>
-#include <hydra/common/global_info.h>
 #include <hydra/utils/pgmo_mesh_traits.h>
 #include <kimera_pgmo/utils/common_functions.h>
 #include <kimera_pgmo/utils/mesh_io.h>
@@ -86,9 +85,10 @@ void declare_config(Backend::Config& config) {
 }
 
 Backend::Backend(const Config& config,
+                 hydra::RunContext::ConstPtr context,
                  const hydra::SharedDsgInfo::Ptr& dsg,
-                 const hydra::SharedModuleState::Ptr& state)
-    : hydra::BackendModule(config::checkValid(config), dsg, state),
+                 const std::shared_ptr<hydra::SharedModuleState>& state)
+    : hydra::BackendModule(config::checkValid(config), context, dsg, state),
       config(config),
       map_(config.spatio_temporal_map) {
   change_detector_ = std::make_unique<SequentialChangeDetector>(config.change_detection);
@@ -96,16 +96,23 @@ Backend::Backend(const Config& config,
   reconciler_ = std::make_unique<Reconciler>(config.reconciler);
 }
 
-Backend::~Backend() {}
+Backend::~Backend() { stop(false); }
 
-void Backend::start() { spin_thread_.reset(new std::thread(&Backend::spin, this)); }
+void Backend::start() {
+  should_shutdown_ = false;
+  force_shutdown_ = false;
+  spin_thread_.reset(new std::thread(&Backend::spin, this));
+}
 
 void Backend::spin() {
-  should_shutdown_ = false;
   bool should_shutdown = false;
   while (!should_shutdown) {
     bool has_data = queue_->poll();
-    if (hydra::GlobalInfo::instance().force_shutdown() || !has_data) {
+    if (force_shutdown_) {
+      break;
+    }
+
+    if (!has_data) {
       // copy over shutdown request
       should_shutdown = should_shutdown_;
     }
@@ -251,7 +258,12 @@ bool Backend::saveProposedMerges(const hydra::DataDirectory& log_setup) {
   return proposed_merges_.save(backend_path / "proposed_merge.csv");
 }
 
-void Backend::save(const hydra::DataDirectory& log_setup) {
+void Backend::save(const hydra::DataDirectory* output) {
+  const auto& log_setup = output ? *output : context->logs;
+  if (!log_setup) {
+    return;
+  }
+
   const auto path = log_setup.path();
   unmerged_graph_->save(path / "shared_dsg.json", false);
   {

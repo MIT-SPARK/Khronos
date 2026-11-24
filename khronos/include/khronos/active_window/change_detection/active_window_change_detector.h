@@ -201,8 +201,7 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
 
   // Config.
   struct Config : hydra::VerbosityConfig {
-    Config()
-        : hydra::VerbosityConfig{hydra::GlobalInfo::instance().getConfig().default_verbosity} {}
+    Config() : hydra::VerbosityConfig(hydra::VerbosityConfig::default_verbosity()) {}
 
     //! Path to prior map to use for change detection.
     std::filesystem::path prior_map_path;
@@ -309,11 +308,12 @@ class ActiveWindowChangeDetector : public ActiveWindow::KhronosSink {
 
     //! Min inliers to accept refined transform.
     size_t icp_min_inliers = 50;
-
   } const config;
 
   // Construction.
-  explicit ActiveWindowChangeDetector(const Config& config);
+  explicit ActiveWindowChangeDetector(const Config& config,
+                                      const hydra::RobotConfig& robot,
+                                      const hydra::Labelspace& labelspace);
   virtual ~ActiveWindowChangeDetector() = default;
 
   // Module setup.

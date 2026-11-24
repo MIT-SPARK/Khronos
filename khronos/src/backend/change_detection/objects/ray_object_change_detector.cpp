@@ -40,6 +40,7 @@
 #include <numeric>
 
 #include <config_utilities/config_utilities.h>
+#include <hydra/common/run_settings.h>
 
 namespace khronos {
 
@@ -146,7 +147,7 @@ void RayObjectChangeDetector::checkObjectObservation(KhronosObjectAttributes& at
 
   // Optionally store visualization details.
   const bool store_visualization_details =
-      hydra::GlobalInfo::instance().getConfig().store_visualization_details;
+      hydra::RunSettings::instance().store_visualization_details;
   if (store_visualization_details) {
     attrs.details["cd_before_present"].insert(attrs.details["cd_before_present"].end(),
                                               before_data.present.begin(),

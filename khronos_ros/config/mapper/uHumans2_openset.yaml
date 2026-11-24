@@ -20,7 +20,7 @@ experiment:
 
 # =============================== Global & Pipeline properties ===============================
 # Global properties.
-global_frame_name: "world"
+map_frame: "world"
 default_verbosity: 2 # Set global verbosity. Can be overridden for individual modules below.
 default_num_threads: -1 # -1 for all, 1 sets the program to single threaded. Can be overridden by individual modules below.
 
@@ -160,7 +160,6 @@ backend:
   max_dt_merge_proposal: 3.0 # max time between looking for node merge
   add_merge_factor: true
   optimize_on_new_merge: true
-  add_merge_factor: true
   pose_object_covariance: 1.0e-01
   object_merge_covariance: 10.0 # very permissive for now
   pose_object_consistency_threshold: 0.2 # meters / node # 0.2

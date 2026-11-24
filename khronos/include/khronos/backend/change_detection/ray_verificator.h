@@ -45,8 +45,8 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/common/global_info.h>
 #include <hydra/common/robot_prefix_config.h>
+#include <hydra/common/run_settings.h>
 #include <spatial_hash/grid.h>
 
 #include "khronos/common/common_types.h"
@@ -67,7 +67,7 @@ class RayVerificator {
 
   // Config.
   struct Config {
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+    int verbosity = hydra::RunSettings::instance().default_verbosity;
 
     // Size of the blocks used for background hashing in meters. This is independent of the mesh
     // block size.

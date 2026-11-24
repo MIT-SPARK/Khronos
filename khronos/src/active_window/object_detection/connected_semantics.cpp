@@ -51,7 +51,7 @@ static const auto registration_ =
     config::RegistrationWithConfig<ObjectDetector,
                                    ConnectedSemantics,
                                    ConnectedSemantics::Config,
-                                   hydra::Labelspace*>("ConnectedSemantics");
+                                   const hydra::Labelspace*>("ConnectedSemantics");
 
 std::set<uint32_t> getLabels(const hydra::Labelspace* labelspace) {
   if (!labelspace) {
@@ -77,7 +77,7 @@ void declare_config(ConnectedSemantics::Config& config) {
 }
 
 ConnectedSemantics::Config::Config()
-    : VerbosityConfig(hydra::VerbosityConfig::default_verbosity("connected_semantics")) {}
+    : VerbosityConfig(VerbosityConfig::default_verbosity("connected_semantics")) {}
 
 ConnectedSemantics::ConnectedSemantics(const Config& config, const hydra::Labelspace* labelspace)
     : config(config::checkValid(config)),

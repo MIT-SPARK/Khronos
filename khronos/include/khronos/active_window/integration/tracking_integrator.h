@@ -42,7 +42,7 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/active_window/volumetric_window.h>
-#include <hydra/common/global_info.h>
+#include <hydra/common/run_settings.h>
 #include <hydra/reconstruction/index_getter.h>
 #include <spatial_hash/neighbor_utils.h>
 
@@ -58,7 +58,7 @@ class TrackingIntegrator {
 
   // Config.
   struct Config {
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+    int verbosity = hydra::RunSettings::instance().default_verbosity;
 
     // Duration in seconds a voxel can be not observed to still count as occupied for
     // motion detection to compensate sensor sparsity or noise. Note that this value
@@ -76,7 +76,7 @@ class TrackingIntegrator {
     int neighbor_connectivity = 18;
 
     // Number of threads to use.
-    int num_threads = hydra::GlobalInfo::instance().getConfig().default_num_threads;
+    int num_threads = hydra::RunSettings::instance().default_num_threads;
   } const config;
 
   // Construction.

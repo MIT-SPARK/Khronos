@@ -41,7 +41,6 @@
 
 #include <config_utilities/config_utilities.h>
 #include <config_utilities/parsing/context.h>
-#include <hydra/common/global_info.h>
 #include <hydra_ros/backend/ros_backend_publisher.h>
 #include <hydra_ros/frontend/ros_frontend_publisher.h>
 #include <khronos/active_window/active_window.h>
@@ -60,7 +59,6 @@ using ChangeMsg = khronos_msgs::msg::Changes;
 KhronosPipeline::Config::Config() : hydra::HydraRosPipeline::Config() {
   active_window = ActiveWindow::Config{};
   backend = Backend::Config{};
-  verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
 }
 
 void declare_config(KhronosPipeline::Config& config) {
@@ -69,13 +67,17 @@ void declare_config(KhronosPipeline::Config& config) {
   base<hydra::HydraRosPipeline::Config>(config);
 }
 
-KhronosPipeline::KhronosPipeline(const Config& config, ianvs::NodeHandle nh)
-    : hydra::HydraRosPipeline(config),
+KhronosPipeline::KhronosPipeline(const Config& config,
+                                 hydra::RunContext::ConstPtr context,
+                                 ianvs::NodeHandle nh)
+    : hydra::HydraRosPipeline(config, context),
       config(config::checkValid(config)),
       nh_(nh),
       changes_pub_(nh_.create_publisher<ChangeMsg>("changes", rclcpp::QoS(10).transient_local())),
       khronos_backend_(nullptr),
       khronos_active_window_(nullptr) {}
+
+KhronosPipeline::~KhronosPipeline() { stop(); }
 
 void KhronosPipeline::init() {
   HydraRosPipeline::init();
@@ -89,7 +91,10 @@ void KhronosPipeline::init() {
     // Need to make the nodehandle private to get private topics in the aw_visualizer.
     const auto aw_nh = nh_ / "~" / RosNs::VISUALIZATION;
     khronos_active_window_->addKhronosSink(std::make_shared<ActiveWindowVisualizer>(
-        config::fromContext<ActiveWindowVisualizer::Config>(RosNs::VISUALIZATION), &aw_nh));
+        config::fromContext<ActiveWindowVisualizer::Config>(RosNs::VISUALIZATION),
+        context_->config.robot,
+        context_->labelspace(),
+        &aw_nh));
     if (aw_evaluation_callback_) {
       using AWSink = ActiveWindow::KhronosSink;
       khronos_active_window_->addKhronosSink(AWSink::fromCallback(aw_evaluation_callback_));
@@ -119,13 +124,13 @@ bool KhronosPipeline::save(const hydra::DataDirectory& log_setup, bool save_full
   // Save state of all modules.
   if (save_full) {
     // HydraRosPipeline::save calls save on all modules including backend
-    HydraRosPipeline::save(log_setup);
+    HydraRosPipeline::save(&log_setup);
   } else {
     // If not saving full state, we still need to save the backend for evaluation
     if (khronos_backend_) {
       khronos_backend_->saveProposedMerges(log_setup);
       // Save the backend data including the 4D map
-      khronos_backend_->save(log_setup);
+      khronos_backend_->save(&log_setup);
     }
   }
 
@@ -136,7 +141,7 @@ bool KhronosPipeline::save(const hydra::DataDirectory& log_setup, bool save_full
 std::string KhronosPipeline::getConfigInfo() const {
   // TODO(lschmid): Find a more general way to do this when integrating with hydra.
   std::stringstream ss;
-  ss << config::toString(hydra::GlobalInfo::instance().getConfig()) << "\n";
+  ss << config::toString(context_->config) << "\n";
   ss << config::toString(config) << "\n";
   ss << config::toString(active_window_->config) << "\n";
   ss << config::toString(frontend_->config) << "\n";

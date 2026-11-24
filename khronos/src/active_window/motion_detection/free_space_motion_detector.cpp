@@ -42,7 +42,6 @@
 #include <string>
 #include <vector>
 
-#include <hydra/common/global_info.h>
 #include <hydra/reconstruction/index_getter.h>
 
 #include "khronos/utils/geometry_utils.h"

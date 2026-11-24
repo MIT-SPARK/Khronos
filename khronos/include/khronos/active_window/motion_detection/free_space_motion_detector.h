@@ -52,7 +52,7 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/common/global_info.h>
+#include <hydra/common/run_settings.h>
 #include <spatial_hash/neighbor_utils.h>
 
 #include "khronos/active_window/data/frame_data.h"
@@ -70,7 +70,7 @@ class FreeSpaceMotionDetector : public MotionDetector {
  public:
   // Config.
   struct Config {
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+    int verbosity = hydra::RunSettings::instance().default_verbosity;
 
     // Number of neighbors to consider for clustering of dynamic voxels.
     int neighbor_connectivity = 26;
@@ -93,7 +93,7 @@ class FreeSpaceMotionDetector : public MotionDetector {
     float min_z_coordinate = -10000.f;
 
     // Number of threads to use.
-    int num_threads = hydra::GlobalInfo::instance().getConfig().default_num_threads;
+    int num_threads = hydra::RunSettings::instance().default_num_threads;
   } const config;
 
   // FrameData structures processed by this module.

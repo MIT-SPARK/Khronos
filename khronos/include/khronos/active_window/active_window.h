@@ -44,8 +44,8 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/active_window/active_window_module.h>
-#include <hydra/common/global_info.h>
 #include <hydra/common/output_sink.h>
+#include <hydra/common/run_settings.h>
 #include <hydra/input/sensor_map.h>
 #include <hydra/reconstruction/mesh_integrator.h>
 #include <hydra/reconstruction/projective_integrator.h>
@@ -86,7 +86,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
 
   // Config.
   struct Config : hydra::ActiveWindowModule::Config {
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+    int verbosity = hydra::RunSettings::instance().default_verbosity;
 
     // Minimum duration for full updates and sending an output message [s]. A value of 0 will
     // perform full updates on every frame.
@@ -102,7 +102,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     ObjectWorkerPool::Config extraction_worker;
     //! Logs the observations of tracks handed to object extraction (off by default)
     TrackLogger::Config track_logger;
-    hydra::MeshIntegratorConfig mesh_integrator;
+    hydra::MeshIntegrator::Config mesh_integrator;
     FrameDataBuffer::Config frame_data_buffer;
     std::vector<KhronosSink::Factory> khronos_sinks;
 
@@ -118,12 +118,12 @@ class ActiveWindow : public hydra::ActiveWindowModule {
 
   // Construction.
   ActiveWindow(const Config& config,
-               const hydra::Labelspace& labelspace,
+               hydra::RunContext::ConstPtr context,
                const OutputQueue::Ptr& output_queue,
                std::unique_ptr<hydra::VolumetricWindow>&& window);
-  virtual ~ActiveWindow() = default;
+  virtual ~ActiveWindow();
 
-  std::string printInfo() const override;
+  std::string show() const override;
 
   // Access. These are not thread-safe!
   VolumetricMap& getMap() { return map_; }
@@ -134,7 +134,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
   void addKhronosSink(const KhronosSink::Ptr& sink);
 
   //! Override stop to finalize tracks and forward resulting objects
-  void stop() override;
+  void stop(bool force = false) override;
 
  protected:
   void finishMapping();

@@ -40,7 +40,6 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/common/global_info.h>
 
 #include "khronos/backend/reconciliation/mesh/mesh_merger.h"
 #include "khronos/common/common_types.h"

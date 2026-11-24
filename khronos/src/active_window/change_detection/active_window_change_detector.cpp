@@ -50,10 +50,12 @@
 namespace khronos {
 namespace {
 
-static const auto registration = config::RegistrationWithConfig<ActiveWindow::KhronosSink,
-                                                                ActiveWindowChangeDetector,
-                                                                ActiveWindowChangeDetector::Config>(
-    "ActiveWindowChangeDetector");
+static const auto registration =
+    config::RegistrationWithConfig<ActiveWindow::KhronosSink,
+                                   ActiveWindowChangeDetector,
+                                   ActiveWindowChangeDetector::Config,
+                                   hydra::RobotConfig,
+                                   hydra::Labelspace>("ActiveWindowChangeDetector");
 }
 
 void declare_config(ActiveWindowChangeDetector::Config& config) {
@@ -96,11 +98,13 @@ void declare_config(ActiveWindowChangeDetector::Config& config) {
   check<Path::Exists>(config.prior_map_path, "prior_map_path");
 }
 
-ActiveWindowChangeDetector::ActiveWindowChangeDetector(const Config& config)
+ActiveWindowChangeDetector::ActiveWindowChangeDetector(const Config& config,
+                                                       const hydra::RobotConfig& robot,
+                                                       const hydra::Labelspace& labelspace)
     : config(config::checkValid(config)),
-      transformation_getter_(config.transformation_getter.create()),
+      transformation_getter_(config.transformation_getter.create(robot)),
       controller_(config.controller.create()),
-      sinks_(ActiveWindowCDSink::instantiate(config.awcd_sinks)) {
+      sinks_(ActiveWindowCDSink::instantiate(config.awcd_sinks, robot, labelspace)) {
   controller_->setEnabled(config.start_enabled);
   MLOG(1) << "[Khronos Active Window Change Detector] Initialized with prior map path: "
           << config.prior_map_path;
@@ -185,7 +189,7 @@ std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::compute
         candidate_it == candidates.end() ? nullptr : candidate_it->second;
     const bool collect_voxels = candidate && config.collect_debug_voxels;
 
-    // TODO (multy): need to clean this once we settled on the full voxel representation
+    // TODO(multy): need to clean this once we settled on the full voxel representation
     int num_free = 0;
     int num_known = 0;
     int num_voxels_observed = 0;
@@ -624,7 +628,7 @@ void ActiveWindowChangeDetector::updateAddedFilter(
                (frame_index_ - filter.last_updated_frame) > config.added_prune_after_frames) {
       MLOG(4) << "[ActiveWindowChangeDetector] Pruning stale non-added track " << object.id;
       it = added_candidates_.erase(it);
-      // TODO (multy): rethink if ever_changed is need and the prune strategy
+      // TODO(multy): rethink if ever_changed is need and the prune strategy
       continue;
     }
     ++it;

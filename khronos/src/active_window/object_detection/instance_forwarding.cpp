@@ -171,7 +171,7 @@ void declare_config(InstanceForwarding::Config& config) {
 }
 
 InstanceForwarding::Config::Config()
-    : hydra::VerbosityConfig(hydra::VerbosityConfig::default_verbosity("instance_forwarding")) {}
+    : hydra::VerbosityConfig(VerbosityConfig::default_verbosity("instance_forwarding")) {}
 
 InstanceForwarding::InstanceForwarding(const Config& config, const hydra::Labelspace* labelspace)
     : config(config::checkValid(config)),

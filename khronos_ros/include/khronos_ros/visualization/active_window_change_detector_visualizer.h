@@ -36,12 +36,14 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <filesystem>
+#include <memory>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/common/global_info.h>
+#include <hydra/common/run_settings.h>
 #include <hydra/utils/logging.h>
 #include <hydra_visualizer/plugins/mesh_plugin.h>
 #include <hydra_visualizer/scene_graph_renderer.h>
@@ -62,12 +64,11 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
   struct Config : hydra::VerbosityConfig {
     // TODO(multy): after hydra is updated, should change it to also include a prefix like: "[Active
     // Window Change Detector Visualizer] "
-    // int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
-    Config()
-        : hydra::VerbosityConfig{hydra::GlobalInfo::instance().getConfig().default_verbosity} {}
+    // int verbosity = hydra::RunSettings::instance().default_verbosity;
+    Config() : hydra::VerbosityConfig(hydra::VerbosityConfig::default_verbosity()) {}
 
     //! Frame in which to publish visualizations.
-    std::string global_frame_name = hydra::GlobalInfo::instance().getFrames().map;
+    std::string global_frame_name;
     // TODO(multy): this should be default to some awcd dedicated frame? Not the global map frame,
     // The transformation between the global map frame and the awcd frame can be identity to
     // indicates no difference
@@ -107,6 +108,8 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
   } const config;
 
   explicit ActiveWindowChangeDetectorVisualizer(const Config& config,
+                                                const hydra::RobotConfig& robot,
+                                                const hydra::Labelspace& /* labelspace */,
                                                 const ianvs::NodeHandle* nh = nullptr);
   virtual ~ActiveWindowChangeDetectorVisualizer() = default;
 
@@ -118,6 +121,7 @@ class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::
             const ActiveWindowChangeDetector::ChangeDetectionStatus& status) const override;
 
  private:
+  const std::string frame_;
   void drawPriorGraph(const DynamicSceneGraph::Ptr& dsg) const;
 
   void visualizeChangedObjects(

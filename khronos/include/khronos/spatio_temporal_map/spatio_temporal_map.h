@@ -43,7 +43,7 @@
 #include <string>
 #include <vector>
 
-#include <hydra/common/global_info.h>
+#include <hydra/common/run_settings.h>
 
 #include "khronos/common/common_types.h"
 
@@ -56,7 +56,7 @@ class SpatioTemporalMap {
  public:
   // Config.
   struct Config {
-    int verbosity = hydra::GlobalInfo::instance().getConfig().default_verbosity;
+    int verbosity = hydra::RunSettings::instance().default_verbosity;
 
     // If true finalize the raw data as it arrives.
     bool finalize_incrementally = true;
@@ -121,8 +121,6 @@ class SpatioTemporalMap {
   std::vector<TimeStamp> stamps_;
   std::vector<DynamicSceneGraph::Ptr> dsgs_;
 
-  // TODO(lschmid): Update for better handling of different robots in the future.
-  inline static const hydra::RobotPrefixConfig robot_prefix_;
   inline static const std::string kExtension = ".4dmap";
   inline static const int kSerializationVersion = 1;
 
@@ -164,8 +162,7 @@ class SpatioTemporalMap {
   void moveObjectsBackward();
   void moveDynamicObjectAttributesBackward();
   void trimDsgToTime(TimeStamp target_time);
-  uint64_t getObjectEffectiveTime(const KhronosObjectAttributes& attrs,
-                                  const Mesh& mesh) const;
+  uint64_t getObjectEffectiveTime(const KhronosObjectAttributes& attrs, const Mesh& mesh) const;
   void updateMeshFaces(Mesh& mesh, const Mesh& src_mesh) const;
 
   std::string printTime(TimeStamp time) const {

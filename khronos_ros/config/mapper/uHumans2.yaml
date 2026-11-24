@@ -20,7 +20,7 @@ experiment:
 
 # =============================== Global & Pipeline properties ===============================
 # Global properties.
-global_frame_name: "world"
+map_frame: "world"
 default_verbosity: 2 # Set global verbosity. Can be overridden for individual modules below.
 default_num_threads: -1 # -1 for all, 1 sets the program to single threaded. Can be overridden by individual modules below.
 

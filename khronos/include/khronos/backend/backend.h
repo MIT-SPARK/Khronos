@@ -46,6 +46,7 @@
 #include <vector>
 
 #include <hydra/backend/backend_module.h>
+#include <hydra/common/run_settings.h>
 #include <hydra/common/shared_module_state.h>
 
 #include "khronos/backend/change_detection/sequential_change_detector.h"
@@ -61,7 +62,7 @@ class Backend : public hydra::BackendModule {
  public:
   // Config.
   struct Config : public hydra::BackendModule::Config {
-    int verbosity;
+    int verbosity = hydra::RunSettings::instance().default_verbosity;
 
     double max_dt_merge_proposal = 3.0;
     bool optimize_on_new_merge = true;
@@ -94,12 +95,13 @@ class Backend : public hydra::BackendModule {
 
   // Construction.
   Backend(const Config& config,
+          hydra::RunContext::ConstPtr context,
           const hydra::SharedDsgInfo::Ptr& dsg,
-          const hydra::SharedModuleState::Ptr& state);
+          const std::shared_ptr<hydra::SharedModuleState>& state);
   ~Backend();
 
   // Save data.
-  void save(const hydra::DataDirectory& log_setup) override;
+  void save(const hydra::DataDirectory* output = nullptr) override;
   bool saveProposedMerges(const hydra::DataDirectory& log_setup);
 
   // Spinning.
@@ -158,14 +160,15 @@ class Backend : public hydra::BackendModule {
   int num_frames_since_last_change_detection_ = 0;
 
   ChangeSink::List change_sinks_;
-  
+
   // Registration for factory
-  inline static const auto registration_ = config::RegistrationWithConfig<
-      hydra::BackendModule,
-      Backend,
-      Config,
-      hydra::SharedDsgInfo::Ptr,
-      hydra::SharedModuleState::Ptr>("Backend");
+  inline static const auto registration_ =
+      config::RegistrationWithConfig<hydra::BackendModule,
+                                     Backend,
+                                     Config,
+                                     hydra::RunContext::ConstPtr,
+                                     hydra::SharedDsgInfo::Ptr,
+                                     std::shared_ptr<hydra::SharedModuleState>>("Backend");
 };
 
 void declare_config(Backend::Config& config);

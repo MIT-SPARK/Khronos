@@ -60,8 +60,10 @@ class KhronosPipeline : public hydra::HydraRosPipeline {
   using BackendEvaluationCallback = std::function<
       void(TimeStamp, const DynamicSceneGraph&, const kimera_pgmo::DeformationGraph&)>;
 
-  explicit KhronosPipeline(const Config& config, ianvs::NodeHandle nh);
-  ~KhronosPipeline() = default;
+  explicit KhronosPipeline(const Config& config,
+                           hydra::RunContext::ConstPtr context,
+                           ianvs::NodeHandle nh);
+  ~KhronosPipeline();
 
   void init() override;
 
@@ -72,6 +74,8 @@ class KhronosPipeline : public hydra::HydraRosPipeline {
    * backend DSG.
    * @returns True if the save was successful, false otherwise.
    */
+  using hydra::HydraRosPipeline::save;
+
   bool save(const hydra::DataDirectory& log_setup, bool save_full_state = true);
 
   /**

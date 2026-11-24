@@ -55,7 +55,9 @@ namespace {
 static const auto registration =
     config::RegistrationWithConfig<ActiveWindow::KhronosSink,
                                    ActiveWindowVisualizer,
-                                   ActiveWindowVisualizer::Config>("ActiveWindowVisualizer");
+                                   ActiveWindowVisualizer::Config,
+                                   hydra::RobotConfig,
+                                   hydra::Labelspace>("ActiveWindowVisualizer");
 
 }
 
@@ -89,13 +91,16 @@ void declare_config(ActiveWindowVisualizer::Config& config) {
   check(config.dynamic_point_scale, GT, 0, "dynamic_point_scale");
   check(config.marker_opacity, GE, 0, "marker_opacity");
   check(config.marker_opacity, LE, 255, "marker_opacity");
-  checkCondition(!config.global_frame_name.empty(), "param 'global_frame_name' must not be empty");
   check(config.id_color_revolutions, GT, 0, "id_color_revolutions");
   check(config.bounding_box_line_width, GT, 0, "bounding_box_line_width");
 }
 
-ActiveWindowVisualizer::ActiveWindowVisualizer(const Config& config, const ianvs::NodeHandle* nh)
+ActiveWindowVisualizer::ActiveWindowVisualizer(const Config& config,
+                                               const hydra::RobotConfig& robot,
+                                               const hydra::Labelspace&,
+                                               const ianvs::NodeHandle* nh)
     : config(config::checkValid(config)),
+      frame_(config.global_frame_name.empty() ? robot.frames.map : config.global_frame_name),
       nh_(nh ? *nh : ianvs::NodeHandle::this_node("active_window_visualizer")),
       image_pubs_(nh_),
       sensor_displays_(config.sensor_displays) {
@@ -187,7 +192,7 @@ void ActiveWindowVisualizer::visualizeTrackBoundingBoxes(const Tracks& tracks) c
   MarkerArray new_markers;
   size_t id = 0u;
   std_msgs::msg::Header header;
-  header.frame_id = config.global_frame_name;
+  header.frame_id = frame_;
   header.stamp = getStamp();
   for (const Track& track : tracks) {
     BoundingBox bbox = track.last_bounding_box;
@@ -228,7 +233,7 @@ void ActiveWindowVisualizer::visualizeTrackVoxels(const Tracks& tracks) const {
   MarkerArray new_markers;
   size_t id = 0u;
   std_msgs::msg::Header header;
-  header.frame_id = config.global_frame_name;
+  header.frame_id = frame_;
   header.stamp = getStamp();
   for (const Track& track : tracks) {
     if (track.last_voxels.empty()) {
@@ -265,7 +270,7 @@ void ActiveWindowVisualizer::visualizeTrackAccumulated(const Tracks& tracks) con
   }
 
   std_msgs::msg::Header header;
-  header.frame_id = config.global_frame_name;
+  header.frame_id = frame_;
   header.stamp = getStamp();
   const auto unconfirmed_color = setColor(spark_dsg::Color(128, 128, 128, 80));
 
@@ -366,7 +371,7 @@ void ActiveWindowVisualizer::visualizeTrackPixels(const Tracks& tracks) const {
   MarkerArray new_markers;
   size_t id = 0u;
   std_msgs::msg::Header header;
-  header.frame_id = config.global_frame_name;
+  header.frame_id = frame_;
   header.stamp = getStamp();
   for (const Track& track : tracks) {
     if (track.last_points.empty()) {
@@ -437,7 +442,7 @@ void ActiveWindowVisualizer::visualizeObjectBoundingBoxes(const FrameData& data)
   new_markers.markers.reserve(data.semantic_clusters.size());
   size_t id = 0u;
   std_msgs::msg::Header header;
-  header.frame_id = config.global_frame_name;
+  header.frame_id = frame_;
   header.stamp = getStamp();
   for (const auto& cluster : data.semantic_clusters) {
     if (cluster.bounding_box.isValid()) {
@@ -471,7 +476,7 @@ void ActiveWindowVisualizer::visualizeEverFreeSlice(const VolumetricMap& map,
   msg.action = Marker::ADD;
   msg.id = 0;
   msg.header.stamp = getStamp();
-  msg.header.frame_id = config.global_frame_name;
+  msg.header.frame_id = frame_;
   msg.type = Marker::CUBE_LIST;
   msg.scale = setScale(map.config.voxel_size);
   msg.pose.orientation.w = 1.f;
@@ -516,9 +521,11 @@ void ActiveWindowVisualizer::visualizeEverFreeSlice(const VolumetricMap& map,
           if (is_unknown) {
             msg.colors.emplace_back(setColor(Color::gray(), config.marker_opacity));
           } else if (voxel.ever_free) {
-            msg.colors.emplace_back(setColor(Color::green(), config.marker_opacity));  // Free voxel.
+            msg.colors.emplace_back(
+                setColor(Color::green(), config.marker_opacity));  // Free voxel.
           } else {
-            msg.colors.emplace_back(setColor(Color::red(), config.marker_opacity));  // Occupied voxel.
+            msg.colors.emplace_back(
+                setColor(Color::red(), config.marker_opacity));  // Occupied voxel.
           }
         }
       }
@@ -542,7 +549,7 @@ void ActiveWindowVisualizer::visualizeTrackingSlice(const VolumetricMap& map,
   msg.action = Marker::ADD;
   msg.id = 0;
   msg.header.stamp = getStamp();
-  msg.header.frame_id = config.global_frame_name;
+  msg.header.frame_id = frame_;
   msg.type = Marker::CUBE_LIST;
   msg.scale = setScale(map.config.voxel_size);
   msg.pose.orientation.w = 1.f;
@@ -605,7 +612,7 @@ void ActiveWindowVisualizer::visualizeTsdfSlice(const VolumetricMap& map,
   msg.action = Marker::ADD;
   msg.id = 0;
   msg.header.stamp = getStamp();
-  msg.header.frame_id = config.global_frame_name;
+  msg.header.frame_id = frame_;
   msg.type = Marker::CUBE_LIST;
   msg.scale = setScale(map.config.voxel_size);
   msg.pose.orientation.w = 1.f;
@@ -655,7 +662,7 @@ void ActiveWindowVisualizer::visualizeDynamicPoints(const FrameData& data) const
   msg.action = Marker::ADD;
   msg.id = 0;
   msg.header.stamp = rclcpp::Time(data.input.timestamp_ns);
-  msg.header.frame_id = config.global_frame_name;
+  msg.header.frame_id = frame_;
   msg.type = Marker::POINTS;
 
   // Get all cluster points.
