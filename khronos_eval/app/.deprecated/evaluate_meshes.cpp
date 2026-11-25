@@ -1,10 +1,9 @@
-
 #include <filesystem>
 #include <string>
 
 #include <config_utilities/config_utilities.h>
 #include <config_utilities/parsing/yaml.h>
-#include <glog/logging.h>
+#include <hydra/utils/logging.h>
 #include <khronos/common/common_types.h>
 
 #include "khronos_eval/mesh_evaluator.h"
@@ -13,12 +12,6 @@
  * @brief Evaluates a number of meshes, writing results to a file in the same directory as the mesh.
  */
 int main(int argc, char** argv) {
-  FLAGS_alsologtostderr = true;
-  FLAGS_colorlogtostderr = true;
-  google::ParseCommandLineFlags(&argc, &argv, false);
-  google::InitGoogleLogging(argv[0]);
-  google::InstallFailureSignalHandler();
-
   // Check arguments.
   if (argc < 3 || argv[1] == std::string("--help") || argv[1] == std::string("-h")) {
     std::cout << "Usage: " << argv[0] << " config_file ground_truth_file dsg_file1 [dsg_file2, ...]"
@@ -59,6 +52,6 @@ int main(int argc, char** argv) {
     }
   }
 
-  LOG(INFO) << "Evaluated " << (argc - 3) << " meshes. Evaluation complete.";
+  HYDRA_LOG(INFO, "Evaluated {} meshes. Evaluation complete.", (argc - 3));
   return 0;
 }

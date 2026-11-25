@@ -43,6 +43,7 @@
 #include <vector>
 
 #include <hydra/reconstruction/index_getter.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos/utils/geometry_utils.h"
 
@@ -95,11 +96,14 @@ void FreeSpaceMotionDetector::processInput(const VolumetricMap& map, FrameData& 
   writeClustersToData(clusters, data);
 
   // Logging some info if requested.
-  MLOG(3) << "Found " << voxel_seeds.size() << " voxel seeds, clustered them into "
-          << num_initial_clusters << " initial clusters, merged "
-          << num_initial_clusters - num_merged_clusters << ", filtered out "
-          << num_merged_clusters - clusters.size() << ", resulting in " << clusters.size()
-          << " final clusters.";
+  MLOG(3,
+       "Found {} voxel seeds, clustered them into {} initial clusters, "
+       "merged {}, filtered out {}, resulting in {} final clusters.",
+       voxel_seeds.size(),
+       num_initial_clusters,
+       num_initial_clusters - num_merged_clusters,
+       num_merged_clusters - clusters.size(),
+       clusters.size());
 }
 
 void FreeSpaceMotionDetector::setUpPointMap(const FrameData& data,
@@ -392,7 +396,7 @@ void FreeSpaceMotionDetector::writeClustersToData(const MeasurementClusters& clu
       data.dynamic_image.at<FrameData::DynamicImageType>(pixel.v, pixel.u) = id;
     }
     if (id == 255) {
-      LOG(WARNING) << "Maximum number (255) of dynamic clusters reached.";
+      HYDRA_LOG(WARNING, "Maximum number (255) of dynamic clusters reached.");
     }
     if (id < 255) {
       id++;

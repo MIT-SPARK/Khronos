@@ -39,6 +39,7 @@
 
 #include <hydra/input/sensor_utilities.h>
 #include <hydra/reconstruction/integration_masking.h>
+#include <hydra/utils/logging.h>
 
 namespace khronos {
 namespace {
@@ -113,8 +114,9 @@ SensorProcessor::SensorProcessor(const Config& config, const hydra::Labelspace& 
       object_detector(config.object_detector.create(&labelspace)),
       tracker(config.tracker.create()) {
   if (!tracker && (config.motion_detector || config.object_detector)) {
-    MLOG_NAMED(WARN) << "Tracker was not specified but motion and/or object detector "
-                        "is present. These detections will not be tracked or extracted.";
+    MLOG_NAMED(WARN,
+               "Tracker was not specified but motion and/or object detector "
+               "is present. These detections will not be tracked or extracted.");
   }
 }
 
@@ -134,15 +136,16 @@ ActiveWindow::ActiveWindow(const Config& config,
                                       context->labelspace())),
       frame_data_buffer_(config.frame_data_buffer) {
   if (!map_window_) {
-    MLOG_NAMED(WARN) << "map_window is required. Set active_window.map_window "
-                        "in config (e.g. type: spatial or type: temporal).";
+    MLOG_NAMED(WARN,
+               "map_window is required. Set active_window.map_window in "
+               "config (e.g. type: spatial or type: temporal).");
   }
 
   if (!map_.config.with_tracking) {
-    MLOG_NAMED(WARN)
-        << "Tracking layer disabled for volumetric map! Tracking "
-           "layer is strongly recommended as block archival and motion detection may not "
-           "work as intended!";
+    MLOG_NAMED(
+        WARN,
+        "Tracking layer disabled for volumetric map! Tracking layer is "
+        "strongly recommended as block archival and motion detection may not work as intended!");
   }
 }
 
@@ -194,7 +197,7 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
   const auto sensor_name = data->input.getSensor().name;
   const auto processor = processors_.get(sensor_name);
   if (!processor) {
-    MLOG(1) << "Unknown sensor '" << sensor_name << "'";
+    MLOG(1, "Unknown sensor '{}'", sensor_name);
     return nullptr;
   }
 
@@ -231,12 +234,17 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
     track_logger_->snapshot(*evicted, tracks_);
   }
 
-  MLOG(3) << "Frame data buffer size: " << frame_data_buffer_.size()
-          << ", object extraction threads running: " << extraction_worker_.numRunning() << ".";
+  MLOG(3,
+       "Frame data buffer size: {}, object extraction threads running: {}.",
+       frame_data_buffer_.size(),
+       extraction_worker_.numRunning());
   if (num_frames_processed_ % 10 == 0) {
-    MLOG(2) << "Processed input frame " << num_frames_processed_ << " (" << stamp
-            << "). Queues: " << input_queue_->size() << " input,  " << output_queue_->size()
-            << " frontend.";
+    MLOG(2,
+         "Processed input frame {} ({}). Queues: {} input,  {} frontend.",
+         num_frames_processed_,
+         stamp,
+         input_queue_->size(),
+         output_queue_->size());
   }
 
   ++num_frames_processed_;
@@ -252,7 +260,7 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::spinOnce(const hydra::InputData::Pt
   }
 
   // Extract the resulting output and push to frontend queue.
-  MLOG(3) << "Extracting output data.";
+  MLOG(3, "Extracting output data.");
   auto output = extractOutputData(*data, config.detach_object_extraction);
   last_full_upated_ = stamp;
 
@@ -280,7 +288,7 @@ void ActiveWindow::finishMapping() {
   // Extract objects and wait for them to finish extraction.
   const auto latest = frame_data_buffer_.getLatestData();
   if (!latest) {
-    LOG_IF(WARNING, num_frames_processed_ > 0) << "Unable to get last frame from buffer!";
+    HYDRA_LOG_IF(WARNING, num_frames_processed_ > 0, "Unable to get last frame from buffer!");
     return;
   }
 
@@ -322,7 +330,7 @@ hydra::ActiveWindowOutput::Ptr ActiveWindow::extractOutputData(const FrameData& 
   // window smaller than min_input_separation_s (or in other rarer situations where the data period
   // is larger than the temporal window)
   tracking_integrator_.resetInactive(map_, &output->archived);
-  MLOG(3) << "Archiving " << output->archived.size() << " blocks.";
+  MLOG(3, "Archiving {} blocks.", output->archived.size());
 
   extractInactiveObjects();
   if (!threaded) {
@@ -380,7 +388,7 @@ std::unique_ptr<FrameData> ActiveWindow::createData(const hydra::InputData::Ptr&
 
   // Normalize raw input packet into the standard format.
   if (!input->finalize(true, map_.hasSemantics())) {
-    MLOG_NAMED(ERROR) << "Input packet preprocessing failed. Skipping frame.";
+    MLOG_NAMED(ERROR, "Input packet preprocessing failed. Skipping frame.");
     return nullptr;
   }
 

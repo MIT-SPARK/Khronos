@@ -20,7 +20,6 @@
   <depend>hydra_ros</depend>
   <depend>khronos</depend>
   <depend>khronos_msgs</depend>
-  <depend>libgflags-dev</depend>
   <depend>rclcpp</depend>
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>

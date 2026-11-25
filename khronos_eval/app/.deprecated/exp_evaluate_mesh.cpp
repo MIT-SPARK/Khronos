@@ -1,10 +1,9 @@
-
 #include <filesystem>
 #include <string>
 
 #include <config_utilities/config_utilities.h>
 #include <config_utilities/parsing/yaml.h>
-#include <glog/logging.h>
+#include <hydra/utils/logging.h>
 #include <khronos/common/common_types.h>
 #include <khronos_ros/experiments/experiment_directory.h>
 #include <khronos_ros/experiments/experiment_logger.h>
@@ -15,12 +14,6 @@
  * @brief Evaluates all meshes in an experiment directory.
  */
 int main(int argc, char** argv) {
-  FLAGS_alsologtostderr = true;
-  FLAGS_colorlogtostderr = true;
-  google::ParseCommandLineFlags(&argc, &argv, false);
-  google::InitGoogleLogging(argv[0]);
-  google::InstallFailureSignalHandler();
-
   // Check arguments.
   if (argc < 4 || argc > 5 || argv[1] == std::string("--help") || argv[1] == std::string("-h")) {
     std::cout << "Usage: " << argv[0]
@@ -49,14 +42,14 @@ int main(int argc, char** argv) {
   // Setup experiment logging.
   khronos::ExperimentLogger logger(experiment_directory);
   if (logger.hasFlag("Mesh Evaluated") && !force_recompute) {
-    LOG(INFO) << "Meshes for '" << experiment_directory << "' already evaluated.";
+    HYDRA_LOG(INFO, "Meshes for '{}' already evaluated.", experiment_directory);
     return 0;
   }
 
   // Get and all map files.
   std::vector<std::string> map_dirs = khronos::getMapDirectories(experiment_directory);
   if (map_dirs.empty()) {
-    LOG(INFO) << "No maps to evaluate in '" << experiment_directory << "'.";
+    HYDRA_LOG(INFO, "No maps to evaluate in '{}'.", experiment_directory);
     return 0;
   }
 
@@ -66,7 +59,7 @@ int main(int argc, char** argv) {
     return 1;
   }
   logger.log("Evaluating meshes.");
-  LOG(INFO) << "Evaluating meshes\n" << config;
+  HYDRA_LOG(INFO, "Evaluating meshes\n{}", config);
 
   // Verify all map files exist.
   for (auto it = map_dirs.begin(); it != map_dirs.end();) {
@@ -74,7 +67,7 @@ int main(int argc, char** argv) {
     if (!std::filesystem::exists(full_file_name)) {
       const std::string msg =
           "Map file '" + *it + "/" + map_file_names + "' does not exist, skipping.";
-      LOG(WARNING) << msg;
+      HYDRA_LOG(WARNING, "{}", msg);
       logger.log(msg);
       it = map_dirs.erase(it);
     } else {
@@ -82,7 +75,7 @@ int main(int argc, char** argv) {
     }
   }
   if (map_dirs.empty()) {
-    LOG(INFO) << "No maps to evaluate in '" << experiment_directory << "'.";
+    HYDRA_LOG(INFO, "No maps to evaluate in '{}'.", experiment_directory);
     logger.log("Evaluation finished: No maps to evaluate in '" + experiment_directory + "'.");
     return 1;
   }
@@ -97,7 +90,7 @@ int main(int argc, char** argv) {
       std::filesystem::remove(output_file);
       const std::string msg =
           "Force recompute: Removing existing '" + result_dir_name + "/" + result_file_name + "'.";
-      LOG(INFO) << msg;
+      HYDRA_LOG(INFO, "{}", msg);
       logger.log(msg);
     }
   } else {
@@ -122,7 +115,7 @@ int main(int argc, char** argv) {
   if (!std::filesystem::exists(output_file)) {
     const std::string msg =
         "Mesh evaluation completed unsuccessfully: No output file was generated.";
-    LOG(ERROR) << msg;
+    HYDRA_LOG(ERROR, "{}", msg);
     logger.log(msg);
     return 1;
   }
@@ -134,7 +127,7 @@ int main(int argc, char** argv) {
   if (lines == 0) {
     const std::string msg =
         "Mesh evaluation completed unsuccessfully: No data was written to the output file.";
-    LOG(ERROR) << msg;
+    HYDRA_LOG(ERROR, "{}", msg);
     logger.log(msg);
     return 1;
   }
@@ -143,7 +136,7 @@ int main(int argc, char** argv) {
   const std::string msg = "Mesh evaluation completed successfully: Wrote " + std::to_string(lines) +
                           " lines to '" + result_dir_name + "/" + result_file_name + "'.";
   logger.log(msg);
-  LOG(INFO) << msg;
+  HYDRA_LOG(INFO, "{}", msg);
   logger.setFlag("Mesh Evaluated");
 
   return 0;

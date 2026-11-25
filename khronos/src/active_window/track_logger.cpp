@@ -1,3 +1,4 @@
+#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -35,8 +36,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#include "khronos/active_window/track_logger.h"
-
 #include <algorithm>
 #include <limits>
 #include <map>
@@ -48,13 +47,14 @@
 #include <config_utilities/types/enum.h>
 #include <config_utilities/types/path.h>
 #include <config_utilities/validation.h>
-#include <glog/logging.h>
 #include <hydra/input/input_data_io.h>
 #include <hydra/utils/data_directory.h>
 #include <nlohmann/json.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <yaml-cpp/yaml.h>
+
+#include "khronos/active_window/track_logger.h"
 
 namespace khronos {
 namespace {
@@ -279,7 +279,7 @@ void TrackLogger::snapshot(const FrameData& frame, const Tracks& tracks) {
       }
     }
   } catch (const std::exception& e) {
-    MLOG_NAMED(WARN) << "Failed to snapshot frame " << frame.input.timestamp_ns << ": " << e.what();
+    MLOG_NAMED(WARN, "Failed to snapshot frame {}: {}", frame.input.timestamp_ns, e.what());
   }
 }
 
@@ -363,13 +363,13 @@ void TrackLogger::log(const Track& track,
 
     std::lock_guard<std::mutex> lock(mutex_);
     if (config.max_queue_size && queue_.size() >= config.max_queue_size) {
-      MLOG_NAMED(WARN) << "Queue full (" << queue_.size() << "), dropping track " << track.id;
+      MLOG_NAMED(WARN, "Queue full ({}), dropping track {}", queue_.size(), track.id);
       return;
     }
 
     queue_.push_back(std::move(request));
   } catch (const std::exception& e) {
-    MLOG_NAMED(WARN) << "Failed to queue track " << track.id << ": " << e.what();
+    MLOG_NAMED(WARN, "Failed to queue track {}: {}", track.id, e.what());
     return;
   }
 
@@ -403,7 +403,7 @@ void TrackLogger::spin() {
     try {
       write(request);
     } catch (const std::exception& e) {
-      MLOG_NAMED(WARN) << "Failed to write track " << request.track.id << ": " << e.what();
+      MLOG_NAMED(WARN, "Failed to write track {}: {}", request.track.id, e.what());
     }
 
     {
@@ -575,8 +575,7 @@ void TrackLogger::write(const Request& request) const {
       images = candidate.evicted->images;
       if (kept[k] && !images) {
         // not expected: snapshots keep the images of the track's best observations
-        MLOG_NAMED(WARN) << "Track " << track.id << ": no images for observation "
-                         << candidate.stamp;
+        MLOG_NAMED(WARN, "Track {}: no images for observation {}", track.id, candidate.stamp);
         kept[k] = false;
       }
     }

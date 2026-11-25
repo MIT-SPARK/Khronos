@@ -42,7 +42,6 @@
 #include <Eigen/Geometry>
 #include <config_utilities/config.h>
 #include <config_utilities/validation.h>
-#include <glog/logging.h>
 #include <hydra/utils/logging.h>
 
 namespace khronos {
@@ -70,7 +69,7 @@ void declare_config(TFTransformationGetter::Config& config) {
 
 TFTransformationGetter::TFTransformationGetter(const Config& cfg, const hydra::RobotConfig& robot)
     : config(config::checkValid(cfg)), tf_lookup_(config.tf_lookup, robot.frames) {
-  MLOG(1) << "TF listener created (" << config.prior_frame_id << " -> " << getRobotFrame() << ")";
+  MLOG(1, "TF listener created ({} -> {})", config.prior_frame_id, getRobotFrame());
 
   lookup_thread_ = std::thread(&TFTransformationGetter::spin, this);
 }
@@ -88,7 +87,7 @@ TFTransformationGetter::~TFTransformationGetter() {
 std::optional<Eigen::Isometry3d> TFTransformationGetter::getTransformation() const {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!last_status_) {
-    LOG_EVERY_N(WARNING, 10) << "No transformation to prior map found";
+    HYDRA_LOG_EVERY_N(WARNING, 10, "No transformation to prior map found");
     return std::nullopt;
   }
 
@@ -103,7 +102,7 @@ std::optional<Eigen::Isometry3d> TFTransformationGetter::getTransformation() con
     return std::nullopt;
   }
 
-  MLOG(1) << "TF changed by " << dt << " m, " << dr << " rad, reporting new transform.";
+  MLOG(1, "TF changed by {} m, {} rad, reporting new transform.", dt, dr);
   last_reported_ = current_T_prior;
   has_last_ = true;
   return current_T_prior;

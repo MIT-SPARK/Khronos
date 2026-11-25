@@ -71,7 +71,6 @@ launch:
   #- {name: odom_frame_id, value: odom}
   #- {name: map_frame_id, value: map}
   #- {name: should_use_sim_time, value: $(var sim_time_required)}
-  #- {name: glog_to_dir, value: 'true'}
   #- {name: use_lcd, value: 'true'}
   #- {name: lcd_no_detection, value: 'false'}
   ## clean, noisy

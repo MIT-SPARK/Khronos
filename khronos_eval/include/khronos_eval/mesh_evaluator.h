@@ -7,7 +7,6 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <glog/logging.h>
 #include <hydra/utils/logging.h>
 #include <hydra/utils/nearest_neighbor_utilities.h>
 #include <khronos/common/common_types.h>
@@ -139,8 +138,8 @@ class MeshEvaluator {
   std::string writeHeader() const;
   std::string writeMetrics(const std::string& name, const Metrics& metrics) const;
 
-  void log(const std::string& message) const { MLOG(1) << message; }
-  void logError(const std::string& message) const { MLOG_NAMED(ERROR) << message; }
+  void log(const std::string& message) const { MLOG(1, "{}", message); }
+  void logError(const std::string& message) const { MLOG_NAMED(ERROR, "{}", message); }
 
  private:
   // Ground truth data.

@@ -3,6 +3,7 @@
 #include <string>
 
 #include <config_utilities/parsing/yaml.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos_eval/pipeline_evaluator.h"
 
@@ -36,12 +37,6 @@ PipelineEvaluator::EvaluationConfig parseConfig(int argc, char** argv) {
 }  // namespace khronos
 
 int main(int argc, char** argv) {
-  FLAGS_alsologtostderr = true;
-  FLAGS_colorlogtostderr = true;
-  google::ParseCommandLineFlags(&argc, &argv, false);
-  google::InitGoogleLogging(argv[0]);
-  google::InstallFailureSignalHandler();
-
   // Check arguments.
   if (argc < 2 || argc > 7 || argv[1] == std::string("--help") || argv[1] == std::string("-h")) {
     std::cout << "Usage: " << argv[0]

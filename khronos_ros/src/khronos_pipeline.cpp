@@ -41,6 +41,7 @@
 
 #include <config_utilities/config_utilities.h>
 #include <config_utilities/parsing/context.h>
+#include <hydra/utils/logging.h>
 #include <hydra_ros/backend/ros_backend_publisher.h>
 #include <hydra_ros/frontend/ros_frontend_publisher.h>
 #include <khronos/active_window/active_window.h>
@@ -101,7 +102,7 @@ void KhronosPipeline::init() {
       khronos_active_window_->addKhronosSink(AWSink::fromCallback(aw_evaluation_callback_));
     }
   } else {
-    LOG(ERROR) << "Active window is not khronos::ActiveWindow!";
+    HYDRA_LOG(ERROR, "Active window is not khronos::ActiveWindow!");
   }
 
   if (khronos_backend_) {
@@ -112,13 +113,13 @@ void KhronosPipeline::init() {
           changes_pub_->publish(msg);
         }));
   } else {
-    LOG(ERROR) << "Backend is not khronos::Backend!";
+    HYDRA_LOG(ERROR, "Backend is not khronos::Backend!");
   }
 }
 
 bool KhronosPipeline::save(const hydra::DataDirectory& log_setup, bool save_full) {
   if (!log_setup) {
-    MLOG_NAMED(WARN) << "Could not save: Invalid log setup.";
+    MLOG_NAMED(WARN, "Could not save: Invalid log setup.");
     return false;
   }
 
@@ -135,7 +136,7 @@ bool KhronosPipeline::save(const hydra::DataDirectory& log_setup, bool save_full
     }
   }
 
-  MLOG(2) << "Saved " << (save_full ? "full state" : "eval") << " to '" << log_setup.path() << "'.";
+  MLOG(2, "Saved {} to '{}'.", (save_full ? "full state" : "eval"), log_setup.path());
   return true;
 }
 

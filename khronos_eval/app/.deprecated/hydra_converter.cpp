@@ -1,9 +1,7 @@
-
 #include <filesystem>
 #include <iostream>
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
+#include <hydra/utils/logging.h>
 #include <khronos/common/common_types.h>
 #include <khronos_ros/experiments/experiment_directory.h>
 
@@ -28,12 +26,6 @@ std::vector<std::string> getMapNames2(const std::string& directory) {
  * @brief reconcile all maps of an experiment directory
  */
 int main(int argc, char** argv) {
-  FLAGS_alsologtostderr = true;
-  FLAGS_colorlogtostderr = true;
-  google::ParseCommandLineFlags(&argc, &argv, false);
-  google::InitGoogleLogging(argv[0]);
-  google::InstallFailureSignalHandler();
-
   // Check arguments.
   if (argc != 2 || argv[1] == std::string("--help") || argv[1] == std::string("-h")) {
     std::cout << "Usage: " << argv[0] << " <target_directory>" << std::endl;

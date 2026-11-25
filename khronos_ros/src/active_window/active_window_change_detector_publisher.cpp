@@ -1,3 +1,4 @@
+#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -35,11 +36,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#include "khronos_ros/active_window/active_window_change_detector_publisher.h"
-
 #include <config_utilities/config.h>
-#include <glog/logging.h>
 #include <rclcpp/time.hpp>
+
+#include "khronos_ros/active_window/active_window_change_detector_publisher.h"
 
 namespace khronos {
 
@@ -83,7 +83,7 @@ ActiveWindowChangeDetectorPublisher::ActiveWindowChangeDetectorPublisher(
   // once the robot is rediscovered, even though the robot only publishes on change.
   changes_pub_ = nh_.create_publisher<khronos_msgs::msg::AwcdChanges>(
       config.topic, rclcpp::QoS(1).transient_local().reliable());
-  MLOG(1) << "Initialized.";
+  MLOG(1, "Initialized.");
 }
 
 void ActiveWindowChangeDetectorPublisher::call(

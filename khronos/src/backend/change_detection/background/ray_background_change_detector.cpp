@@ -37,6 +37,8 @@
 
 #include "khronos/backend/change_detection/background/ray_background_change_detector.h"
 
+#include <hydra/utils/logging.h>
+
 namespace khronos {
 
 void declare_config(RayBackgroundChangeDetector::Config& config) {
@@ -82,8 +84,10 @@ void RayBackgroundChangeDetector::detectChanges(const DynamicSceneGraph& dsg,
   }
 
   if (!ray_verificator_->getReobservedVertices().empty()) {
-    MLOG(2) << "Recomputed " << ray_verificator_->getReobservedVertices().size()
-            << " vertices, finding " << num_updates << " changed entries.";
+    MLOG(2,
+         "Recomputed {} vertices, finding {} changed entries.",
+         ray_verificator_->getReobservedVertices().size(),
+         num_updates);
   }
 }
 

@@ -1,8 +1,8 @@
 #include <config_utilities/external_registry.h>
 #include <config_utilities/parsing/context.h>
 #include <config_utilities/settings.h>
-#include <gflags/gflags.h>
-#include <glog/logging.h>
+#include <hydra/common/run_settings.h>
+#include <hydra/utils/logging.h>
 #include <hydra_visualizer/visualizer_node.h>
 #include <rclcpp/rclcpp.hpp>
 
@@ -10,16 +10,16 @@
 
 struct NodeSettings {
   std::vector<std::string> external_library_paths;
-  int glog_verbosity = 1;
-  int glog_level = 0;
+
+  std::string log_level = "info";
 };
 
 void declare_config(NodeSettings& config) {
   using namespace config;
   name("NodeSettings");
   field(config.external_library_paths, "external_library_paths");
-  field(config.glog_verbosity, "glog_verbosity");
-  field(config.glog_level, "glog_level");
+
+  field(config.log_level, "log_level");
 }
 
 int main(int argc, char** argv) {
@@ -29,13 +29,8 @@ int main(int argc, char** argv) {
 
   const auto node_settings = config::fromContext<NodeSettings>();
 
-  FLAGS_minloglevel = node_settings.glog_level;
-  FLAGS_v = node_settings.glog_verbosity;
-  FLAGS_logtostderr = 1;
-  FLAGS_colorlogtostderr = 1;
-
-  google::InitGoogleLogging(argv[0]);
-  google::InstallFailureSignalHandler();
+  hydra::logging::setLogLevel(node_settings.log_level);
+  hydra::RunSettings::init(config::fromContext<hydra::RunSettings::Config>());
 
   [[maybe_unused]] const auto plugins =
       config::loadExternalFactories(node_settings.external_library_paths);
@@ -47,7 +42,7 @@ int main(int argc, char** argv) {
   auto graph_wrapper = dsg_config.graph.create();
   auto stamped_graph = graph_wrapper->get();
   if (!stamped_graph) {
-    LOG(ERROR) << "No graph available";
+    HYDRA_LOG(ERROR, "No graph available");
     return 1;
   }
 

@@ -40,7 +40,6 @@
 #include <config_utilities/config.h>
 #include <config_utilities/validation.h>
 #include <geometry_msgs/msg/transform_stamped.hpp>
-#include <glog/logging.h>
 #include <hydra/utils/logging.h>
 
 namespace khronos {
@@ -75,8 +74,10 @@ TfIcpPublisher::TfIcpPublisher(const Config& cfg,
 
   // Seed identity so map → odom TF chain is resolvable before the first ICP result.
   broadcastTransform(Eigen::Isometry3d::Identity());
-  MLOG(1) << "Initialized (" << config.pre_icp_odom_frame << " -> " << getOdomFrame()
-          << "). Seeded identity transform.";
+  MLOG(1,
+       "Initialized ({} -> {}). Seeded identity transform.",
+       config.pre_icp_odom_frame,
+       getOdomFrame());
 }
 
 void TfIcpPublisher::call(const DynamicSceneGraph::Ptr&,
@@ -95,8 +96,10 @@ void TfIcpPublisher::call(const DynamicSceneGraph::Ptr&,
                                              config.tf_lookup,
                                              &err);
   if (!status) {
-    MLOG(2) << "TF lookup map -> " << config.pre_icp_odom_frame << " failed: " << err
-            << ". Broadcasting identity.";
+    MLOG(2,
+         "TF lookup map -> {} failed: {}. Broadcasting identity.",
+         config.pre_icp_odom_frame,
+         err);
     broadcastTransform(Eigen::Isometry3d::Identity());
     return;
   }

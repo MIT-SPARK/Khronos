@@ -2,13 +2,14 @@
 
 #include <filesystem>
 
+#include <hydra/utils/logging.h>
 #include <pcl/io/ply_io.h>
 
 namespace khronos {
 
 bool loadPlyCloud(const std::string& file_path, Points& vertices, std::vector<Color>& colors) {
   if (!std::filesystem::exists(file_path)) {
-    LOG(ERROR) << "PLY point cloud file '" << file_path << "' does not exist.";
+    HYDRA_LOG(ERROR, "PLY point cloud file '{}' does not exist.", file_path);
     return false;
   }
 
@@ -17,7 +18,7 @@ bool loadPlyCloud(const std::string& file_path, Points& vertices, std::vector<Co
   pcl::PLYReader ply_reader;
   pcl::PolygonMesh mesh;
   if (ply_reader.read(file_path, mesh) != 0) {
-    LOG(ERROR) << "Failed to load PLY point cloud file '" << file_path << "'.";
+    HYDRA_LOG(ERROR, "Failed to load PLY point cloud file '{}'.", file_path);
     return false;
   }
 
@@ -25,7 +26,7 @@ bool loadPlyCloud(const std::string& file_path, Points& vertices, std::vector<Co
   pcl::PointCloud<pcl::PointXYZRGBA> points;
   pcl::fromPCLPointCloud2(mesh.cloud, points);
   if (points.empty()) {
-    LOG(ERROR) << "PLY point cloud '" << file_path << "' has no vertices.";
+    HYDRA_LOG(ERROR, "PLY point cloud '{}' has no vertices.", file_path);
     return false;
   }
 

@@ -42,6 +42,7 @@
 #include <thread>
 
 #include <config_utilities/types/path.h>
+#include <hydra/utils/logging.h>
 #include <khronos/utils/geometry_utils.h>
 #include <khronos/utils/khronos_attribute_utils.h>
 #include <spark_dsg/colormaps.h>
@@ -94,7 +95,7 @@ SpatioTemporalVisualizer::SpatioTemporalVisualizer(const Config& config, ianvs::
       dsg_renderer_(config.scene_graph, nh),
       map_(SpatioTemporalMap::Config()) {
   // Load all data and setup.
-  LOG(INFO) << "Config:\n" << config;
+  HYDRA_LOG(INFO, "Config:\n{}", config);
   loadMap();
   dynamic_config_.setCallback(std::bind(&SpatioTemporalVisualizer::onConfigUpdate, this));
   setupRos();
@@ -106,7 +107,7 @@ SpatioTemporalVisualizer::SpatioTemporalVisualizer(const Config& config, ianvs::
                                                       this,
                                                       std::placeholders::_1,
                                                       std::placeholders::_2));
-  LOG(INFO) << "SpatioTemporalVisualizer initialized.";
+  HYDRA_LOG(INFO, "SpatioTemporalVisualizer initialized.");
 
   using namespace std::chrono_literals;
   timer_ = nh_.create_timer(10ms, true, [this]() { spinOnce(); });
@@ -629,12 +630,12 @@ void SpatioTemporalVisualizer::setTimeModeCb(SetTimeMode::Request::SharedPtr req
                                              SetTimeMode::Response::SharedPtr res) {
   // Set the time mode.
   if (req->time_mode > 2) {
-    LOG(ERROR) << "Invalid time mode '" << req->time_mode << "'.";
+    HYDRA_LOG(ERROR, "Invalid time mode '{}'.", req->time_mode);
     res->resulting_time_mode = static_cast<int>(time_mode_);
     return;
   }
   if (playing_) {
-    LOG(WARNING) << "Can not set time mode while playing.";
+    HYDRA_LOG(WARNING, "Can not set time mode while playing.");
     res->resulting_time_mode = static_cast<int>(time_mode_);
     return;
   }
@@ -650,7 +651,7 @@ void SpatioTemporalVisualizer::setStateCb(SetState::Request::SharedPtr req,
                                           SetState::Response::SharedPtr /* res */) {
   if (playing_) {
     // NOTE(lschmid): Could change this in the future.
-    LOG(WARNING) << "Can not set time while playing.";
+    HYDRA_LOG(WARNING, "Can not set time while playing.");
     return;
   }
 
@@ -697,10 +698,10 @@ void SpatioTemporalVisualizer::setupRos() {
 }
 
 void SpatioTemporalVisualizer::loadMap() {
-  LOG(INFO) << "Loading 4D map from '" << config.map_file << "' ...";
+  HYDRA_LOG(INFO, "Loading 4D map from '{}' ...", config.map_file);
   auto map = SpatioTemporalMap::load(config.map_file);
   if (!map) {
-    LOG(ERROR) << "Failed to load map from '" << config.map_file << "'.";
+    HYDRA_LOG(ERROR, "Failed to load map from '{}'.", config.map_file);
     return;
   }
   map_ = std::move(*map);
@@ -711,11 +712,18 @@ void SpatioTemporalVisualizer::loadMap() {
   robot_time_ = std::clamp(robot_time_, map_.earliest(), map_.latest());
   query_time_ = std::clamp(query_time_, map_.earliest(), robot_time_);
 
-  MLOG(1) << "Loaded map with " << map_.numTimeSteps() << " DSGs.\n"
-          << "Earliest: " << map_.earliest() << " (" << stampToSec(map_.earliest())
-          << "s)\nLatest: " << map_.latest() << " (" << stampToSec(map_.latest())
-          << "s).\nRobot time: " << robot_time_ << " (" << stampToSec(robot_time_)
-          << "s)\nQuery time: " << query_time_ << " (" << stampToSec(query_time_) << "s).";
+  MLOG(1,
+       "Loaded map with {} DSGs.\nEarliest: {} ({}s)\nLatest: {} ({}s).\nRobot time: {} "
+       "({}s)\nQuery time: {} ({}s).",
+       map_.numTimeSteps(),
+       map_.earliest(),
+       stampToSec(map_.earliest()),
+       map_.latest(),
+       stampToSec(map_.latest()),
+       robot_time_,
+       stampToSec(robot_time_),
+       query_time_,
+       stampToSec(query_time_));
 
   time_mode_ = config.initial_time_mode;
 }

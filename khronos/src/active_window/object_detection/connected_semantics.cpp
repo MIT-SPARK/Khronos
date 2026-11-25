@@ -43,6 +43,7 @@
 #include <config_utilities/config.h>
 #include <config_utilities/factory.h>
 #include <config_utilities/validation.h>
+#include <hydra/utils/logging.h>
 
 namespace khronos {
 namespace {
@@ -243,9 +244,11 @@ void ConnectedSemantics::filterClusters(FrameData& data) const {
     }
   }
 
-  MLOG(3) << "Identified " << data.semantic_clusters.size() + num_erased_clusters
-          << " clusters, erased " << num_erased_clusters << " (" << data.semantic_clusters.size()
-          << " total).";
+  MLOG(3,
+       "Identified {} clusters, erased {} ({} total).",
+       data.semantic_clusters.size() + num_erased_clusters,
+       num_erased_clusters,
+       data.semantic_clusters.size());
 }
 
 }  // namespace khronos

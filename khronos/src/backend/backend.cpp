@@ -1,3 +1,4 @@
+#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -35,19 +36,17 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#include "khronos/backend/backend.h"
-
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
 
 #include <config_utilities/types/path.h>
-#include <glog/logging.h>
 #include <hydra/backend/mst_factors.h>
 #include <hydra/utils/pgmo_mesh_traits.h>
 #include <kimera_pgmo/utils/common_functions.h>
 #include <kimera_pgmo/utils/mesh_io.h>
 
+#include "khronos/backend/backend.h"
 #include "khronos/backend/change_state.h"
 #include "khronos/common/common_types.h"
 
@@ -149,7 +148,7 @@ void Backend::spinCallback(const hydra::BackendInput& input) {
 
   // TODO(lschmid): Update the hydra logic to not just drop packages in the counting.
   if (!updatePrivateDsg(timestamp_ns, false)) {
-    MLOG(3) << "skipping input @" << timestamp_ns << ".";
+    MLOG(3, "skipping input @{}.", timestamp_ns);
     // we only read from the frontend dsg if we've processed all the
     // factor graph update packets (as long as force_update is false)
     // we still log the status for each received frontend packet
@@ -172,7 +171,7 @@ void Backend::spinCallback(const hydra::BackendInput& input) {
     dsg_updater_->callUpdateFunctions(timestamp_ns, info);
   }
 
-  MLOG(2) << "Proposed " << new_proposed_merges_.size() << " node merges.";
+  MLOG(2, "Proposed {} node merges.", new_proposed_merges_.size());
 
   // Run incremental change detection if desired. -1: disabled, 0: on LC only, >0: every n frames
   if (config.run_change_detection_every_n_frames >= 0) {
@@ -216,7 +215,7 @@ void Backend::runChangeDetectionThread(DynamicSceneGraph::Ptr dsg,
   map_.update(dsg, stamp);
 
   ChangeSink::callAll(change_sinks_, last_timestamp_received_, changes);
-  MLOG(2) << "Change detection completed: " << map_.numTimeSteps() << " time steps in 4D map.";
+  MLOG(2, "Change detection completed: {} time steps in 4D map.", map_.numTimeSteps());
 }
 
 void Backend::finishProcessing() {
@@ -301,7 +300,7 @@ void Backend::save(const hydra::DataDirectory* output) {
   {
     std::lock_guard<std::mutex> lock(map_mutex_);
     if (map_.save(path / "final.4dmap")) {
-      MLOG(1) << "Saved 4D map with " << map_.numTimeSteps() << " time steps to '" << path << "'.";
+      MLOG(1, "Saved 4D map with {} time steps to '{}'.", map_.numTimeSteps(), path);
     }
 
     // Save individual DSGs from the 4D map
@@ -324,7 +323,7 @@ void Backend::save(const hydra::DataDirectory* output) {
     }
 
     if (map_.numTimeSteps() > 0) {
-      MLOG(1) << "Saved " << map_.numTimeSteps() << " individual DSGs to '" << maps_path << "'.";
+      MLOG(1, "Saved {} individual DSGs to '{}'.", map_.numTimeSteps(), maps_path);
     }
   }
 }

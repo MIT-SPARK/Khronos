@@ -1,3 +1,4 @@
+#include <hydra/utils/logging.h>
 /* -----------------------------------------------------------------------------
  * Copyright 2022 Massachusetts Institute of Technology.
  * All Rights Reserved
@@ -34,7 +35,6 @@
  * -------------------------------------------------------------------------- */
 #include <limits>
 
-#include <glog/logging.h>
 #include <gtest/gtest.h>
 #include <khronos/active_window/object_detection/instance_forwarding.h>
 

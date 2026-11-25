@@ -40,6 +40,7 @@
 #include <sstream>
 
 #include <hydra/common/run_settings.h>
+#include <hydra/utils/logging.h>
 #include <spark_dsg/colormaps.h>
 
 #include "khronos/active_window/data/reconstruction_types.h"
@@ -159,12 +160,15 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractDynamicObject(
 
   // Aggregate all results.
   if (object->trajectory_positions.empty()) {
-    MLOG(3) << "Dropping dynamic " << getTrackName(track) << ": no obesrvations.";
+    MLOG(3, "Dropping dynamic {}: no obesrvations.", getTrackName(track));
     return nullptr;
   }
   if (max_displacement < config.min_dynamic_displacement) {
-    MLOG(3) << "Dropping dynamic " << getTrackName(track) << ": low displacement ("
-            << max_displacement << " < " << config.min_dynamic_displacement << ").";
+    MLOG(3,
+         "Dropping dynamic {}: low displacement ({} < {}).",
+         getTrackName(track),
+         max_displacement,
+         config.min_dynamic_displacement);
     return nullptr;
   }
   object->bounding_box = BoundingBox(bbox_extent / object->trajectory_positions.size(),
@@ -182,20 +186,22 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
 
   const auto frames = collectSemanticFrames(track, frame_data);
   if (frames.empty()) {
-    MLOG(3) << "Dropping " << getTrackName(track) << ": no semantic observations.";
+    MLOG(3, "Dropping {}: no semantic observations.", getTrackName(track));
     return nullptr;
   }
 
   // Compute the maximal extent and resolution.
   BoundingBox extent = computeExtent(frames);
   if (extent.volume() < config.min_object_volume) {
-    MLOG(3) << "Dropping " << getTrackName(track) << ": small maximal volume (" << extent.volume()
-            << " < " << config.min_object_volume << ").";
+    MLOG(3,
+         "Dropping {}: small maximal volume ({} < {}).",
+         getTrackName(track),
+         extent.volume(),
+         config.min_object_volume);
     return nullptr;
   }
 
-  MLOG(3) << "Using extents of " << extent << " for " << getTrackName(track)
-          << " during extraction";
+  MLOG(3, "Using extents of {} for {} during extraction", extent, getTrackName(track));
 
   // Setup a volumetric map to reconstruct this object.
   VolumetricMap::Config map_config;
@@ -230,10 +236,14 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
   // Print info if desired.
   const Eigen::IOFormat fmt(
       Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "; ", "", "", "[", "]");
-  MLOG(3) << "Allocated TSDF layer for " << getTrackName(track) << " with "
-          << tsdf_layer.numBlocks() << " blocks (min_index=" << min_block_index.format(fmt)
-          << ", max_index=" << max_block_index.format(fmt) << ") with voxel size "
-          << map_config.voxel_size << " [m]";
+  MLOG(3,
+       "Allocated TSDF layer for {} with {} blocks (min_index={}, "
+       "max_index={}) with voxel size {} [m]",
+       getTrackName(track),
+       tsdf_layer.numBlocks(),
+       min_block_index.format(fmt),
+       max_block_index.format(fmt),
+       map_config.voxel_size);
 
   // Perform 3D reconstruction using projective updates over all frames.
   hydra::SensorMap<ObjectIntegrator> integrator_map(config.projective_integrator);
@@ -241,7 +251,7 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
     const auto sensor_name = frame_data->input.getSensor().name;
     const auto integrator = integrator_map.get(sensor_name);
     if (!integrator) {
-      MLOG(2) << "Skipping Unknown sensor '" << sensor_name << "'";
+      MLOG(2, "Skipping Unknown sensor '{}'", sensor_name);
       continue;
     }
 
@@ -276,7 +286,7 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
   object->mesh = utils::combineMeshLayer(map.getMeshLayer());
 
   if (object->mesh.points.empty() && config.only_extract_reconstructed_objects) {
-    MLOG(3) << "Dropping " << getTrackName(track) << ": no reconstructed mesh.";
+    MLOG(3, "Dropping {}: no reconstructed mesh.", getTrackName(track));
     return nullptr;
   }
 
@@ -290,19 +300,28 @@ KhronosObjectAttributes::Ptr MeshObjectExtractor::extractStaticObject(
     object->bounding_box = BoundingBox(object->mesh.points, bbox_type);
   }
   if (object->bounding_box.volume() > config.max_object_volume) {
-    MLOG(3) << "Dropping " << getTrackName(track) << ": large volume ("
-            << object->bounding_box.volume() << " > " << config.max_object_volume << ").";
+    MLOG(3,
+         "Dropping {}: large volume ({} > {}).",
+         getTrackName(track),
+         object->bounding_box.volume(),
+         config.max_object_volume);
     return nullptr;
   }
   if (object->bounding_box.volume() < config.min_object_volume) {
-    MLOG(3) << "Dropping " << getTrackName(track) << ": small volume ("
-            << object->bounding_box.volume() << " < " << config.min_object_volume << ").";
+    MLOG(3,
+         "Dropping {}: small volume ({} < {}).",
+         getTrackName(track),
+         object->bounding_box.volume(),
+         config.min_object_volume);
     return nullptr;
   }
 
-  MLOG(3) << "Extracted " << getTrackName(track) << " with volume " << object->bounding_box.volume()
-          << ", confidence " << track.confidence << ", mesh size " << object->mesh.points.size()
-          << ".";
+  MLOG(3,
+       "Extracted {} with volume {}, confidence {}, mesh size {}.",
+       getTrackName(track),
+       object->bounding_box.volume(),
+       track.confidence,
+       object->mesh.points.size());
 
   // Move the object mesh to bbox frame.
   const Point offset = object->bounding_box.world_P_center;
@@ -367,8 +386,11 @@ float MeshObjectExtractor::computeConfidence(const TsdfVoxel& /* tsdf_voxel */,
 bool MeshObjectExtractor::trackIsValid(const Track& track) const {
   // Check the track is valid for extraction.
   if (track.confidence <= config.min_object_allocation_confidence) {
-    MLOG(3) << "Dropping " << getTrackName(track) << ": low confidence (" << track.confidence
-            << " < " << config.min_object_allocation_confidence << ").";
+    MLOG(3,
+         "Dropping {}: low confidence ({} < {}).",
+         getTrackName(track),
+         track.confidence,
+         config.min_object_allocation_confidence);
     return false;
   }
   return true;

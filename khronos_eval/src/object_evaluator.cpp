@@ -4,6 +4,7 @@
 #include <filesystem>
 
 #include <hydra/utils/csv_reader.h>
+#include <hydra/utils/logging.h>
 #include <khronos/backend/change_state.h>
 #include <khronos/utils/khronos_attribute_utils.h>
 #include <khronos/utils/output_file_utils.h>
@@ -49,7 +50,7 @@ ObjectEvaluator::ObjectEvaluator(const Config& config) : config(config::checkVal
                                       std::placeholders::_2);
       break;
     default:
-      LOG(ERROR) << "Unknown association method.";
+      HYDRA_LOG(ERROR, "Unknown association method.");
       return;
   }
   is_setup_ = true;
@@ -74,11 +75,11 @@ bool ObjectEvaluator::evaluate(const std::string& name, const uint64_t query_tim
     return false;
   }
   if (!gt_dsg_.dsg) {
-    LOG(ERROR) << "Ground truth DSG not set.";
+    HYDRA_LOG(ERROR, "Ground truth DSG not set.");
     return false;
   }
   if (!eval_dsg_.dsg) {
-    LOG(ERROR) << "Eval DSG not set.";
+    HYDRA_LOG(ERROR, "Eval DSG not set.");
     return false;
   }
 
@@ -106,7 +107,7 @@ bool ObjectEvaluator::evaluate(const std::string& name, const uint64_t query_tim
 void ObjectEvaluator::setGroundTruthDSG(DynamicSceneGraph::Ptr dsg) {
   // Ensure the DSG is valid.
   if (!dsg) {
-    LOG(ERROR) << "Ground truth DSG pointer is not valid.";
+    HYDRA_LOG(ERROR, "Ground truth DSG pointer is not valid.");
     return;
   }
   gt_dsg_.dsg = std::move(dsg);
@@ -129,7 +130,7 @@ void ObjectEvaluator::setGroundTruthDSG(DynamicSceneGraph::Ptr dsg) {
 void ObjectEvaluator::setEvalDSG(DynamicSceneGraph::Ptr dsg) {
   // Ensure the DSG is valid.
   if (!dsg) {
-    LOG(ERROR) << "Eval DSG pointer is not valid.";
+    HYDRA_LOG(ERROR, "Eval DSG pointer is not valid.");
     return;
   }
   eval_dsg_.dsg = std::move(dsg);
@@ -191,7 +192,7 @@ ObjectEvaluator::RawMetrics ObjectEvaluator::computeAssociationsSurface(const Ds
 
     // Extract the highest vote.
     if (votes.empty()) {
-      MLOG(3) << NodeSymbol(id) << ": no candidates found.";
+      MLOG(3, "{}: no candidates found.", NodeSymbol(id));
       result.failed.emplace(id);
       continue;
     }
@@ -199,8 +200,11 @@ ObjectEvaluator::RawMetrics ObjectEvaluator::computeAssociationsSurface(const Ds
       return a.second < b.second;
     });
     result.associations[id] = it->first;
-    MLOG(3) << NodeSymbol(id) << " -> " << NodeSymbol(it->first) << " ("
-            << it->second * 100 / attrs.mesh.numVertices() << "%).";
+    MLOG(3,
+         "{} -> {} ({}%).",
+         NodeSymbol(id),
+         NodeSymbol(it->first),
+         it->second * 100 / attrs.mesh.numVertices());
   }
 
   return result;
@@ -232,13 +236,12 @@ ObjectEvaluator::RawMetrics ObjectEvaluator::computeAssociationsCentroid(const D
                        distance_squared,
                        index) ||
         distance_squared > max_distance_sq) {
-      MLOG(3) << NodeSymbol(id) << ": no candidates found.";
+      MLOG(3, "{}: no candidates found.", NodeSymbol(id));
       continue;
     }
 
     result.associations[id] = ids[index];
-    MLOG(3) << NodeSymbol(id) << " -> " << NodeSymbol(ids[index]) << " ("
-            << std::sqrt(distance_squared) << "m).";
+    MLOG(3, "{} -> {} ({}m).", NodeSymbol(id), NodeSymbol(ids[index]), std::sqrt(distance_squared));
   }
 
   return result;
@@ -272,10 +275,10 @@ ObjectEvaluator::RawMetrics ObjectEvaluator::computeAssociationsBoundingBox(
 
     if (max_iou == 0.f) {
       result.failed.emplace(from_id);
-      MLOG(3) << NodeSymbol(from_id) << ": no candidates found.";
+      MLOG(3, "{}: no candidates found.", NodeSymbol(from_id));
     } else {
       result.associations[from_id] = max_id;
-      MLOG(3) << NodeSymbol(from_id) << " -> " << NodeSymbol(max_id) << " (" << max_iou << ").";
+      MLOG(3, "{} -> {} ({}).", NodeSymbol(from_id), NodeSymbol(max_id), max_iou);
     }
   }
 
@@ -438,7 +441,8 @@ ObjectEvaluator::ChangeMetrics ObjectEvaluator::computeChangeMetrics(
       result.disappeared_missed_p++;
     }
   }
-  MLOG(3) << info.str();
+
+  MLOG(3, "{}", info.str());
   return result;
 }
 
@@ -571,12 +575,12 @@ std::unordered_map<NodeId, int> ObjectEvaluator::computeAssociationCardinality(
 bool ObjectEvaluator::setupVisFiles(const std::string& vis_dir) {
   vis_obj_file_.open(vis_dir + "/objects.csv");
   if (!vis_obj_file_.is_open()) {
-    LOG(ERROR) << "Could not open '" << vis_dir << "/objects.csv' for writing.";
+    HYDRA_LOG(ERROR, "Could not open '{}/objects.csv' for writing.", vis_dir);
     return false;
   }
   vis_assoc_file_.open(vis_dir + "/associations.csv");
   if (!vis_assoc_file_.is_open()) {
-    LOG(ERROR) << "Could not open '" << vis_dir << "/associations.csv' for writing.";
+    HYDRA_LOG(ERROR, "Could not open '{}/associations.csv' for writing.", vis_dir);
     vis_obj_file_.close();
     return false;
   }

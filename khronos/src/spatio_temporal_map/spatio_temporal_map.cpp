@@ -1,3 +1,4 @@
+#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -35,8 +36,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#include "khronos/spatio_temporal_map/spatio_temporal_map.h"
-
 #include <fstream>
 #include <numeric>
 #include <set>
@@ -44,10 +43,11 @@
 
 #include <config_utilities/config.h>
 #include <config_utilities/validation.h>
-#include <glog/logging.h>
 #include <spark_dsg/serialization/binary_serialization.h>
 #include <spark_dsg/serialization/graph_binary_serialization.h>
 #include <spark_dsg/serialization/versioning.h>
+
+#include "khronos/spatio_temporal_map/spatio_temporal_map.h"
 
 namespace khronos {
 namespace {
@@ -268,7 +268,7 @@ void SpatioTemporalMap::moveObjectsForward() {
 
   // Get source mesh for timing information
   if (!dsgs_[current_dsg_idx_]->hasMesh()) {
-    MLOG_NAMED(WARN) << "No mesh available for object timing";
+    MLOG_NAMED(WARN, "No mesh available for object timing");
     return;
   }
   const auto& src_mesh = *dsgs_[current_dsg_idx_]->mesh();
@@ -376,7 +376,7 @@ void SpatioTemporalMap::moveObjectsBackward() {
 
   // Get source mesh for timing information
   if (!dsgs_[current_dsg_idx_]->hasMesh()) {
-    MLOG_NAMED(WARN) << "No mesh available for object timing";
+    MLOG_NAMED(WARN, "No mesh available for object timing");
     return;
   }
   const auto& src_mesh = *dsgs_[current_dsg_idx_]->mesh();
@@ -398,7 +398,7 @@ void SpatioTemporalMap::moveObjectsBackward() {
 
 void SpatioTemporalMap::trimDsgToTime(TimeStamp target_time) {
   if (!current_dsg_) {
-    MLOG_NAMED(WARN) << "No current_dsg_ in trimDsgToTime";
+    MLOG_NAMED(WARN, "No current_dsg_ in trimDsgToTime");
     return;
   }
 
@@ -417,8 +417,9 @@ void SpatioTemporalMap::trimDsgToTime(TimeStamp target_time) {
       const size_t num_vertices = vertex_it - src_mesh.first_seen_stamps.begin();
       mesh.resizeVertices(num_vertices);
     } else {
-      MLOG_NAMED(WARN) << "Mesh first_seen_stamps is empty or not available! "
-                          "Cannot perform time-based trimming. Keeping all vertices.";
+      MLOG_NAMED(WARN,
+                 "Mesh first_seen_stamps is empty or not available! Cannot "
+                 "perform time-based trimming. Keeping all vertices.");
     }
 
     updateMeshFaces(mesh, src_mesh);
@@ -534,7 +535,7 @@ bool SpatioTemporalMap::save(std::string filepath) const {
   // Setup file.
   std::ofstream out(filepath, std::ios::out | std::ios::binary);
   if (!out.is_open()) {
-    LOG(ERROR) << "Could not open file " << filepath << " for writing.";
+    HYDRA_LOG(ERROR, "Could not open file {} for writing.", filepath);
     return false;
   }
 
@@ -572,7 +573,7 @@ std::unique_ptr<SpatioTemporalMap> SpatioTemporalMap::load(std::string filepath)
   // Setup file.
   std::ifstream in(filepath, std::ios::in | std::ios::binary);
   if (!in.is_open()) {
-    LOG(ERROR) << "Could not open file " << filepath << " for reading.";
+    HYDRA_LOG(ERROR, "Could not open file {} for reading.", filepath);
     return nullptr;
   }
 
@@ -607,11 +608,11 @@ std::unique_ptr<SpatioTemporalMap> SpatioTemporalMap::load(std::string filepath)
 
   // Fix timing info if it wasn't properly saved
   if (result->earliest_ == std::numeric_limits<TimeStamp>::max() && !result->stamps_.empty()) {
-    LOG(WARNING) << "Fixing invalid earliest timestamp in loaded map";
+    HYDRA_LOG(WARNING, "Fixing invalid earliest timestamp in loaded map");
     result->earliest_ = *std::min_element(result->stamps_.begin(), result->stamps_.end());
   }
   if (result->latest_ == 0 && !result->stamps_.empty()) {
-    LOG(WARNING) << "Fixing invalid latest timestamp in loaded map";
+    HYDRA_LOG(WARNING, "Fixing invalid latest timestamp in loaded map");
     result->latest_ = *std::max_element(result->stamps_.begin(), result->stamps_.end());
   }
 
