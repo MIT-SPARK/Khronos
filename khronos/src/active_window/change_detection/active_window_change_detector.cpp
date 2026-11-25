@@ -232,8 +232,7 @@ std::unordered_map<spark_dsg::NodeId, float> ActiveWindowChangeDetector::compute
     // Too little of the object has been observed for its free ratio to be meaningful.
     if (!observed) {
       MLOG(3,
-           "Object {} observed fraction {} ({}/{} voxels) below {}, "
-           "skipping measurement",
+           "Skipping object {}: observed={} ({}/{} voxels) < {}",
            spark_dsg::NodeSymbol(object_id).str(),
            observed_fraction,
            num_voxels_observed,
@@ -874,8 +873,8 @@ std::vector<spark_dsg::NodeId> ActiveWindowChangeDetector::findPriorObjectsInMap
     }
 
     MLOG(3,
-         "Object {}{} within map bounds ({}/{} voxels = {}) at "
-         "position (current frame): {}",
+         "Object {}{} in map bounds: {}/{} voxels ({}), "
+         "position={} (current frame)",
          spark_dsg::NodeSymbol(node.id).str(),
          (in_bounds ? " is" : " is not"),
          num_in_bounds,

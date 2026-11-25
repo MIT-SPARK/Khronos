@@ -97,8 +97,7 @@ void FreeSpaceMotionDetector::processInput(const VolumetricMap& map, FrameData& 
 
   // Logging some info if requested.
   MLOG(3,
-       "Found {} voxel seeds, clustered them into {} initial clusters, "
-       "merged {}, filtered out {}, resulting in {} final clusters.",
+       "Clustering: seeds={}, initial={}, merged={}, filtered={}, final={}",
        voxel_seeds.size(),
        num_initial_clusters,
        num_initial_clusters - num_merged_clusters,
