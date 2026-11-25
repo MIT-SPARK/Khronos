@@ -14,6 +14,7 @@ option(BUILD_SHARED_LIBS "Build shared libs" ON)
 find_package(ament_cmake REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(hydra_ros REQUIRED)
+find_package(ianvs REQUIRED)
 find_package(khronos REQUIRED)
 find_package(khronos_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -54,7 +55,7 @@ ament_target_dependencies(${PROJECT_NAME} PUBLIC khronos_msgs std_msgs std_srvs 
 # ##############################################################################
 
 add_executable(khronos_node app/khronos_node.cpp)
-target_link_libraries(khronos_node ${PROJECT_NAME})
+target_link_libraries(khronos_node ${PROJECT_NAME} ianvs::ianvs_spdlog)
 
 add_executable(spatio_temporal_visualizer_node app/spatio_temporal_visualizer_node.cpp)
 target_link_libraries(spatio_temporal_visualizer_node ${PROJECT_NAME})

@@ -18,6 +18,7 @@
 
   <depend>cv_bridge</depend>
   <depend>hydra_ros</depend>
+  <depend>ianvs</depend>
   <depend>khronos</depend>
   <depend>khronos_msgs</depend>
   <depend>rclcpp</depend>

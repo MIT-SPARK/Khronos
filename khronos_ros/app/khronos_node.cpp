@@ -37,8 +37,8 @@
  * -------------------------------------------------------------------------- */
 
 #include <config_utilities/parsing/context.h>
-#include <hydra_ros/utils/ros_log_sink.h>
 #include <ianvs/node_init.h>
+#include <ianvs/ros_log_sink.h>
 
 #include "khronos_ros/experiments/experiment_manager.h"
 #include "khronos_ros/khronos_pipeline.h"
@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
   const auto logging = config::fromContext<khronos::NodeSettings>();
   hydra::logging::setLogLevel(logging.log_level);
   if (logging.forward_logs_to_ros) {
-    hydra::logging::setSinks({std::make_shared<hydra::RosSink>(nh.logger())});
+    hydra::logging::setSinks({ianvs::makeRosSink(nh.logger())});
   }
 
   // Allocate the run directory before modules start logging.
