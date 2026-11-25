@@ -5,15 +5,11 @@
 - git:
     local-name: hydra
     uri: https://github.com/MIT-SPARK/Hydra.git
-    version: main
-- git:
-    local-name: hydra_ros
-    uri: https://github.com/MIT-SPARK/Hydra-ROS.git
-    version: main
+    version: develop
 - git:
     local-name: kimera_pgmo
     uri: https://github.com/MIT-SPARK/Kimera-PGMO.git
-    version: ros2
+    version: develop
 - git:
     local-name: kimera_rpgo
     uri: https://github.com/MIT-SPARK/Kimera-RPGO.git
@@ -29,7 +25,7 @@
 - git:
     local-name: spark_dsg
     uri: https://github.com/MIT-SPARK/Spark-DSG.git
-    version: main
+    version: develop
 - git:
     local-name: small_gicp
     uri: https://github.com/koide3/small_gicp.git
@@ -37,7 +33,7 @@
 - git:
     local-name: spatial_hash
     uri: https://github.com/MIT-SPARK/Spatial-Hash.git
-    version: main
+    version: develop
 - git:
     local-name: teaser_plusplus
     uri: https://github.com/MIT-SPARK/TEASER-plusplus.git
