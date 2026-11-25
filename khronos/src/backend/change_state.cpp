@@ -1,4 +1,3 @@
-#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -36,13 +35,14 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
+#include "khronos/backend/change_state.h"
+
 #include <fstream>
 #include <sstream>
 #include <string>
 
 #include <hydra/utils/csv_reader.h>
-
-#include "khronos/backend/change_state.h"
+#include <hydra/utils/logging.h>
 namespace khronos {
 
 bool RPGOMerges::save(const std::string& filename) const {

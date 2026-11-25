@@ -1,4 +1,3 @@
-#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -36,9 +35,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#include <spatial_hash/grid.h>
-
 #include "khronos/active_window/object_extraction/accumulated_object_extractor.h"
+
+#include <hydra/utils/logging.h>
+#include <spatial_hash/grid.h>
 
 namespace khronos {
 

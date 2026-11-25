@@ -1,4 +1,3 @@
-#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -37,6 +36,7 @@
  * -------------------------------------------------------------------------- */
 
 #include <config_utilities/parsing/context.h>
+#include <hydra/utils/logging.h>
 #include <ianvs/node_init.h>
 #include <ianvs/ros_log_sink.h>
 

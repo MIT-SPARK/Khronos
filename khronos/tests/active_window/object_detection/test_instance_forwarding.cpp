@@ -1,4 +1,3 @@
-#include <hydra/utils/logging.h>
 /* -----------------------------------------------------------------------------
  * Copyright 2022 Massachusetts Institute of Technology.
  * All Rights Reserved
@@ -36,6 +35,7 @@
 #include <limits>
 
 #include <gtest/gtest.h>
+#include <hydra/utils/logging.h>
 #include <khronos/active_window/object_detection/instance_forwarding.h>
 
 namespace khronos {

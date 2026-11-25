@@ -1,4 +1,3 @@
-#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -36,6 +35,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
+#include "khronos/active_window/track_logger.h"
+
 #include <algorithm>
 #include <limits>
 #include <map>
@@ -49,12 +50,11 @@
 #include <config_utilities/validation.h>
 #include <hydra/input/input_data_io.h>
 #include <hydra/utils/data_directory.h>
+#include <hydra/utils/logging.h>
 #include <nlohmann/json.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <yaml-cpp/yaml.h>
-
-#include "khronos/active_window/track_logger.h"
 
 namespace khronos {
 namespace {

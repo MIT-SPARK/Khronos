@@ -1,4 +1,3 @@
-#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -36,10 +35,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
+#include "khronos_ros/experiments/experiment_directory.h"
+
 #include <algorithm>
 #include <filesystem>
 
-#include "khronos_ros/experiments/experiment_directory.h"
+#include <hydra/utils/logging.h>
+
 #include "khronos_ros/experiments/experiment_logger.h"
 
 namespace khronos {

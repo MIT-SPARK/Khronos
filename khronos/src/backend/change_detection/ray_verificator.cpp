@@ -1,4 +1,3 @@
-#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -36,9 +35,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
+#include "khronos/backend/change_detection/ray_verificator.h"
+
 #include <stdlib.h>
 
-#include "khronos/backend/change_detection/ray_verificator.h"
+#include <hydra/utils/logging.h>
 
 namespace khronos {
 

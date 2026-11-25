@@ -1,4 +1,3 @@
-#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -36,15 +35,16 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
+#include "khronos/active_window/integration/tracking_integrator.h"
+
 #include <future>
 #include <memory>
 #include <thread>
 #include <vector>
 
 #include <hydra/reconstruction/index_getter.h>
+#include <hydra/utils/logging.h>
 #include <spatial_hash/neighbor_utils.h>
-
-#include "khronos/active_window/integration/tracking_integrator.h"
 
 namespace khronos {
 

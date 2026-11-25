@@ -1,4 +1,3 @@
-#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -36,10 +35,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
-#include <config_utilities/config.h>
-#include <rclcpp/time.hpp>
-
 #include "khronos_ros/active_window/active_window_change_detector_publisher.h"
+
+#include <config_utilities/config.h>
+#include <hydra/utils/logging.h>
+#include <rclcpp/time.hpp>
 
 namespace khronos {
 

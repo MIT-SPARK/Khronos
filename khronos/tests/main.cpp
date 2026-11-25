@@ -1,4 +1,3 @@
-#include <hydra/utils/logging.h>
 /* -----------------------------------------------------------------------------
  * Copyright 2022 Massachusetts Institute of Technology.
  * All Rights Reserved
@@ -34,6 +33,7 @@
  * purposes notwithstanding any copyright notation herein.
  * -------------------------------------------------------------------------- */
 #include <gtest/gtest.h>
+#include <hydra/utils/logging.h>
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);

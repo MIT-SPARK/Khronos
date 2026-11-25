@@ -1,5 +1,3 @@
-#include <hydra/common/run_settings.h>
-#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -39,6 +37,8 @@
 
 #include <config_utilities/config_utilities.h>
 #include <config_utilities/parsing/context.h>
+#include <hydra/common/run_settings.h>
+#include <hydra/utils/logging.h>
 #include <rclcpp/rclcpp.hpp>
 
 #include "khronos_ros/visualization/spatio_temporal_visualizer.h"

@@ -1,4 +1,3 @@
-#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -36,6 +35,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
+#include "khronos/spatio_temporal_map/spatio_temporal_map.h"
+
 #include <fstream>
 #include <numeric>
 #include <set>
@@ -43,11 +44,10 @@
 
 #include <config_utilities/config.h>
 #include <config_utilities/validation.h>
+#include <hydra/utils/logging.h>
 #include <spark_dsg/serialization/binary_serialization.h>
 #include <spark_dsg/serialization/graph_binary_serialization.h>
 #include <spark_dsg/serialization/versioning.h>
-
-#include "khronos/spatio_temporal_map/spatio_temporal_map.h"
 
 namespace khronos {
 namespace {

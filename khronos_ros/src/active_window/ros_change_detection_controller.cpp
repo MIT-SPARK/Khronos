@@ -1,4 +1,3 @@
-#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -37,6 +36,8 @@
  * -------------------------------------------------------------------------- */
 
 #include "khronos_ros/active_window/ros_change_detection_controller.h"
+
+#include <hydra/utils/logging.h>
 
 namespace khronos {
 namespace {

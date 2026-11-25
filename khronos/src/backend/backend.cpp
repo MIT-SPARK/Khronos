@@ -1,4 +1,3 @@
-#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -36,17 +35,19 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
+#include "khronos/backend/backend.h"
+
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
 
 #include <config_utilities/types/path.h>
 #include <hydra/backend/mst_factors.h>
+#include <hydra/utils/logging.h>
 #include <hydra/utils/pgmo_mesh_traits.h>
 #include <kimera_pgmo/utils/common_functions.h>
 #include <kimera_pgmo/utils/mesh_io.h>
 
-#include "khronos/backend/backend.h"
 #include "khronos/backend/change_state.h"
 #include "khronos/common/common_types.h"
 

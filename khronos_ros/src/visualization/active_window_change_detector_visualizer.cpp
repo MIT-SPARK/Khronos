@@ -1,4 +1,3 @@
-#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -36,6 +35,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
+#include "khronos_ros/visualization/active_window_change_detector_visualizer.h"
+
 #include <iomanip>
 #include <sstream>
 #include <unordered_map>
@@ -43,8 +44,8 @@
 #include <config_utilities/config.h>
 #include <config_utilities/types/path.h>
 #include <config_utilities/validation.h>
+#include <hydra/utils/logging.h>
 
-#include "khronos_ros/visualization/active_window_change_detector_visualizer.h"
 #include "khronos_ros/visualization/visualization_utils.h"
 
 namespace khronos {

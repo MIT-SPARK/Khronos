@@ -1,4 +1,3 @@
-#include <hydra/utils/logging.h>
 /** -----------------------------------------------------------------------------
  * Copyright (c) 2024 Massachusetts Institute of Technology.
  * All Rights Reserved.
@@ -36,11 +35,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------- */
 
+#include "khronos/backend/update_functions.h"
+
 #include <gtsam/geometry/Pose3.h>
+#include <hydra/utils/logging.h>
 #include <hydra/utils/pgmo_mesh_traits.h>
 #include <khronos/common/common_types.h>
-
-#include "khronos/backend/update_functions.h"
 
 namespace khronos {
 
