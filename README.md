@@ -195,7 +195,8 @@ pre-commit install
 Khronos modules inherit Hydra's `default_verbosity` unless their `verbosity`
 is set. Use `log_name` to choose the component label and `log_prefix` and
 `log_suffix` for its delimiters. The delimiters default to `[` and `] `.
-Set `log_name: ''` to omit the label.
+Labels are hidden by default. Set `show_log_prefix: true` in a module's config to
+include its label; an empty `log_name` also hides it.
 
 Diagnostic output uses spdlog through Hydra. Set `log_level` to a textual
 severity such as `info` or `warning`; set `default_verbosity` for inherited
