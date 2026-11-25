@@ -1,5 +1,4 @@
 #pragma once
-
 #include <fstream>
 #include <map>
 #include <set>
@@ -8,6 +7,7 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
+#include <hydra/utils/logging.h>
 #include <hydra/utils/nearest_neighbor_utilities.h>
 #include <khronos/common/common_types.h>
 
@@ -16,8 +16,7 @@ namespace khronos {
 
 class DynamicObjectEvaluator {
  public:
-  struct Config {
-    int verbosity = 0;
+  struct Config : hydra::VerbosityConfig {
     bool compensate_missegmentation = true;
     float max_matching_distance = 0.5f;
   } const config;

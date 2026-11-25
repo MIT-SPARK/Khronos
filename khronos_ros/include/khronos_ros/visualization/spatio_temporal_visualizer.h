@@ -36,7 +36,6 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <atomic>
 #include <map>
 #include <string>
@@ -46,6 +45,7 @@
 #include <config_utilities/config_utilities.h>
 #include <config_utilities/dynamic_config.h>
 #include <hydra/common/robot_prefix_config.h>
+#include <hydra/utils/logging.h>
 #include <hydra_visualizer/plugins/mesh_plugin.h>
 #include <hydra_visualizer/scene_graph_renderer.h>
 #include <khronos/common/common_types.h>
@@ -91,9 +91,7 @@ class SpatioTemporalVisualizer {
   using SetState = khronos_msgs::srv::SpatioTemporalVisualizerSetState;
 
   // Config.
-  struct Config {
-    int verbosity = 0;
-
+  struct Config : hydra::VerbosityConfig {
     // Which directory to load for visualization.
     std::string map_file = "";
 

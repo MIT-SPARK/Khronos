@@ -36,7 +36,6 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <optional>
 #include <string>
 #include <utility>
@@ -46,6 +45,7 @@
 #include <hydra/common/run_settings.h>
 #include <hydra/input/sensor_map.h>
 #include <hydra/reconstruction/mesh_integrator.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos/active_window/integration/object_integrator.h"
 #include "khronos/active_window/object_extraction/object_extractor.h"
@@ -57,8 +57,8 @@ namespace khronos {
  */
 class MeshObjectExtractor : public ObjectExtractor {
  public:
-  struct Config {
-    int verbosity = hydra::RunSettings::instance().default_verbosity;
+  struct Config : hydra::VerbosityConfig {
+    Config() : VerbosityConfig("mesh_objects") {}
 
     // Extract only objects with an existence confidence larger than this value [0, 1].
     float min_object_allocation_confidence = 0.5f;

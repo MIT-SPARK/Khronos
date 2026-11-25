@@ -76,8 +76,7 @@ void declare_config(ConnectedSemantics::Config& config) {
   check(config.grid_size, GT, 0.0, "grid_size");
 }
 
-ConnectedSemantics::Config::Config()
-    : VerbosityConfig(VerbosityConfig::default_verbosity("connected_semantics")) {}
+ConnectedSemantics::Config::Config() : VerbosityConfig("connected_semantics") {}
 
 ConnectedSemantics::ConnectedSemantics(const Config& config, const hydra::Labelspace* labelspace)
     : config(config::checkValid(config)),
@@ -244,7 +243,7 @@ void ConnectedSemantics::filterClusters(FrameData& data) const {
     }
   }
 
-  MLOG(4) << "Identified " << data.semantic_clusters.size() + num_erased_clusters
+  MLOG(3) << "Identified " << data.semantic_clusters.size() + num_erased_clusters
           << " clusters, erased " << num_erased_clusters << " (" << data.semantic_clusters.size()
           << " total).";
 }

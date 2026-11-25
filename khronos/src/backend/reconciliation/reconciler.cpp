@@ -45,9 +45,9 @@
 namespace khronos {
 
 void declare_config(Reconciler::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("Reconciler");
-  field(config.verbosity, "verbosity");
   field(config.time_estimates_conservative, "time_estimates_conservative");
   field(config.allow_overestimation, "allow_overestimation");
   field(config.merge_object_meshes, "merge_object_meshes");
@@ -68,9 +68,9 @@ void Reconciler::reconcile(DynamicSceneGraph& dsg,
                            std::map<NodeId, ObjectReconciliationDetail>* object_details) {
   Timer timer("reconcile/all", stamp);
 
-  VLOG(4) << "Reconciler has " << changes.object_changes.size() << " object changes.";
+  MLOG(3) << "Reconciler has " << changes.object_changes.size() << " object changes.";
   for (const auto& change : changes.object_changes) {
-    VLOG(4) << "\tChange: " << NodeSymbol(change.node_id).str() << " -> "
+    MLOG(3) << "\tChange: " << NodeSymbol(change.node_id).str() << " -> "
             << NodeSymbol(change.merged_id).str();
   }
 
@@ -107,10 +107,10 @@ std::string Reconciler::ObjectReconciliationDetail::serializeTimestamps(
   return result;
 }
 
-void Reconciler::reconcileObjects(const Changes& changes,
-                                  DynamicSceneGraph& dsg,
-                                  std::map<NodeId, Reconciler::ObjectReconciliationDetail>*
-                                      object_details) {
+void Reconciler::reconcileObjects(
+    const Changes& changes,
+    DynamicSceneGraph& dsg,
+    std::map<NodeId, Reconciler::ObjectReconciliationDetail>* object_details) {
   // Check which objects will be merged, and which have no merges.
   std::stringstream logging_info;
   ChangeMap all_changes;
@@ -133,7 +133,7 @@ void Reconciler::reconcileObjects(const Changes& changes,
   }
 
   // Log merge details if reqquired.
-  if (config.verbosity >= 4) {
+  if (config.get_verbosity() >= 5) {
     logging_info << "Final merged nodes:\n";
     for (const NodeId node_id : final_merged_nodes) {
       logging_info << NodeSymbol(node_id).str() << "\n";

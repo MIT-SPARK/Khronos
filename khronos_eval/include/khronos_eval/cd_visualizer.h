@@ -1,5 +1,4 @@
 #pragma once
-
 #include <memory>
 #include <mutex>
 #include <string>
@@ -8,6 +7,7 @@
 #include <vector>
 
 #include <config_utilities/dynamic_config.h>
+#include <hydra/utils/logging.h>
 #include <ianvs/node_handle.h>
 #include <khronos/backend/change_detection/ray_verificator.h>
 #include <khronos/common/common_types.h>
@@ -31,9 +31,7 @@ class ChangeDetectionVisualizer {
     bool show_missed_rays = false;
   };
 
-  struct StaticConfig {
-    int verbosity = 4;
-
+  struct StaticConfig : hydra::VerbosityConfig {
     // Config of the ray verificator to use.
     RayVerificator::Config ray_verificator;
   };

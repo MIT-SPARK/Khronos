@@ -57,6 +57,7 @@ namespace khronos {
 using ChangeMsg = khronos_msgs::msg::Changes;
 
 KhronosPipeline::Config::Config() : hydra::HydraRosPipeline::Config() {
+  log_name = "khronos_pipeline";
   active_window = ActiveWindow::Config{};
   backend = Backend::Config{};
 }
@@ -117,7 +118,7 @@ void KhronosPipeline::init() {
 
 bool KhronosPipeline::save(const hydra::DataDirectory& log_setup, bool save_full) {
   if (!log_setup) {
-    LOG(WARNING) << "[Khronos Pipeline] Could not save: Invalid log setup.";
+    MLOG_NAMED(WARN) << "Could not save: Invalid log setup.";
     return false;
   }
 

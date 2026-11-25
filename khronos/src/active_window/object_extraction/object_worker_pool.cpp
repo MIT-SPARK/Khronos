@@ -49,11 +49,11 @@ using hydra::timing::ElapsedTimeRecorder;
 using spark_dsg::NodeAttributes;
 
 void declare_config(ObjectWorkerPool::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("ObjectWorkerPool::Config");
   field(config.num_workers, "num_workers");
   field(config.poll_time_us, "poll_time_us");
-  field(config.verbosity, "verbosity");
 }
 
 ObjectWorkerPool::Request::Request(TimeStamp stamp,
@@ -86,11 +86,11 @@ void ObjectWorkerPool::stop() {
 }
 
 void ObjectWorkerPool::join() {
-  CLOG(5) << "Joining " << curr_workers_ << " extraction threads!";
+  MLOG(1) << "Joining " << curr_workers_ << " extraction threads!";
   // Queued requests are pending too. The spin thread counts a request as a worker before it
   // pops it, so a request is always either queued or counted.
   while (!work_queue_.empty() || curr_workers_ > 0) {
-    CLOG(10) << "Waiting on " << curr_workers_ << " extraction threads to finish!";
+    MLOG(4) << "Waiting on " << curr_workers_ << " extraction threads to finish!";
     std::this_thread::sleep_for(10ms);
   }
 }

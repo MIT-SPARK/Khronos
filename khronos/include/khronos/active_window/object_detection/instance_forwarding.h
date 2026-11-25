@@ -38,6 +38,8 @@
 #pragma once
 
 #include <memory>
+#include <unordered_set>
+#include <vector>
 
 #include <config_utilities/virtual_config.h>
 #include <hydra/common/labelspace.h>
@@ -61,7 +63,7 @@ class InstanceFilter {
 
 class CategoryFilter : public InstanceFilter {
  public:
-  struct Config {
+  struct Config : hydra::VerbosityConfig {
     //! Invalid labels
     std::vector<int32_t> invalid;
   } const config;
@@ -77,7 +79,7 @@ void declare_config(CategoryFilter::Config& config);
 
 class OpenVocabBackgroundFilter : public InstanceFilter {
  public:
-  struct Config {
+  struct Config : hydra::VerbosityConfig {
     //! Discard clusters that are overly similar to background
     double max_background_score = 0.2;
     //! Background is specified by the following embedding group (prompts)

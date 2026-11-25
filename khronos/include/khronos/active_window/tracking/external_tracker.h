@@ -39,6 +39,7 @@
 #include <vector>
 
 #include <hydra/common/run_settings.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos/active_window/data/frame_data.h"
 #include "khronos/active_window/tracking/tracker.h"
@@ -53,9 +54,7 @@ namespace khronos {
  */
 class ExternalTracker : public Tracker {
  public:
-  struct Config {
-    int verbosity = hydra::RunSettings::instance().default_verbosity;
-
+  struct Config : hydra::VerbosityConfig {
     // Number of times a track has to be observed to be considered existent.
     int min_num_observations = 20;
   } const config;

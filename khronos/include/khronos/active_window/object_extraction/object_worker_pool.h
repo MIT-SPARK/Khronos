@@ -36,7 +36,6 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <list>
 #include <memory>
 #include <thread>
@@ -44,6 +43,7 @@
 #include <hydra/common/graph_update.h>
 #include <hydra/common/message_queue.h>
 #include <hydra/common/run_settings.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos/active_window/object_extraction/object_extractor.h"
 #include "khronos/active_window/track_logger.h"
@@ -55,13 +55,12 @@ namespace khronos {
  */
 class ObjectWorkerPool {
  public:
-  struct Config {
+  struct Config : hydra::VerbosityConfig {
     //! Total number of workers. If 0, use unlimited workers (not recommended).
     size_t num_workers = 2;
     //! Poll period
     size_t poll_time_us = 1000;
     //! Verbosity for worker pool
-    int verbosity = hydra::RunSettings::instance().default_verbosity;
   } const config;
 
   struct Request {

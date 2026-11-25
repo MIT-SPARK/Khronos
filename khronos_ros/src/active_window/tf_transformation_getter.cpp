@@ -57,9 +57,9 @@ static const auto registration =
 }  // namespace
 
 void declare_config(TFTransformationGetter::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("TFTransformationGetter");
-  field(config.verbosity, "verbosity");
   field(config.prior_frame_id, "prior_frame_id");
   field(config.robot_frame_id, "robot_frame_id");
   field(config.tf_change_threshold_m, "tf_change_threshold_m");
@@ -70,8 +70,7 @@ void declare_config(TFTransformationGetter::Config& config) {
 
 TFTransformationGetter::TFTransformationGetter(const Config& cfg, const hydra::RobotConfig& robot)
     : config(config::checkValid(cfg)), tf_lookup_(config.tf_lookup, robot.frames) {
-  MLOG(1) << "[TFTransformationGetter] TF listener created (" << config.prior_frame_id << " -> "
-          << getRobotFrame() << ")";
+  MLOG(1) << "TF listener created (" << config.prior_frame_id << " -> " << getRobotFrame() << ")";
 
   lookup_thread_ = std::thread(&TFTransformationGetter::spin, this);
 }
@@ -104,8 +103,7 @@ std::optional<Eigen::Isometry3d> TFTransformationGetter::getTransformation() con
     return std::nullopt;
   }
 
-  MLOG(1) << "[TFTransformationGetter] TF changed by " << dt << " m, " << dr
-          << " rad, reporting new transform.";
+  MLOG(1) << "TF changed by " << dt << " m, " << dr << " rad, reporting new transform.";
   last_reported_ = current_T_prior;
   has_last_ = true;
   return current_T_prior;

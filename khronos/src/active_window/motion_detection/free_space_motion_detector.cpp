@@ -49,9 +49,9 @@
 namespace khronos {
 
 void declare_config(FreeSpaceMotionDetector::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("FreeSpaceMotionDetector");
-  field(config.verbosity, "verbosity");
   field(config.neighbor_connectivity, "neighbor_connectivity");
   field(config.min_cluster_size, "min_cluster_size");
   field(config.max_cluster_size, "max_cluster_size");
@@ -95,11 +95,11 @@ void FreeSpaceMotionDetector::processInput(const VolumetricMap& map, FrameData& 
   writeClustersToData(clusters, data);
 
   // Logging some info if requested.
-  CLOG(4) << "[FreeSpaceMotionDetector] Found " << voxel_seeds.size()
-          << " voxel seeds, clustered them into " << num_initial_clusters
-          << " initial clusters, merged " << num_initial_clusters - num_merged_clusters
-          << ", filtered out " << num_merged_clusters - clusters.size() << ", resulting in "
-          << clusters.size() << " final clusters.";
+  MLOG(3) << "Found " << voxel_seeds.size() << " voxel seeds, clustered them into "
+          << num_initial_clusters << " initial clusters, merged "
+          << num_initial_clusters - num_merged_clusters << ", filtered out "
+          << num_merged_clusters - clusters.size() << ", resulting in " << clusters.size()
+          << " final clusters.";
 }
 
 void FreeSpaceMotionDetector::setUpPointMap(const FrameData& data,

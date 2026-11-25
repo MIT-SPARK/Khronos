@@ -62,10 +62,7 @@ namespace khronos {
 class ActiveWindowChangeDetectorVisualizer : public ActiveWindowChangeDetector::ActiveWindowCDSink {
  public:
   struct Config : hydra::VerbosityConfig {
-    // TODO(multy): after hydra is updated, should change it to also include a prefix like: "[Active
-    // Window Change Detector Visualizer] "
-    // int verbosity = hydra::RunSettings::instance().default_verbosity;
-    Config() : hydra::VerbosityConfig(hydra::VerbosityConfig::default_verbosity()) {}
+    Config() : VerbosityConfig("aw_change_viz") {}
 
     //! Frame in which to publish visualizations.
     std::string global_frame_name;

@@ -36,7 +36,6 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <iomanip>
 #include <limits>
 #include <memory>
@@ -44,6 +43,7 @@
 #include <vector>
 
 #include <hydra/common/run_settings.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos/common/common_types.h"
 
@@ -55,8 +55,8 @@ namespace khronos {
 class SpatioTemporalMap {
  public:
   // Config.
-  struct Config {
-    int verbosity = hydra::RunSettings::instance().default_verbosity;
+  struct Config : hydra::VerbosityConfig {
+    Config() : VerbosityConfig("temporal_map") {}
 
     // If true finalize the raw data as it arrives.
     bool finalize_incrementally = true;

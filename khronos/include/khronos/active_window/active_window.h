@@ -36,7 +36,6 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <memory>
 #include <mutex>
 #include <string>
@@ -49,6 +48,7 @@
 #include <hydra/input/sensor_map.h>
 #include <hydra/reconstruction/mesh_integrator.h>
 #include <hydra/reconstruction/projective_integrator.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos/active_window/data/frame_data.h"
 #include "khronos/active_window/data/frame_data_buffer.h"
@@ -63,7 +63,7 @@
 namespace khronos {
 
 struct SensorProcessor {
-  struct Config {
+  struct Config : hydra::VerbosityConfig {
     hydra::ProjectiveIntegrator::Config projective_integrator;
     config::VirtualConfig<MotionDetector> motion_detector;
     config::VirtualConfig<ObjectDetector> object_detector;
@@ -86,8 +86,6 @@ class ActiveWindow : public hydra::ActiveWindowModule {
 
   // Config.
   struct Config : hydra::ActiveWindowModule::Config {
-    int verbosity = hydra::RunSettings::instance().default_verbosity;
-
     // Minimum duration for full updates and sending an output message [s]. A value of 0 will
     // perform full updates on every frame.
     float min_output_separation = 0.0f;
@@ -113,7 +111,7 @@ class ActiveWindow : public hydra::ActiveWindowModule {
     bool live_accumulated_bounding_box = false;
 
     // override layer defaults of Hydra
-    Config() : hydra::ActiveWindowModule::Config(false, true) {}
+    Config() : hydra::ActiveWindowModule::Config(false, true) { log_name = "active_window"; }
   } const config;
 
   // Construction.

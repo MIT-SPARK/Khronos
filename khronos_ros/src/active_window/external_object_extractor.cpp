@@ -166,6 +166,7 @@ using namespace std::chrono_literals;
 using hydra::Camera;
 
 void declare_config(ExternalObjectExtractor::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("ExternalObjectExtractor::Config");
   field(config.min_object_allocation_confidence, "min_object_allocation_confidence");
@@ -258,7 +259,7 @@ auto ExternalObjectExtractor::extractObject(const Track& track, const FrameDataB
     return nullptr;
   }
 
-  VLOG(5) << "Got response features of " << rep->shape_code.size() << " elements";
+  MLOG(3) << "Got response features of " << rep->shape_code.size() << " elements";
   return makeAttributes(*best.frame, *best.cluster, *rep);
 }
 
@@ -317,7 +318,7 @@ auto ExternalObjectExtractor::getBestCluster(const Track& track,
   }
 
   if (config.excluded_labels.count(best.cluster->semantics->category_id)) {
-    VLOG(1) << "Skipping excluded label for track " << track.id;
+    MLOG(1) << "Skipping excluded label for track " << track.id;
     return {};
   }
 

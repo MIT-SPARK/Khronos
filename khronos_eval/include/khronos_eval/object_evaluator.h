@@ -1,5 +1,4 @@
 #pragma once
-
 #include <fstream>
 #include <limits>
 #include <map>
@@ -13,6 +12,7 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
+#include <hydra/utils/logging.h>
 #include <hydra/utils/nearest_neighbor_utilities.h>
 #include <khronos/common/common_types.h>
 
@@ -24,8 +24,7 @@ namespace khronos {
 class ObjectEvaluator {
  public:
   // Config.
-  struct Config {
-    int verbosity = 0;
+  struct Config : hydra::VerbosityConfig {
     // If true only objects of same semantic class can be matched.
     bool match_require_semantics = true;
 

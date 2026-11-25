@@ -36,7 +36,6 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <limits>
 #include <memory>
 #include <unordered_map>
@@ -47,6 +46,7 @@
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/robot_prefix_config.h>
 #include <hydra/common/run_settings.h>
+#include <hydra/utils/logging.h>
 #include <spatial_hash/grid.h>
 
 #include "khronos/common/common_types.h"
@@ -66,9 +66,7 @@ class RayVerificator {
   using SpatialHash = BlockIndexMap<IndexSet>;
 
   // Config.
-  struct Config {
-    int verbosity = hydra::RunSettings::instance().default_verbosity;
-
+  struct Config : hydra::VerbosityConfig {
     // Size of the blocks used for background hashing in meters. This is independent of the mesh
     // block size.
     float block_size = 1.f;

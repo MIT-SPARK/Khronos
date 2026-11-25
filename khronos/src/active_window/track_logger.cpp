@@ -159,6 +159,7 @@ RenderedObservation render(const FrameData& frame, const MeasurementCluster& clu
 }  // namespace
 
 void declare_config(TrackLogger::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("TrackLogger::Config");
   field<Path>(config.log_path, "log_path");
@@ -278,8 +279,7 @@ void TrackLogger::snapshot(const FrameData& frame, const Tracks& tracks) {
       }
     }
   } catch (const std::exception& e) {
-    LOG(WARNING) << "[TrackLogger] Failed to snapshot frame " << frame.input.timestamp_ns << ": "
-                 << e.what();
+    MLOG_NAMED(WARN) << "Failed to snapshot frame " << frame.input.timestamp_ns << ": " << e.what();
   }
 }
 
@@ -363,14 +363,13 @@ void TrackLogger::log(const Track& track,
 
     std::lock_guard<std::mutex> lock(mutex_);
     if (config.max_queue_size && queue_.size() >= config.max_queue_size) {
-      LOG(WARNING) << "[TrackLogger] Queue full (" << queue_.size() << "), dropping track "
-                   << track.id;
+      MLOG_NAMED(WARN) << "Queue full (" << queue_.size() << "), dropping track " << track.id;
       return;
     }
 
     queue_.push_back(std::move(request));
   } catch (const std::exception& e) {
-    LOG(WARNING) << "[TrackLogger] Failed to queue track " << track.id << ": " << e.what();
+    MLOG_NAMED(WARN) << "Failed to queue track " << track.id << ": " << e.what();
     return;
   }
 
@@ -404,8 +403,7 @@ void TrackLogger::spin() {
     try {
       write(request);
     } catch (const std::exception& e) {
-      LOG(WARNING) << "[TrackLogger] Failed to write track " << request.track.id << ": "
-                   << e.what();
+      MLOG_NAMED(WARN) << "Failed to write track " << request.track.id << ": " << e.what();
     }
 
     {
@@ -577,8 +575,8 @@ void TrackLogger::write(const Request& request) const {
       images = candidate.evicted->images;
       if (kept[k] && !images) {
         // not expected: snapshots keep the images of the track's best observations
-        LOG(WARNING) << "[TrackLogger] Track " << track.id << ": no images for observation "
-                     << candidate.stamp;
+        MLOG_NAMED(WARN) << "Track " << track.id << ": no images for observation "
+                         << candidate.stamp;
         kept[k] = false;
       }
     }

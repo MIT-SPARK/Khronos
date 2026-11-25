@@ -42,9 +42,9 @@
 namespace khronos {
 
 void declare_config(MeshMerger::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("MeshMerger");
-  field(config.verbosity, "verbosity");
   field(config.remove_objects_from_background, "remove_objects_from_background");
   field(config.object_proximity_threshold, "object_proximity_threshold", "m");
 }

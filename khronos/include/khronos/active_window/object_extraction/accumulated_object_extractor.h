@@ -52,7 +52,7 @@ namespace khronos {
 class AccumulatedObjectExtractor : public ObjectExtractor {
  public:
   struct Config : hydra::VerbosityConfig {
-    Config() : hydra::VerbosityConfig(hydra::VerbosityConfig::default_verbosity()) {}
+    Config() : VerbosityConfig("voxel_objects") {}
 
     // Extract only objects with an existence confidence larger than this value [0, 1].
     float min_object_allocation_confidence = 0.5f;

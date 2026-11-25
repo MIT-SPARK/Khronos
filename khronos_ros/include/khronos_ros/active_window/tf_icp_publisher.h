@@ -67,7 +67,7 @@ namespace khronos {
 class TfIcpPublisher : public ActiveWindowChangeDetector::ActiveWindowCDSink {
  public:
   struct Config : hydra::VerbosityConfig {
-    Config() : hydra::VerbosityConfig(hydra::VerbosityConfig::default_verbosity()) {}
+    Config() : VerbosityConfig("tf_icp") {}
 
     //! Frame published by upper stream pose estimation modules (usually child of map).
     std::string pre_icp_odom_frame = "";

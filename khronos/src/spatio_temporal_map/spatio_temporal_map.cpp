@@ -72,9 +72,9 @@ void trimAgentNodes(DynamicSceneGraph& graph, TimeStamp stamp) {
 }  // namespace
 
 void declare_config(SpatioTemporalMap::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("SpatioTemporalMap");
-  field(config.verbosity, "verbosity");
   field(config.finalize_incrementally, "finalize_incrementally");
 }
 
@@ -268,7 +268,7 @@ void SpatioTemporalMap::moveObjectsForward() {
 
   // Get source mesh for timing information
   if (!dsgs_[current_dsg_idx_]->hasMesh()) {
-    LOG(WARNING) << "[moveObjectsForward] No mesh available for object timing";
+    MLOG_NAMED(WARN) << "No mesh available for object timing";
     return;
   }
   const auto& src_mesh = *dsgs_[current_dsg_idx_]->mesh();
@@ -376,7 +376,7 @@ void SpatioTemporalMap::moveObjectsBackward() {
 
   // Get source mesh for timing information
   if (!dsgs_[current_dsg_idx_]->hasMesh()) {
-    LOG(WARNING) << "[moveObjectsBackward] No mesh available for object timing";
+    MLOG_NAMED(WARN) << "No mesh available for object timing";
     return;
   }
   const auto& src_mesh = *dsgs_[current_dsg_idx_]->mesh();
@@ -398,7 +398,7 @@ void SpatioTemporalMap::moveObjectsBackward() {
 
 void SpatioTemporalMap::trimDsgToTime(TimeStamp target_time) {
   if (!current_dsg_) {
-    LOG(WARNING) << "[SpatioTemporalMap] No current_dsg_ in trimDsgToTime";
+    MLOG_NAMED(WARN) << "No current_dsg_ in trimDsgToTime";
     return;
   }
 
@@ -417,8 +417,8 @@ void SpatioTemporalMap::trimDsgToTime(TimeStamp target_time) {
       const size_t num_vertices = vertex_it - src_mesh.first_seen_stamps.begin();
       mesh.resizeVertices(num_vertices);
     } else {
-      LOG(WARNING) << "[SpatioTemporalMap] Mesh first_seen_stamps is empty or not available! "
-                      "Cannot perform time-based trimming. Keeping all vertices.";
+      MLOG_NAMED(WARN) << "Mesh first_seen_stamps is empty or not available! "
+                          "Cannot perform time-based trimming. Keeping all vertices.";
     }
 
     updateMeshFaces(mesh, src_mesh);

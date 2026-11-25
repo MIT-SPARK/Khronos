@@ -1,7 +1,10 @@
 #pragma once
 #include <set>
+#include <string>
+#include <vector>
 
 #include <hydra/input/camera.h>
+#include <hydra/utils/logging.h>
 #include <ianvs/node_handle.h>
 #include <khronos/active_window/object_extraction/object_extractor.h>
 #include <khronos_msgs/srv/extract_implicit_object.hpp>
@@ -16,7 +19,7 @@ class ExternalObjectExtractor : public ObjectExtractor {
   using InferenceSrv = khronos_msgs::srv::ExtractImplicitObject;
   using Frames = std::vector<const FrameData*>;
 
-  struct Config {
+  struct Config : hydra::VerbosityConfig {
     //! Minimum track confidence to run external shape extractor
     float min_object_allocation_confidence = 0.5f;
     //! Minimum points required for a cluster

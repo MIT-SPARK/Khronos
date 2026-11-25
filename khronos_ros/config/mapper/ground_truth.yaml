@@ -30,7 +30,7 @@ input:
     wait_duration_s: 2.0
 
 # Pipeline properties.
-verbosity: 100
+verbosity: 5
 
 # =============================== Khronos Active Window ===============================
 # Active Window.
@@ -75,7 +75,7 @@ active_window:
     num_threads: *active_window_threads
 
   tracking_integrator:
-    verbosity: 100
+    verbosity: 5
     num_threads: *active_window_threads
     temporal_buffer: *temporal_window
   type: ActiveWindow
@@ -132,5 +132,5 @@ backend:
   optimization_hooks: []
 lcd: {type: ''}
 visualization:
-  verbosity: 100
+  verbosity: 5
   slice_height_is_relative: true

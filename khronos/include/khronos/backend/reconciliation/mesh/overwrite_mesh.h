@@ -54,6 +54,8 @@ class OverwriteMesh : public MeshMerger {
  public:
   // Config.
   struct Config : public MeshMerger::Config {
+    Config() { log_name = "mesh_overwrite"; }
+
     // Distance [m] within which meshes are considered to be the same.
     float voxel_size = 0.1f;
 

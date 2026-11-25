@@ -36,7 +36,6 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <map>
 #include <memory>
 #include <string>
@@ -47,6 +46,7 @@
 #include <geometry_msgs/msg/vector3.hpp>
 #include <hydra/common/run_settings.h>
 #include <hydra/input/sensor_map.h>
+#include <hydra/utils/logging.h>
 #include <hydra_ros/utils/input_data_to_messages.h>
 #include <hydra_visualizer/utils/marker_tracker.h>
 #include <ianvs/lazy_publisher_group.h>
@@ -69,9 +69,7 @@ class ActiveWindowVisualizer : public ActiveWindow::KhronosSink {
   };
 
   // Config.
-  struct Config {
-    int verbosity = hydra::RunSettings::instance().default_verbosity;
-
+  struct Config : hydra::VerbosityConfig {
     // Global frame name in which the map is visualized.
     std::string global_frame_name;
 

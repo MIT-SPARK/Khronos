@@ -51,6 +51,7 @@ static const auto registration =
 }  // namespace
 
 void declare_config(RosChangeDetectionController::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("RosChangeDetectionController");
   field(config.ns, "ns");
@@ -68,20 +69,20 @@ RosChangeDetectionController::RosChangeDetectionController(const Config& config)
       "start", [this](const Trigger::Request::SharedPtr&, Trigger::Response::SharedPtr res) {
         res->success = true;
         res->message = setEnabled(true) ? "started" : "already running";
-        LOG(INFO) << "[RosChangeDetectionController] Start: " << res->message;
+        MLOG_NAMED_WITH(this->config, INFO) << "Start: " << res->message;
       });
   stop_srv_ = nh_.create_service<Trigger>(
       "stop", [this](const Trigger::Request::SharedPtr&, Trigger::Response::SharedPtr res) {
         res->success = true;
         res->message = setEnabled(false) ? "stopped" : "already stopped";
-        LOG(INFO) << "[RosChangeDetectionController] Stop: " << res->message;
+        MLOG_NAMED_WITH(this->config, INFO) << "Stop: " << res->message;
       });
   reset_srv_ = nh_.create_service<Trigger>(
       "reset", [this](const Trigger::Request::SharedPtr&, Trigger::Response::SharedPtr res) {
         requestReset();
         res->success = true;
         res->message = "reset requested";
-        LOG(INFO) << "[RosChangeDetectionController] Reset requested.";
+        MLOG_NAMED_WITH(this->config, INFO) << "Reset requested.";
       });
 }
 

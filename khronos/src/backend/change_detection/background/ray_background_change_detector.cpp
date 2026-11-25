@@ -40,6 +40,7 @@
 namespace khronos {
 
 void declare_config(RayBackgroundChangeDetector::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("RayBackgroundChangeDetector");
   field(config.time_filtering_threshold, "time_filtering_threshold", "s");
@@ -81,9 +82,8 @@ void RayBackgroundChangeDetector::detectChanges(const DynamicSceneGraph& dsg,
   }
 
   if (!ray_verificator_->getReobservedVertices().empty()) {
-    CLOG(3) << "[RayBackgroundChangeDetector] Recomputed "
-            << ray_verificator_->getReobservedVertices().size() << " vertices, finding "
-            << num_updates << " changed entries.";
+    MLOG(2) << "Recomputed " << ray_verificator_->getReobservedVertices().size()
+            << " vertices, finding " << num_updates << " changed entries.";
   }
 }
 

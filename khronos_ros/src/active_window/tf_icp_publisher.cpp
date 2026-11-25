@@ -56,9 +56,9 @@ static const auto registration =
 }  // namespace
 
 void declare_config(TfIcpPublisher::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("TfIcpPublisher");
-  field(config.verbosity, "verbosity");
   field(config.pre_icp_odom_frame, "pre_icp_odom_frame");
   field(config.odom_frame, "odom_frame");
   field(config.tf_lookup, "tf_lookup");
@@ -75,8 +75,8 @@ TfIcpPublisher::TfIcpPublisher(const Config& cfg,
 
   // Seed identity so map → odom TF chain is resolvable before the first ICP result.
   broadcastTransform(Eigen::Isometry3d::Identity());
-  MLOG(1) << "[TfIcpPublisher] Initialized (" << config.pre_icp_odom_frame << " -> "
-          << getOdomFrame() << "). Seeded identity transform.";
+  MLOG(1) << "Initialized (" << config.pre_icp_odom_frame << " -> " << getOdomFrame()
+          << "). Seeded identity transform.";
 }
 
 void TfIcpPublisher::call(const DynamicSceneGraph::Ptr&,
@@ -92,11 +92,11 @@ void TfIcpPublisher::call(const DynamicSceneGraph::Ptr&,
                                              config.pre_icp_odom_frame,
                                              config.tf_lookup.max_tries,
                                              config.tf_lookup.wait_duration_s,
-                                             config.tf_lookup.verbosity,
+                                             config.tf_lookup,
                                              &err);
   if (!status) {
-    MLOG(3) << "[TfIcpPublisher] TF lookup map -> " << config.pre_icp_odom_frame
-            << " failed: " << err << ". Broadcasting identity.";
+    MLOG(2) << "TF lookup map -> " << config.pre_icp_odom_frame << " failed: " << err
+            << ". Broadcasting identity.";
     broadcastTransform(Eigen::Isometry3d::Identity());
     return;
   }

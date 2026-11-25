@@ -5,9 +5,10 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include <iostream>
 
 #include <config_utilities/config_utilities.h>
+#include <glog/logging.h>
+#include <hydra/utils/logging.h>
 #include <hydra/utils/nearest_neighbor_utilities.h>
 #include <khronos/common/common_types.h>
 
@@ -18,7 +19,9 @@ namespace khronos {
 class MeshEvaluator {
  public:
   // Config.
-  struct Config {
+  struct Config : hydra::VerbosityConfig {
+    Config() : VerbosityConfig("mesh_eval") {}
+
     // Number of threads to use for evaluation.
     int num_threads = std::thread::hardware_concurrency();
 
@@ -136,12 +139,8 @@ class MeshEvaluator {
   std::string writeHeader() const;
   std::string writeMetrics(const std::string& name, const Metrics& metrics) const;
 
-  void log(const std::string& message) const {
-    std::cout << "[Mesh Evaluator] " << message << std::endl;
-  }
-  void logError(const std::string& message) const {
-    std::cout << "\033[31mERROR: [Mesh Evaluator] " << message << "\033[0m" << std::endl;
-  }
+  void log(const std::string& message) const { MLOG(1) << message; }
+  void logError(const std::string& message) const { MLOG_NAMED(ERROR) << message; }
 
  private:
   // Ground truth data.

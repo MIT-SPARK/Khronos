@@ -68,9 +68,9 @@ using visualization_msgs::msg::MarkerArray;
 using ImageMsg = sensor_msgs::msg::Image;
 
 void declare_config(ActiveWindowVisualizer::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("ActiveWindowVisualizer");
-  field(config.verbosity, "verbosity");
   field(config.global_frame_name, "global_frame_name");
   field(config.queue_size, "queue_size");
   field(config.slice_height, "slice_height", "m");

@@ -36,10 +36,10 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <vector>
 
 #include <hydra/common/run_settings.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos/backend/change_state.h"
 #include "khronos/common/common_types.h"
@@ -52,9 +52,7 @@ namespace khronos {
 class MeshMerger {
  public:
   // Config.
-  struct Config {
-    int verbosity = hydra::RunSettings::instance().default_verbosity;
-
+  struct Config : hydra::VerbosityConfig {
     // If true erase all background vertices that are already part of an object.
     bool remove_objects_from_background = false;
 

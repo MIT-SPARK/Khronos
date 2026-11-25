@@ -11,6 +11,7 @@
 namespace khronos {
 
 void declare_config(UpdateKhronosObjectsFunctor::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("UpdateKhronosObjectsFunctor::Config");
   field(config.deformation_interpolator, "deformation_interpolator");
@@ -39,7 +40,7 @@ void UpdateKhronosObjectsFunctor::call(const DynamicSceneGraph& unmerged,
                                        const UpdateInfo::ConstPtr& info) const {
   Timer spin_timer("backend/update_khronos_objects", info->timestamp_ns);
   if (!unmerged.hasLayer(DsgLayers::OBJECTS)) {
-    VLOG(5) << "Skipping khronos object update due to missing layer";
+    MLOG(3) << "Skipping khronos object update due to missing layer";
     return;
   }
 

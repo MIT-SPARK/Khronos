@@ -36,12 +36,12 @@
  * -------------------------------------------------------------------------- */
 
 #pragma once
-
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <hydra/utils/logging.h>
 #include <khronos/active_window/data/frame_data.h>
 #include <khronos/active_window/data/reconstruction_types.h>
 #include <std_srvs/srv/empty.hpp>
@@ -54,8 +54,8 @@ namespace khronos {
 class ExperimentManager {
  public:
   // Config.
-  struct Config {
-    int verbosity = 4;
+  struct Config : hydra::VerbosityConfig {
+    Config() : VerbosityConfig("experiment") {}
 
     // Override the run output directory; empty uses the pipeline log directory.
     std::string output_dir = "";

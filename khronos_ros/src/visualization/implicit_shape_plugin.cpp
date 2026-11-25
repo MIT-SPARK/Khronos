@@ -74,6 +74,7 @@ using BaseInterface = rclcpp::node_interfaces::NodeBaseInterface;
 using rclcpp::CallbackGroupType;
 
 void declare_config(ImplicitShapePlugin::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("ImplicitShapePlugin");
   field(config.min_embedding_diff, "min_embedding_diff");
@@ -156,7 +157,7 @@ void ImplicitShapePlugin::draw(const std_msgs::msg::Header& header, const SceneG
 
     const auto num_verts = rep->vertices.size();
     const auto num_faces = rep->triangles.size();
-    VLOG(1) << "Got " << num_verts << " vertices and " << num_faces << " faces";
+    MLOG(1) << "Got " << num_verts << " vertices and " << num_faces << " faces";
 
     auto msg = std::make_unique<kimera_pgmo_msgs::msg::Mesh>();
     fillMesh(header, *rep, ns, color, *msg);

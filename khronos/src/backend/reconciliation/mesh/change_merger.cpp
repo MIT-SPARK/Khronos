@@ -94,7 +94,7 @@ void ChangeMerger::merge(DynamicSceneGraph& dsg, const BackgroundChanges& change
 
   // Write the new mesh.
   dsg.mesh()->eraseVertices(vertices_to_delete);
-  CLOG(3) << "[ChangeMerger] Removed " << num_prev_faces - dsg.mesh()->numFaces() << " faces and "
+  MLOG(2) << "Removed " << num_prev_faces - dsg.mesh()->numFaces() << " faces and "
           << num_prev_vertices - dsg.mesh()->numVertices() << " vertices.";
 }
 

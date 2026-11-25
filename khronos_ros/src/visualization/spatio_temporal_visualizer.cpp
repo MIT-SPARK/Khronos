@@ -62,9 +62,9 @@ void declare_config(DynamicVisualizerConfig& config) {
 }
 
 void declare_config(SpatioTemporalVisualizer::Config& config) {
+  config::base<hydra::VerbosityConfig>(config);
   using namespace config;
   name("SpatioTemporalVisualizer");
-  field(config.verbosity, "verbosity");
   field(config.map_file, "map_file");
   field(config.max_frame_rate, "max_frame_rate");
   field(config.global_frame_name, "global_frame_name");
@@ -711,7 +711,7 @@ void SpatioTemporalVisualizer::loadMap() {
   robot_time_ = std::clamp(robot_time_, map_.earliest(), map_.latest());
   query_time_ = std::clamp(query_time_, map_.earliest(), robot_time_);
 
-  CLOG(1) << "Loaded map with " << map_.numTimeSteps() << " DSGs.\n"
+  MLOG(1) << "Loaded map with " << map_.numTimeSteps() << " DSGs.\n"
           << "Earliest: " << map_.earliest() << " (" << stampToSec(map_.earliest())
           << "s)\nLatest: " << map_.latest() << " (" << stampToSec(map_.latest())
           << "s).\nRobot time: " << robot_time_ << " (" << stampToSec(robot_time_)
