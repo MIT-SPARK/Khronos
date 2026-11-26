@@ -23,9 +23,7 @@ EXP_DIR = f"/home/marcus/code/khronos_ws/src/khronos/output/office_test"
 OUTPUT_DEST = f"{EXP_DIR}/plots/reconciliation_details"
 CHANGE_DETECTOR = "M36"  # Middle,
 RECONCILER = "Optimistic"  # "Optimistic"
-GT_CHANGES_FILE = (
-    f"/data/datasets/khronos/tesse_cd/{SCENE}/ground_truth/gt_changes.csv"
-)
+GT_CHANGES_FILE = f"/data/datasets/khronos/tesse_cd/{SCENE}/ground_truth/gt_changes.csv"
 PLOT_DPI = 300
 
 PLOT_CHANGES_IN_RECONCILIATION = True

@@ -1,10 +1,11 @@
 %YAML:1.0
+---
 # Type of odometry sensor:
 
 
 # Extra parameters
 
-# Yun said these are from west point. I think the camera was tilted 
+# Yun said these are from west point. I think the camera was tilted
 # differently then. This has ~70 degrees, now it's 90 (?). Probably need
 # to update
 T_BS:
@@ -18,7 +19,7 @@ T_BS:
   #       -1.,  0.001, -.001, 0.0,
   #       -.001,  -1., -0.10, 0.0,
   #       0.00,  0.00,  0.00, 1.0]
-  #       
+  #
   data: [0.0, -1.0, 0.0, -0.15,
          0.0, 0.0, -1.0, -0.02,
          1.0, 0.0, 0.0, -0.1,

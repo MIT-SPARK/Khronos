@@ -13,26 +13,25 @@ from tf2_ros import TransformBroadcaster
 
 class OdomToTF(Node):
     def __init__(self):
-        super().__init__('odom_to_tf')
+        super().__init__("odom_to_tf")
 
         # Declare parameters
-        self.declare_parameter('odom_topic', '/sparkal1/jackal_velocity_controller/odom')
+        self.declare_parameter(
+            "odom_topic", "/sparkal1/jackal_velocity_controller/odom"
+        )
 
         # Get parameters
-        odom_topic = self.get_parameter('odom_topic').value
+        odom_topic = self.get_parameter("odom_topic").value
 
         # Create TF broadcaster
         self.tf_broadcaster = TransformBroadcaster(self)
 
         # Subscribe to odometry
         self.odom_sub = self.create_subscription(
-            Odometry,
-            odom_topic,
-            self.odom_callback,
-            10
+            Odometry, odom_topic, self.odom_callback, 10
         )
 
-        self.get_logger().info(f'Publishing TF from odometry topic: {odom_topic}')
+        self.get_logger().info(f"Publishing TF from odometry topic: {odom_topic}")
 
     def odom_callback(self, msg):
         """Convert odometry message to TF transform and publish."""
@@ -64,5 +63,5 @@ def main(args=None):
         rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

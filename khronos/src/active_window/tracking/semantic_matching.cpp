@@ -91,9 +91,9 @@ SemanticMatchResult semanticsMatch(const std::optional<SemanticClusterInfo>& lhs
   // For openset cases, all objects have the same (unknown) semantic ID.
   if (lhs->category_id != rhs->category_id) {
     return {SemanticMatchResult::Status::kMismatchedCategories,
-           std::nullopt,
-           lhs->category_id,
-           rhs->category_id};
+            std::nullopt,
+            lhs->category_id,
+            rhs->category_id};
   }
 
   if (lhs->feature.size() != rhs->feature.size()) {

@@ -1,9 +1,13 @@
 #pragma once
 
+#include <map>
+#include <string>
+#include <vector>
+
 #include <config_utilities/config_utilities.h>
+#include <khronos/common/common_types.h>
 #include <spark_dsg/dynamic_scene_graph.h>
 #include <spark_dsg/scene_graph_types.h>
-#include <khronos/common/common_types.h>
 
 namespace khronos {
 
@@ -47,8 +51,7 @@ class GTConsolidator {
   void loadData();
   void consolidateDSG();
   void saveDSG();
-  std::map<NodeSymbol, std::vector<GtChange>> readChanges(
-      const std::string& changes_file);
+  std::map<NodeSymbol, std::vector<GtChange>> readChanges(const std::string& changes_file);
 
   bool is_setup_ = false;
 };

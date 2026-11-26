@@ -38,8 +38,8 @@ TEST(AccumulatedObjectExtractor, CopiesConfirmedVoxelsAsPoints) {
   const auto object = extractor.extractObject(track, FrameDataBuffer({}));
   ASSERT_TRUE(object);
   EXPECT_TRUE(object->bounding_box.dimensions.isApprox(track.accumulated_bounding_box.dimensions));
-  EXPECT_TRUE(object->bounding_box.world_P_center.isApprox(
-      track.accumulated_bounding_box.world_P_center));
+  EXPECT_TRUE(
+      object->bounding_box.world_P_center.isApprox(track.accumulated_bounding_box.world_P_center));
   EXPECT_TRUE(object->position.isApprox(object->bounding_box.world_P_center.cast<double>()));
   EXPECT_EQ(object->mesh.numVertices(), voxels.size());
   EXPECT_EQ(object->mesh.numFaces(), 0u);

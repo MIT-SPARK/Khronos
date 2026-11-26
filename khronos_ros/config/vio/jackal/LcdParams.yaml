@@ -1,4 +1,5 @@
 %YAML:1.0
+---
 # LoopClosureDetector parameters:
 use_nss: 1
 alpha: 0.5

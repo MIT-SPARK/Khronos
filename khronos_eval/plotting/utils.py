@@ -188,20 +188,27 @@ def detect_methods(experiment_dir, results_dir_name="results"):
     if not os.path.exists(results_dir):
         print(f"Warning: Results directory '{results_dir}' does not exist.")
         return result
+
     for change in os.listdir(results_dir):
         if not os.path.isdir(os.path.join(results_dir, change)):
             continue
+
         if change == "." or change == "..":
             continue
+
         change_dir = os.path.join(results_dir, change)
         for rec in os.listdir(change_dir):
             if not os.path.isdir(os.path.join(change_dir, rec)):
                 continue
+
             if rec == "." or rec == "..":
                 continue
+
             result.append((change, rec))
+
     if result == []:
-        result = [('.', '.')]
+        result = [(".", ".")]
+
     return result
 
 
@@ -383,8 +390,7 @@ def parse_table_data(data_dir, methods):
 def parse_table_data_simple(data_dir, methods):
     data = [{} for _ in methods]
     for i, method in enumerate(methods):
-    
-        exp_dir = data_dir + "/" + method        
+        exp_dir = data_dir + "/" + method
         bg_file = os.path.join(data_dir, method, "results", "background_mesh.csv")
         if not os.path.exists(bg_file):
             print(f"File '{bg_file}' not found, skipping.")
@@ -395,12 +401,14 @@ def parse_table_data_simple(data_dir, methods):
             for metric in values:
                 if metric == "Name":
                     continue
+
                 new_values[metric] = {}
                 for map in values["Name"]:
                     value = values[metric][int(map)]
                     new_values[metric][int(map)] = {
                         j: value for j in range(int(map) + 1)
                     }
+
             data[i].update(new_values)
 
         # Object data
@@ -409,7 +417,7 @@ def parse_table_data_simple(data_dir, methods):
             print(f"File '{object_file}' not found, skipping.")
         else:
             obj_data = read_object_data(exp_dir)
-            data[i].update(obj_data['._.'])
+            data[i].update(obj_data["._."])
 
         # Dynamic data
         dynamic_file = os.path.join(data_dir, method, "results", "dynamic_objects.csv")
@@ -417,7 +425,7 @@ def parse_table_data_simple(data_dir, methods):
             print(f"File '{dynamic_file}' not found, skipping.")
         else:
             dyn_data = read_dynamic_object_data(exp_dir)
-            data[i].update(dyn_data['._.'])
+            data[i].update(dyn_data["._."])
 
     return data
 
