@@ -37,24 +37,24 @@
 
 #include <config_utilities/config_utilities.h>
 #include <config_utilities/parsing/context.h>
-#include <gflags/gflags.h>
-#include <glog/logging.h>
+#include <hydra/common/run_settings.h>
+#include <hydra/utils/logging.h>
 #include <rclcpp/rclcpp.hpp>
 
 #include "khronos_ros/visualization/spatio_temporal_visualizer.h"
 
 struct NodeSettings {
   khronos::SpatioTemporalVisualizer::Config config;
-  int glog_verbosity = 1;
-  int glog_level = 0;
+
+  std::string log_level = "info";
 };
 
 void declare_config(NodeSettings& config) {
   using namespace config;
   name("NodeSettings");
   field(config.config, "config", false);
-  field(config.glog_verbosity, "glog_verbosity");
-  field(config.glog_level, "glog_level");
+
+  field(config.log_level, "log_level");
 }
 
 int main(int argc, char** argv) {
@@ -64,13 +64,8 @@ int main(int argc, char** argv) {
   const auto node_settings = config::fromContext<NodeSettings>();
 
   // Setup logging
-  FLAGS_minloglevel = node_settings.glog_level;
-  FLAGS_v = node_settings.glog_verbosity;
-  FLAGS_logtostderr = 1;
-  FLAGS_colorlogtostderr = 1;
-
-  google::InitGoogleLogging(argv[0]);
-  google::InstallFailureSignalHandler();
+  hydra::logging::setLogLevel(node_settings.log_level);
+  hydra::RunSettings::init(config::fromContext<hydra::RunSettings::Config>());
 
   auto node = std::make_shared<rclcpp::Node>("spatio_temporal_visualizer");
   ianvs::NodeHandle nh(*node, "spatio_temporal_visualizer");

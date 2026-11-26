@@ -42,7 +42,7 @@
 #include <string>
 #include <thread>
 
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <hydra_ros/utils/tf_lookup.h>
 
 #include "khronos/active_window/change_detection/transformation_getter.h"

@@ -6,15 +6,16 @@
 #include <config_utilities/types/path.h>
 #include <cv_bridge/cv_bridge.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
+#include <hydra/utils/logging.h>
 #include <opencv2/opencv.hpp>
-#include <rosbag2_cpp/readers/sequential_reader.hpp>
-#include <rosbag2_storage/storage_options.hpp>
-#include <rosbag2_cpp/converter_options.hpp>
-#include <rosbag2_storage/serialized_bag_message.hpp>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <tf2/transform_datatypes.h>
 #include <rclcpp/serialization.hpp>
+#include <rosbag2_cpp/converter_options.hpp>
+#include <rosbag2_cpp/readers/sequential_reader.hpp>
+#include <rosbag2_storage/serialized_bag_message.hpp>
+#include <rosbag2_storage/storage_options.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <tf2/transform_datatypes.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include "khronos/utils/geometry_utils.h"
 #include "khronos/utils/khronos_attribute_utils.h"
@@ -89,16 +90,20 @@ void TesseDynamicObjectGroundTruthBuilder::processRosbag() {
   std::vector<TimeStamp> timestamps;
 
   // Sanity check: matching pairs of images for each timestamp
-  CHECK_EQ(rgb_images.size(), depth_images.size())
-      << "RGB and Depth have different number of images";
+  HYDRA_CHECK_EQ(
+      rgb_images.size(), depth_images.size(), "RGB and Depth have different number of images");
   for (size_t i = 0; i < rgb_images.size(); i++) {
-    CHECK_EQ(rclcpp::Time(rgb_images[i]->header.stamp).nanoseconds(), 
-           rclcpp::Time(depth_images[i]->header.stamp).nanoseconds())
-        << "RBG Image " << i << " has header " << rclcpp::Time(rgb_images[i]->header.stamp).nanoseconds()
-        << " while Depth Image " << i << " has header  " << rclcpp::Time(depth_images[i]->header.stamp).nanoseconds();
+    HYDRA_CHECK_EQ(rclcpp::Time(rgb_images[i]->header.stamp).nanoseconds(),
+                   rclcpp::Time(depth_images[i]->header.stamp).nanoseconds(),
+                   "RBG Image {} has header {} while Depth Image {} has header  {}",
+                   i,
+                   rclcpp::Time(rgb_images[i]->header.stamp).nanoseconds(),
+                   i,
+                   rclcpp::Time(depth_images[i]->header.stamp).nanoseconds());
     timestamps.push_back(TimeStamp(rclcpp::Time(rgb_images[i]->header.stamp).nanoseconds()));
   }
-  CHECK_EQ(timestamps.size(), rgb_images.size());
+
+  HYDRA_CHECK_EQ(timestamps.size(), rgb_images.size());
 
   // Track temporally-contiguous dynamic objects
   std::map<ColorKey, ManyPointsStamped> new_object_map;
@@ -115,7 +120,7 @@ void TesseDynamicObjectGroundTruthBuilder::processRosbag() {
     try {
       cv_ptr_rgb = cv_bridge::toCvCopy(rgb_images[i], "rgb8");
     } catch (cv_bridge::Exception& e) {
-      LOG(FATAL) << "cv_bridge exception: " << e.what();
+      HYDRA_LOG(FATAL, "cv_bridge exception: {}", e.what());
     }
     const cv::Mat& rgb_image = cv_ptr_rgb->image;
 
@@ -123,7 +128,7 @@ void TesseDynamicObjectGroundTruthBuilder::processRosbag() {
     try {
       cv_ptr_depth = cv_bridge::toCvCopy(depth_images[i], "32FC1");
     } catch (cv_bridge::Exception& e) {
-      LOG(FATAL) << "cv_bridge exception: " << e.what();
+      HYDRA_LOG(FATAL, "cv_bridge exception: {}", e.what());
     }
     const cv::Mat& depth_image = cv_ptr_depth->image;
 
@@ -139,7 +144,8 @@ void TesseDynamicObjectGroundTruthBuilder::processRosbag() {
             // Check for the active window's activation distance
             float depth = depth_image.at<float>(y, x);
             if (depth > 0.1) {  // min depth for simulator to be accurate
-              Point pixel_point = get3DPointFromDepth(rclcpp::Time(rgb_images[i]->header.stamp), x, y, depth);
+              Point pixel_point =
+                  get3DPointFromDepth(rclcpp::Time(rgb_images[i]->header.stamp), x, y, depth);
               float distance = getDistance(rclcpp::Time(rgb_images[i]->header.stamp), pixel_point);
 
               // Save the point as a valid dynamic object component
@@ -225,14 +231,17 @@ Point TesseDynamicObjectGroundTruthBuilder::get3DPointFromDepth(const rclcpp::Ti
   // Transform the point to the world frame
   geometry_msgs::msg::PointStamped pointInWorldFrameMsg;
   try {
-    tf2::doTransform(pointInCameraFrameMsg, pointInWorldFrameMsg,
-                     tfBuffer_.lookupTransform(config.world_frame_id, config.camera_frame_id,
-                                               timestamp_closest));
+    tf2::doTransform(pointInCameraFrameMsg,
+                     pointInWorldFrameMsg,
+                     tfBuffer_.lookupTransform(
+                         config.world_frame_id, config.camera_frame_id, timestamp_closest));
   } catch (tf2::TransformException& ex) {
-    LOG(INFO) << "closest timestamp to " << timestamp.nanoseconds() << " is " 
-              << timestamp_closest.nanoseconds();
-    LOG(WARNING) << "Couldn't get transform at " << timestamp_closest.nanoseconds();
-    LOG(FATAL) << ex.what();
+    HYDRA_LOG(INFO,
+              "closest timestamp to {} is {}",
+              timestamp.nanoseconds(),
+              timestamp_closest.nanoseconds());
+    HYDRA_LOG(WARNING, "Couldn't get transform at {}", timestamp_closest.nanoseconds());
+    HYDRA_LOG(FATAL, "{}", ex.what());
   }
 
   return Point(
@@ -248,7 +257,7 @@ float TesseDynamicObjectGroundTruthBuilder::getDistance(const rclcpp::Time& time
     cameraToWorldTransform =
         tfBuffer_.lookupTransform(config.world_frame_id, config.camera_frame_id, timestamp_closest);
   } catch (tf2::TransformException& ex) {
-    LOG(FATAL) << ex.what();
+    HYDRA_LOG(FATAL, "{}", ex.what());
   }
 
   // Extract the camera position from the transform
@@ -298,7 +307,7 @@ void TesseDynamicObjectGroundTruthBuilder::setupDsg() {
 
   // Get the colors of dynamic objects
   for (const auto& color : config.dynamic_object_colors) {
-    CHECK_EQ(color.size(), 4);
+    HYDRA_CHECK_EQ(color.size(), 4);
     colors_dynamic_.push_back(Color(color[0], color[1], color[2], color[3]));
   }
 }
@@ -314,9 +323,9 @@ void TesseDynamicObjectGroundTruthBuilder::extractImagesFromBag(
   rosbag2_cpp::ConverterOptions converter_options;
   converter_options.input_serialization_format = "cdr";
   converter_options.output_serialization_format = "cdr";
-  
+
   reader.open(storage_options, converter_options);
-  
+
   // Save all matching image messages
   rclcpp::Serialization<sensor_msgs::msg::Image> serializer;
   while (reader.has_next()) {
@@ -328,11 +337,11 @@ void TesseDynamicObjectGroundTruthBuilder::extractImagesFromBag(
       images->push_back(img_msg);
     }
   }
-  
+
   // Sort images by timestamp (should be given for free but not guaranteed)
   std::sort(images->begin(),
             images->end(),
-            [](const std::shared_ptr<sensor_msgs::msg::Image>& a, 
+            [](const std::shared_ptr<sensor_msgs::msg::Image>& a,
                const std::shared_ptr<sensor_msgs::msg::Image>& b) {
               return rclcpp::Time(a->header.stamp) < rclcpp::Time(b->header.stamp);
             });
@@ -346,12 +355,12 @@ void TesseDynamicObjectGroundTruthBuilder::extractTfsFromBag(const std::string& 
   rosbag2_cpp::ConverterOptions converter_options;
   converter_options.input_serialization_format = "cdr";
   converter_options.output_serialization_format = "cdr";
-  
+
   reader.open(storage_options, converter_options);
-  
+
   rclcpp::Time min_time = rclcpp::Time::max();
   rclcpp::Time max_time = rclcpp::Time(0);
-  
+
   rclcpp::Serialization<tf2_msgs::msg::TFMessage> serializer;
   while (reader.has_next()) {
     auto msg = reader.read_next();
@@ -359,7 +368,7 @@ void TesseDynamicObjectGroundTruthBuilder::extractTfsFromBag(const std::string& 
       auto tf_message = std::make_shared<tf2_msgs::msg::TFMessage>();
       rclcpp::SerializedMessage serialized_msg(*msg->serialized_data);
       serializer.deserialize_message(&serialized_msg, tf_message.get());
-      
+
       // Iterate over all transforms in the message and add them to the buffer
       for (const auto& transform : tf_message->transforms) {
         tfBuffer_.setTransform(transform, "default_authority", msg->topic_name == "/tf_static");
@@ -379,7 +388,8 @@ void TesseDynamicObjectGroundTruthBuilder::extractTfsFromBag(const std::string& 
   }
 }
 
-rclcpp::Time TesseDynamicObjectGroundTruthBuilder::findClosestTimestamp(const rclcpp::Time& query_time) {
+rclcpp::Time TesseDynamicObjectGroundTruthBuilder::findClosestTimestamp(
+    const rclcpp::Time& query_time) {
   auto lower = transform_timestamps_.lower_bound(query_time);
   auto upper = lower;
 

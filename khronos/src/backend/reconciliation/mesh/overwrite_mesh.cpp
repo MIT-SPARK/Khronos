@@ -37,6 +37,8 @@
 
 #include "khronos/backend/reconciliation/mesh/overwrite_mesh.h"
 
+#include <hydra/utils/logging.h>
+
 #include "config_utilities/config_utilities.h"
 
 namespace khronos {
@@ -65,8 +67,10 @@ void OverwriteMesh::merge(DynamicSceneGraph& dsg, const BackgroundChanges& /* ch
   const auto& colors = dsg.mesh()->colors;
   const std::vector<uint64_t>& time_stamps = dsg.mesh()->stamps;
   if (time_stamps.size() != vertices.size()) {
-    MLOG_NAMED(ERROR) << "Time stamps and vertices do not match (" << time_stamps.size() << " vs "
-                      << vertices.size() << ").";
+    MLOG_NAMED(ERROR,
+               "Time stamps and vertices do not match ({} vs {}).",
+               time_stamps.size(),
+               vertices.size());
     return;
   }
 
@@ -130,20 +134,22 @@ void OverwriteMesh::merge(DynamicSceneGraph& dsg, const BackgroundChanges& /* ch
 
   // Write mesh.
   dsg.setMesh(new_mesh);
-  MLOG(2) << "Removed " << faces.size() - new_mesh->numFaces() << " faces and "
-          << vertices.size() - new_mesh->numVertices() << " vertices.";
+  MLOG(2,
+       "Removed {} faces and {} vertices.",
+       faces.size() - new_mesh->numFaces(),
+       vertices.size() - new_mesh->numVertices());
 
   removeObjectsFromBackground(dsg);
 
   // Some additional verbose printing for debugging / tuning.
   if (config.get_verbosity() >= 4) {
-    MLOG_NAMED(INFO) << "Min time: "
-                     << static_cast<float>(
-                            *std::min_element(time_stamps.begin(), time_stamps.end()) / 1e9);
-    MLOG_NAMED(INFO) << "Max time: "
-                     << static_cast<float>(
-                            *std::max_element(time_stamps.begin(), time_stamps.end()) / 1e9);
-    MLOG_NAMED(INFO) << "Num voxels: " << most_recent_measrements.size();
+    MLOG_NAMED(INFO,
+               "Min time: {}",
+               static_cast<float>(*std::min_element(time_stamps.begin(), time_stamps.end()) / 1e9));
+    MLOG_NAMED(INFO,
+               "Max time: {}",
+               static_cast<float>(*std::max_element(time_stamps.begin(), time_stamps.end()) / 1e9));
+    MLOG_NAMED(INFO, "Num voxels: {}", most_recent_measrements.size());
   }
 }
 

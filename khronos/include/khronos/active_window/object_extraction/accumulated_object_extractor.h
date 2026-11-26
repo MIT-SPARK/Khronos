@@ -38,7 +38,7 @@
 #pragma once
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 
 #include "khronos/active_window/object_extraction/object_extractor.h"
 

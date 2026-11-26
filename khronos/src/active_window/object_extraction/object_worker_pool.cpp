@@ -40,6 +40,7 @@
 #include <memory>
 
 #include <config_utilities/config.h>
+#include <hydra/utils/logging.h>
 #include <spark_dsg/node_attributes.h>
 
 namespace khronos {
@@ -86,11 +87,11 @@ void ObjectWorkerPool::stop() {
 }
 
 void ObjectWorkerPool::join() {
-  MLOG(1) << "Joining " << curr_workers_ << " extraction threads!";
+  MLOG(1, "Joining {} extraction threads!", curr_workers_);
   // Queued requests are pending too. The spin thread counts a request as a worker before it
   // pops it, so a request is always either queued or counted.
   while (!work_queue_.empty() || curr_workers_ > 0) {
-    MLOG(4) << "Waiting on " << curr_workers_ << " extraction threads to finish!";
+    MLOG(4, "Waiting on {} extraction threads to finish!", curr_workers_);
     std::this_thread::sleep_for(10ms);
   }
 }

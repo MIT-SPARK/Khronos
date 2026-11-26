@@ -7,13 +7,9 @@
     uri: git@github.com:MIT-SPARK/Hydra.git
     version: main
 - git:
-    local-name: hydra_ros
-    uri: git@github.com:MIT-SPARK/Hydra-ROS.git
-    version: main
-- git:
     local-name: kimera_pgmo
     uri: git@github.com:MIT-SPARK/Kimera-PGMO.git
-    version: ros2
+    version: main
 - git:
     local-name: kimera_rpgo
     uri: git@github.com:MIT-SPARK/Kimera-RPGO.git

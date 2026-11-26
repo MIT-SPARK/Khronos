@@ -39,7 +39,7 @@
 #include <string>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <ianvs/node_handle.h>
 #include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/trigger.hpp>

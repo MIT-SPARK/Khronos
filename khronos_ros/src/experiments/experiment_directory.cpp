@@ -40,7 +40,7 @@
 #include <algorithm>
 #include <filesystem>
 
-#include <glog/logging.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos_ros/experiments/experiment_logger.h"
 
@@ -48,17 +48,18 @@ namespace khronos {
 
 bool isExperimentDirectory(const std::string& directory) {
   if (!std::filesystem::is_directory(directory)) {
-    LOG(ERROR) << "Experiment directory '" << directory << "' does not exist.";
+    HYDRA_LOG(ERROR, "Experiment directory '{}' does not exist.", directory);
     return false;
   }
   if (!std::filesystem::exists(directory + "/experiment_log.txt")) {
-    LOG(ERROR) << "Directory '" << directory
-               << "' is not a khronos experiment (has no 'experiment_log.txt').";
+    HYDRA_LOG(ERROR,
+              "Directory '{}' is not a khronos experiment (has no 'experiment_log.txt').",
+              directory);
     return false;
   }
   ExperimentLogger logger(directory);
   if (!logger.hasFlag("Experiment Finished Cleanly")) {
-    LOG(WARNING) << "Experiment '" << directory << "' did not finish cleanly.";
+    HYDRA_LOG(WARNING, "Experiment '{}' did not finish cleanly.", directory);
   }
   return true;
 }
@@ -100,7 +101,7 @@ std::vector<uint64_t> getMapTimes(const std::string& directory,
   for (const std::string& map_name : map_names) {
     const std::string stamp_file = directory + "/maps/" + map_name + "/timestamp.txt";
     if (!std::filesystem::exists(stamp_file)) {
-      LOG(WARNING) << "Timestamp file '" << stamp_file << "' does not exist, skipping.";
+      HYDRA_LOG(WARNING, "Timestamp file '{}' does not exist, skipping.", stamp_file);
       continue;
     }
     uint64_t value;

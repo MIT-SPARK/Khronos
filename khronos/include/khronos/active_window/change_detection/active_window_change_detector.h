@@ -44,7 +44,7 @@
 #include <vector>
 
 #include <hydra/common/output_sink.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <spatial_hash/hash.h>
 
 #include "khronos/active_window/active_window.h"

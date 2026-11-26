@@ -39,7 +39,7 @@
 
 #include <stdlib.h>
 
-#include <glog/logging.h>
+#include <hydra/utils/logging.h>
 
 namespace khronos {
 
@@ -71,14 +71,14 @@ RayVerificator::CheckResult RayVerificator::check(const Point& point,
   CheckResult result;
 
   if (rays_.empty()) {
-    MLOG(4) << "Point unobserved: no measurements.";
+    MLOG(4, "Point unobserved: no measurements.");
     return result;
   }
 
   // Lookup all candidate views that could have observed the point.
   const auto it = block_seen_by_rays_.find(grid_.toIndex(point));
   if (it == block_seen_by_rays_.end()) {
-    MLOG(4) << "Point unobserved: no measurements_.";
+    MLOG(4, "Point unobserved: no measurements_.");
     return result;
   }
 
@@ -223,8 +223,11 @@ BlockIndexSet RayVerificator::addVertices() {
 
   // Ensure all mesh arrays have consistent sizes
   if (vertices.size() != first_seen.size() || vertices.size() != last_seen.size()) {
-    LOG(WARNING) << "Mesh arrays have inconsistent sizes: vertices=" << vertices.size()
-                 << ", first_seen=" << first_seen.size() << ", last_seen=" << last_seen.size();
+    HYDRA_LOG(WARNING,
+              "Mesh arrays have inconsistent sizes: vertices={}, first_seen={}, last_seen={}",
+              vertices.size(),
+              first_seen.size(),
+              last_seen.size());
     return observed_blocks;
   }
   if (config.active_window_duration > 0) {
@@ -247,9 +250,11 @@ BlockIndexSet RayVerificator::addVertices() {
     // Create the rays and add them to the hash.
     for (const size_t source_index : source_indices) {
       if (source_index >= timestamps_.size() || source_index >= node_ids_.size()) {
-        LOG(WARNING) << "Invalid source index: " << source_index
-                     << " (timestamps size=" << timestamps_.size()
-                     << ", node_ids size=" << node_ids_.size() << ")";
+        HYDRA_LOG(WARNING,
+                  "Invalid source index: {} (timestamps size={}, node_ids size={})",
+                  source_index,
+                  timestamps_.size(),
+                  node_ids_.size());
         continue;
       }
       rays_.emplace_back(timestamps_.at(source_index), node_ids_.at(source_index), i);

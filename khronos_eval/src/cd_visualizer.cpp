@@ -2,6 +2,7 @@
 
 #include <filesystem>
 
+#include <hydra/utils/logging.h>
 #include <khronos/common/common_types.h>
 #include <khronos_ros/visualization/visualization_utils.h>
 #include <spatial_hash/hash.h>
@@ -97,8 +98,10 @@ void ChangeDetectionVisualizer::drawRays() {
     // Select the Points.
     size_t idx = dynamic_config.point_id;
     if (idx >= object_->mesh.numVertices()) {
-      LOG(WARNING) << "Point index " << idx
-                   << " is out of range (max: " << object_->mesh.numVertices() - 1 << ")";
+      HYDRA_LOG(WARNING,
+                "Point index {} is out of range (max: {})",
+                idx,
+                object_->mesh.numVertices() - 1);
       idx = object_->mesh.numVertices() - 1;
     }
     const Point query_point = object_->bounding_box.pointToWorldFrame(object_->mesh.pos(idx));
@@ -202,9 +205,13 @@ void ChangeDetectionVisualizer::drawRays() {
     point_marker_ = std::make_unique<Marker>(points_marker);
     line_marker_ = std::make_unique<Marker>(lines_marker);
 
-    MLOG(1) << "Showing O(" << dynamic_config.object_id << ") point " << idx << "/"
-            << object_->mesh.numVertices() << " (" << data.start.size() - num_no_overlap << "/"
-            << data.start.size() << " rays active).";
+    MLOG(1,
+         "Showing O({}) point {}/{} ({}/{} rays active).",
+         dynamic_config.object_id,
+         idx,
+         object_->mesh.numVertices(),
+         data.start.size() - num_no_overlap,
+         data.start.size());
   }
 
   // Publish the markers.
@@ -266,7 +273,7 @@ void ChangeDetectionVisualizer::setupRayVerificator() {
   config_rv.ray_policy = static_cast<RayVerificator::Config::RayPolicy>(dynamic_config.ray_policy);
   ray_verificator_ = std::make_unique<RayVerificator>(config_rv);
   ray_verificator_->setDsg(graph_);
-  MLOG(1) << "Setup Ray verificator:\n" << config_rv << std::endl;
+  MLOG(1, "Setup Ray verificator:\n{}\n", config_rv);
   previous_ray_policy_ = dynamic_config.ray_policy;
 }
 
@@ -280,7 +287,7 @@ void ChangeDetectionVisualizer::setupObject() {
   const auto& layer = graph_->getLayer(DsgLayers::OBJECTS);
   NodeSymbol symbol('O', dynamic_config.object_id);
   if (!layer.hasNode(symbol)) {
-    LOG(WARNING) << "Object " << symbol << " does not exist.";
+    HYDRA_LOG(WARNING, "Object {} does not exist.", symbol);
     for (const auto& node : layer.nodes()) {
       previous_object_id_ = NodeSymbol(node.id).categoryId();
       object_ =
@@ -293,7 +300,7 @@ void ChangeDetectionVisualizer::setupObject() {
   previous_object_id_ = dynamic_config.object_id;
 
   if (object_->mesh.numVertices() == 0) {
-    LOG(ERROR) << "No vertices in object " << dynamic_config.object_id << ".";
+    HYDRA_LOG(ERROR, "No vertices in object {}.", dynamic_config.object_id);
   }
 }
 

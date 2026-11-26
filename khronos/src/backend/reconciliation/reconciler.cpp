@@ -39,6 +39,8 @@
 
 #include <filesystem>
 
+#include <hydra/utils/logging.h>
+
 #include "khronos/common/common_types.h"
 #include "khronos/utils/khronos_attribute_utils.h"
 
@@ -68,10 +70,12 @@ void Reconciler::reconcile(DynamicSceneGraph& dsg,
                            std::map<NodeId, ObjectReconciliationDetail>* object_details) {
   Timer timer("reconcile/all", stamp);
 
-  MLOG(3) << "Reconciler has " << changes.object_changes.size() << " object changes.";
+  MLOG(3, "Reconciler has {} object changes.", changes.object_changes.size());
   for (const auto& change : changes.object_changes) {
-    MLOG(3) << "\tChange: " << NodeSymbol(change.node_id).str() << " -> "
-            << NodeSymbol(change.merged_id).str();
+    MLOG(3,
+         "\tChange: {} -> {}",
+         NodeSymbol(change.node_id).str(),
+         NodeSymbol(change.merged_id).str());
   }
 
   // Reconcile the background mesh.
@@ -150,7 +154,7 @@ void Reconciler::reconcileObjects(
                  << ", final_merged: " << final_merged_nodes.size()
                  << ", final_unmerged: " << final_unmerged_nodes.size()
                  << ", changes: " << changes.object_changes.size();
-    LOG(INFO) << "Received input changes:\nMerges:\n" << logging_info.str();
+    HYDRA_LOG(INFO, "Received input changes:\nMerges:\n{}", logging_info.str());
   }
 
   // Estimate updated presence times for all observations based on change detection results.
@@ -249,13 +253,15 @@ void Reconciler::estimatePresenceTimes(const ObjectChange& change,
 
 void Reconciler::mergeObjects(const ObjectChange& change, DynamicSceneGraph& dsg) const {
   if (change.node_id == change.merged_id) {
-    LOG(WARNING) << "Cannot merge node '" << change.node_id << "' into '" << change.merged_id
-                 << "': Same node.";
+    HYDRA_LOG(
+        WARNING, "Cannot merge node '{}' into '{}': Same node.", change.node_id, change.merged_id);
     return;
   }
   if (!dsg.hasNode(change.node_id) || !dsg.hasNode(change.merged_id)) {
-    LOG(WARNING) << "Cannot merge node '" << change.node_id << "' into '" << change.merged_id
-                 << "': Not all nodes exist.";
+    HYDRA_LOG(WARNING,
+              "Cannot merge node '{}' into '{}': Not all nodes exist.",
+              change.node_id,
+              change.merged_id);
     return;
   }
 
@@ -271,8 +277,7 @@ void Reconciler::mergeObjects(const ObjectChange& change, DynamicSceneGraph& dsg
   }
   mergeObjectAttributes(from_attrs, into_attrs);
   if (!dsg.mergeNodes(change.node_id, change.merged_id)) {
-    LOG(WARNING) << "Failed to merge node '" << change.node_id << "' into '" << change.merged_id
-                 << "'.";
+    HYDRA_LOG(WARNING, "Failed to merge node '{}' into '{}'.", change.node_id, change.merged_id);
   }
 }
 

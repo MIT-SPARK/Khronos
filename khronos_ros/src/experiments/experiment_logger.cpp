@@ -44,15 +44,16 @@
 #include <sstream>
 #include <string>
 
-#include <glog/logging.h>
+#include <hydra/utils/logging.h>
 
 namespace khronos {
 
 ExperimentLogger::ExperimentLogger(const std::string& data_dir, const std::string& log_file_name) {
   log_file_.open(data_dir + "/" + log_file_name, std::ios::in | std::ios::app);
   if (!log_file_.is_open()) {
-    LOG(ERROR) << "Could not open log file '" << data_dir + "/" + log_file_name
-               << "'. No logging will be performed.";
+    HYDRA_LOG(ERROR,
+              "Could not open log file '{}'. No logging will be performed.",
+              data_dir + "/" + log_file_name);
   }
 }
 ExperimentLogger::~ExperimentLogger() {

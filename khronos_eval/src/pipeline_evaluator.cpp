@@ -4,6 +4,7 @@
 #include <iostream>
 
 #include <hydra/common/run_settings.h>
+#include <hydra/utils/logging.h>
 #include <khronos/spatio_temporal_map/spatio_temporal_map.h>
 #include <khronos/utils/output_file_utils.h>
 #include <pcl/io/ply_io.h>
@@ -62,7 +63,7 @@ void PipelineEvaluator::run() {
   }
   // Setup results directory.
   if (!ensureDirectoryExists(config.results_dir)) {
-    LOG(ERROR) << "Failed to create results directory '" << config.results_dir << "'.";
+    HYDRA_LOG(ERROR, "Failed to create results directory '{}'.", config.results_dir);
     return;
   }
 
@@ -222,7 +223,7 @@ void PipelineEvaluator::loadGTDsg() {
 }
 
 bool PipelineEvaluator::configureOutputDirectories() {
-  LOG(INFO) << "\n" << config;
+  HYDRA_LOG(INFO, "\n{}", config);
 
   // Check if the experiment directory exists and is valid.
   if (!khronos::isExperimentDirectory(config.experiment_directory)) {

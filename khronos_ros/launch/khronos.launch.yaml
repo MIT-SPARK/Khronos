@@ -18,7 +18,7 @@ launch:
   - arg: { name: start_visualizer, default: "true" }
   # Debug
   - arg: { name: debug, default: "false" }
-  - arg: { name: min_glog_level, default: "0" }
+  - arg: { name: log_level, default: "info" }
   - arg: { name: verbosity, default: "0" }
   - arg: { name: rviz_verbose, default: "false" }
   # Robot Frames
@@ -55,7 +55,7 @@ launch:
         --config-utilities-file $(var mapper_config)
         --config-utilities-file $(var labelspace_config)@labelspace
         --config-utilities-yaml {robot_id: $(var robot_id), odom_frame: $(var odom_frame), robot_frame: $(var robot_frame), map_frame: $(var map_frame)}
-        --config-utilities-yaml {glog_level: $(var min_glog_level), glog_verbosity: $(var verbosity)}
+        --config-utilities-yaml {log_level: $(var log_level), default_verbosity: $(var verbosity)}
         --config-utilities-yaml {log_path: $(var output_dir)}
         --config-utilities-yaml $(var extra_yaml)
         --config-utilities-yaml {backend: {fix_input_poses: $(var use_gt_frame)}}
@@ -74,7 +74,7 @@ launch:
       args: >
         --config-utilities-file $(var visualizer_config)
         --config-utilities-file $(var visualizer_plugins)
-        --config-utilities-yaml {glog_level: 1, glog_verbosity: 0}
+        --config-utilities-yaml {log_level: warning, default_verbosity: 0}
         --config-utilities-yaml {graph: {type: GraphFromRos, frame_id: map}}
   # Launch rviz separately
   - node:

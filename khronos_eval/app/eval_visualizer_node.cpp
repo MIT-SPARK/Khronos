@@ -1,6 +1,5 @@
 #include <config_utilities/parsing/context.h>
-#include <gflags/gflags.h>
-#include <glog/logging.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos_eval/eval_visualizer.h"
 
@@ -9,10 +8,6 @@ int main(int argc, char** argv) {
   rclcpp::init(argc, argv);
 
   // Setup logging
-  FLAGS_logtostderr = 1;
-  FLAGS_colorlogtostderr = 1;
-  google::InitGoogleLogging(argv[0]);
-  google::InstallFailureSignalHandler();
 
   // Start Ros.
   auto node = std::make_shared<rclcpp::Node>("dsg_visualizer_node");

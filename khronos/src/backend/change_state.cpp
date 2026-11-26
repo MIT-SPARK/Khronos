@@ -41,14 +41,14 @@
 #include <sstream>
 #include <string>
 
-#include <glog/logging.h>
 #include <hydra/utils/csv_reader.h>
+#include <hydra/utils/logging.h>
 namespace khronos {
 
 bool RPGOMerges::save(const std::string& filename) const {
   std::ofstream save_file(filename);
   if (!save_file.is_open()) {
-    LOG(ERROR) << "Could not open file '" << filename << "' for writing.";
+    HYDRA_LOG(ERROR, "Could not open file '{}' for writing.", filename);
     return false;
   }
   std::string header;
@@ -75,7 +75,7 @@ bool RPGOMerges::load(const std::string& filename) {
   // Check header format.
   for (const std::string& header : kHeaderNames) {
     if (!reader.hasHeader(header)) {
-      LOG(WARNING) << "Could not find header '" << header << "' in file '" << filename << "'.";
+      HYDRA_LOG(WARNING, "Could not find header '{}' in file '{}'.", header, filename);
       return false;
     }
   }
@@ -100,7 +100,7 @@ RPGOMerges RPGOMerges::fromFile(const std::string& filename) {
 bool ObjectChanges::save(const std::string& filename) const {
   std::ofstream save_file(filename);
   if (!save_file.is_open()) {
-    LOG(ERROR) << "Could not open file '" << filename << "' for writing.";
+    HYDRA_LOG(ERROR, "Could not open file '{}' for writing.", filename);
     return false;
   }
   std::string header;
@@ -166,7 +166,7 @@ std::vector<ObjectChange>::const_iterator ObjectChanges::find(NodeId node_id) co
 bool BackgroundChanges::save(const std::string& filename) const {
   std::ofstream save_file(filename);
   if (!save_file.is_open()) {
-    LOG(ERROR) << "Could not open file '" << filename << "' for writing.";
+    HYDRA_LOG(ERROR, "Could not open file '{}' for writing.", filename);
     return false;
   }
   // Write as a single line, but as csv so other tools can also read it.
@@ -187,7 +187,7 @@ bool BackgroundChanges::load(const std::string& filename) {
   // Read data.
   std::ifstream read_file(filename);
   if (!read_file.is_open()) {
-    LOG(ERROR) << "Could not open file '" << filename << "' for reading.";
+    HYDRA_LOG(ERROR, "Could not open file '{}' for reading.", filename);
     return false;
   }
 

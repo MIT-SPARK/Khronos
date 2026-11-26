@@ -7,6 +7,7 @@
 #include <cv_bridge/cv_bridge.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <hydra/common/robot_prefix_config.h>
+#include <hydra/utils/logging.h>
 #include <opencv2/opencv.hpp>
 #include <rclcpp/serialization.hpp>
 #include <rosbag2_cpp/converter_options.hpp>
@@ -75,7 +76,7 @@ void RealDynamicObjectGroundTruthBuilder::mouseClickCallback(int event,
     try {
       cv_ptr_depth = cv_bridge::toCvCopy(depth_images_.at(i_img_), "32FC1");
     } catch (cv_bridge::Exception& e) {
-      LOG(FATAL) << "cv_bridge exception: " << e.what();
+      HYDRA_LOG(FATAL, "cv_bridge exception: {}", e.what());
     }
     const cv::Mat& depth_image = cv_ptr_depth->image;
 
@@ -112,17 +113,20 @@ void RealDynamicObjectGroundTruthBuilder::processRosbag() {
   extractPosesFromDsg(config.dsg_file);
 
   // Sanity check: matching pairs of images for each timestamp
-  CHECK_EQ(rgb_images_.size(), depth_images_.size())
-      << "RGB and Depth have different number of images";
+  HYDRA_CHECK_EQ(
+      rgb_images_.size(), depth_images_.size(), "RGB and Depth have different number of images");
   for (size_t i = 0; i < rgb_images_.size(); i++) {
-    CHECK_EQ(rclcpp::Time(rgb_images_[i]->header.stamp).nanoseconds(),
-             rclcpp::Time(depth_images_[i]->header.stamp).nanoseconds())
-        << "RBG Image " << i << " has header "
-        << rclcpp::Time(rgb_images_[i]->header.stamp).nanoseconds() << " while Depth Image " << i
-        << " has header  " << rclcpp::Time(depth_images_[i]->header.stamp).nanoseconds();
+    HYDRA_CHECK_EQ(rclcpp::Time(rgb_images_[i]->header.stamp).nanoseconds(),
+                   rclcpp::Time(depth_images_[i]->header.stamp).nanoseconds(),
+                   "RBG Image {} has header {} while Depth Image {} has header  {}",
+                   i,
+                   rclcpp::Time(rgb_images_[i]->header.stamp).nanoseconds(),
+                   i,
+                   rclcpp::Time(depth_images_[i]->header.stamp).nanoseconds());
     timestamps_.push_back(TimeStamp(rclcpp::Time(rgb_images_[i]->header.stamp).nanoseconds()));
   }
-  CHECK_EQ(timestamps_.size(), rgb_images_.size());
+
+  HYDRA_CHECK_EQ(timestamps_.size(), rgb_images_.size());
 
   // Set up OpenCV window and mouse callback
   cv::namedWindow("Image Window");
@@ -137,7 +141,7 @@ void RealDynamicObjectGroundTruthBuilder::processRosbag() {
     try {
       cv_ptr_rgb = cv_bridge::toCvCopy(rgb_images_[i_img_], "rgb8");
     } catch (cv_bridge::Exception& e) {
-      LOG(FATAL) << "cv_bridge exception: " << e.what();
+      HYDRA_LOG(FATAL, "cv_bridge exception: {}", e.what());
     }
     const cv::Mat& rgb_image = cv_ptr_rgb->image;
 
@@ -206,10 +210,12 @@ Point RealDynamicObjectGroundTruthBuilder::get3DPointFromDepth(const rclcpp::Tim
                      pointInWorldFrameMsg,
                      tfBuffer_.lookupTransform("world", "left_cam", timestamp_closest));
   } catch (tf2::TransformException& ex) {
-    LOG(INFO) << "closest timestamp to " << timestamp.nanoseconds() << " is "
-              << timestamp_closest.nanoseconds();
-    LOG(WARNING) << "Couldn't get transform at " << timestamp_closest.nanoseconds();
-    LOG(FATAL) << ex.what();
+    HYDRA_LOG(INFO,
+              "closest timestamp to {} is {}",
+              timestamp.nanoseconds(),
+              timestamp_closest.nanoseconds());
+    HYDRA_LOG(WARNING, "Couldn't get transform at {}", timestamp_closest.nanoseconds());
+    HYDRA_LOG(FATAL, "{}", ex.what());
   }
 
   return Point(
@@ -224,7 +230,7 @@ float RealDynamicObjectGroundTruthBuilder::getDistance(const rclcpp::Time& times
   try {
     cameraToWorldTransform = tfBuffer_.lookupTransform("world", "left_cam", timestamp_closest);
   } catch (tf2::TransformException& ex) {
-    LOG(FATAL) << ex.what();
+    HYDRA_LOG(FATAL, "{}", ex.what());
   }
 
   // Extract the camera position from the transform

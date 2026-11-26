@@ -39,14 +39,14 @@
 
 #include <filesystem>
 
-#include <glog/logging.h>
+#include <hydra/utils/logging.h>
 
 namespace khronos {
 
 bool ensureDirectoryExists(const std::string& path) {
   if (!std::filesystem::exists(path)) {
     if (!std::filesystem::create_directories(path)) {
-      LOG(ERROR) << "Failed to create directory '" << path << "'.";
+      HYDRA_LOG(ERROR, "Failed to create directory '{}'.", path);
       return false;
     }
   }
@@ -60,7 +60,7 @@ bool openOrAppendToCsv(const std::string& file_path,
   const bool file_existed = std::filesystem::exists(file_path);
   file_stream = std::fstream(file_path, std::ios::in | std::ios::app);
   if (!file_stream) {
-    LOG(ERROR) << "Failed to open file '" << file_path << "'.";
+    HYDRA_LOG(ERROR, "Failed to open file '{}'.", file_path);
     return false;
   }
   if (file_existed) {
@@ -74,16 +74,18 @@ bool openOrAppendToCsv(const std::string& file_path,
         file_stream.close();
         file_stream.open(file_path, std::ios::out | std::ios::trunc);
         if (!file_stream) {
-          LOG(ERROR) << "Failed to open file '" << file_path << "'.";
+          HYDRA_LOG(ERROR, "Failed to open file '{}'.", file_path);
           return false;
         }
       } else {
-        LOG(ERROR) << "Output file '" << file_path
-                   << "' already exists but has different header, skipping.";
+        HYDRA_LOG(ERROR,
+                  "Output file '{}' already exists but has different header, skipping.",
+                  file_path);
         return false;
       }
     }
-    LOG(INFO) << "Appending to existing output file '" << file_path << "'.";
+
+    HYDRA_LOG(INFO, "Appending to existing output file '{}'.", file_path);
   } else {
     file_stream << header;
   }

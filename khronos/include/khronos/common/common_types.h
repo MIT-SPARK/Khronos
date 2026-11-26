@@ -39,7 +39,6 @@
 
 #include <vector>
 
-#include <glog/logging.h>
 #include <hydra/common/common_types.h>
 #include <hydra/openset/openset_types.h>
 #include <hydra/reconstruction/voxel_types.h>
@@ -127,15 +126,5 @@ using spark_dsg::SceneGraphNode;
 
 // Timing.
 using Timer = hydra::timing::ScopedTimer;
-
-// Logging.
-/**
- * Verbosity levels are based on frequency:
- * 1 - ONCE (e.g. on startup/shutdown)
- * 2 - INFREQUENT (e.g. on starting/stopping, high-level information)
- * 3 - EVERY FRAME
- * 4+ - DETAILS (e.g. for debugging/performance)
- */
-// NOTE(lschmid): This assumes that the object using this macro has a config member
 
 }  // namespace khronos

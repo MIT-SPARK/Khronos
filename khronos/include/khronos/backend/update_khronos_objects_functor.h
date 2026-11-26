@@ -7,7 +7,7 @@
 #include <hydra/backend/merge_tracker.h>
 #include <hydra/backend/update_functions.h>
 #include <hydra/utils/active_window_tracker.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 
 #include "khronos/common/common_types.h"
 namespace khronos {

@@ -10,6 +10,7 @@
 #include <config_utilities/types/enum.h>
 #include <config_utilities/validation.h>
 #include <cv_bridge/cv_bridge.hpp>
+#include <hydra/utils/logging.h>
 #include <khronos/utils/geometry_utils.h>
 #include <nlohmann/json.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
@@ -205,7 +206,7 @@ auto ExternalObjectExtractor::extractObject(const Track& track, const FrameDataB
   const auto base_ptr = &(best.frame->input.getSensor());
   const auto cam_ptr = dynamic_cast<const Camera*>(base_ptr);
   if (!cam_ptr) {
-    LOG(ERROR) << "Camera sensor required!";
+    HYDRA_LOG(ERROR, "Camera sensor required!");
     return nullptr;
   }
 
@@ -251,7 +252,7 @@ auto ExternalObjectExtractor::extractObject(const Track& track, const FrameDataB
 
   const auto rep = ianvs::call_service(*client_, req);
   if (!rep) {
-    LOG(ERROR) << "External service call failed!";
+    HYDRA_LOG(ERROR, "External service call failed!");
     return nullptr;
   }
 
@@ -259,7 +260,7 @@ auto ExternalObjectExtractor::extractObject(const Track& track, const FrameDataB
     return nullptr;
   }
 
-  MLOG(3) << "Got response features of " << rep->shape_code.size() << " elements";
+  MLOG(3, "Got response features of {} elements", rep->shape_code.size());
   return makeAttributes(*best.frame, *best.cluster, *rep);
 }
 
@@ -302,23 +303,25 @@ auto ExternalObjectExtractor::getBestCluster(const Track& track,
   }
 
   if (!best.frame) {
-    LOG(WARNING) << "Invalid track " << track.id << ": no observation in buffer!";
+    HYDRA_LOG(WARNING, "Invalid track {}: no observation in buffer!", track.id);
     return {};
   }
 
   if (best.cluster->pixels.size() < config.min_cluster_size) {
-    LOG(ERROR) << "Too few pixels in best cluster: " << best.cluster->pixels.size() << " < "
-               << config.min_cluster_size;
+    HYDRA_LOG(ERROR,
+              "Too few pixels in best cluster: {} < {}",
+              best.cluster->pixels.size(),
+              config.min_cluster_size);
     return {};
   }
 
   if (!best.cluster->semantics) {
-    LOG(ERROR) << "Semantics required for mesh extraction!";
+    HYDRA_LOG(ERROR, "Semantics required for mesh extraction!");
     return {};
   }
 
   if (config.excluded_labels.count(best.cluster->semantics->category_id)) {
-    MLOG(1) << "Skipping excluded label for track " << track.id;
+    MLOG(1, "Skipping excluded label for track {}", track.id);
     return {};
   }
 

@@ -5,6 +5,7 @@
 #include <config_utilities/parsing/yaml.h>
 #include <config_utilities/types/path.h>
 #include <hydra/common/robot_prefix_config.h>
+#include <hydra/utils/logging.h>
 #include <khronos/utils/geometry_utils.h>
 #include <pcl/PCLPointCloud2.h>
 #include <pcl/conversions.h>
@@ -374,7 +375,7 @@ bool TesseGroundTruthBuilder::loadPoints(Points& vertices, Labels& labels, Label
   // Load the observed DSG.
   observed_dsg_ = DynamicSceneGraph::load(config.khronos_observed_dsg_file);
   if (!observed_dsg_) {
-    LOG(ERROR) << "Failed to load observed DSG '" << config.khronos_observed_dsg_file << "'.";
+    HYDRA_LOG(ERROR, "Failed to load observed DSG '{}'.", config.khronos_observed_dsg_file);
     return false;
   }
   std::cout << " - Loaded observed DSG with " << observed_dsg_->mesh()->numVertices() << " points."

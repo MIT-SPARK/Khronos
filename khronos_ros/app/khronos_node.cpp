@@ -36,12 +36,27 @@
  * -------------------------------------------------------------------------- */
 
 #include <config_utilities/parsing/context.h>
-#include <glog/logging.h>
+#include <hydra/utils/logging.h>
 #include <ianvs/node_init.h>
+#include <ianvs/ros_log_sink.h>
 
 #include "khronos_ros/experiments/experiment_manager.h"
 #include "khronos_ros/khronos_pipeline.h"
 #include "khronos_ros/utils/ros_namespaces.h"
+
+namespace khronos {
+
+struct NodeSettings {
+  std::string log_level = "info";
+  bool forward_logs_to_ros = false;
+};
+
+void declare_config(NodeSettings& config) {
+  config::field(config.log_level, "log_level");
+  config::field(config.forward_logs_to_ros, "forward_logs_to_ros");
+}
+
+}  // namespace khronos
 
 int main(int argc, char** argv) {
   config::initContext(argc, argv, true);
@@ -49,11 +64,11 @@ int main(int argc, char** argv) {
   [[maybe_unused]] const auto node = ianvs::init_node(argc, argv, "khronos_node");
   auto nh = ianvs::NodeHandle::this_node();
 
-  // Setup logging.
-  FLAGS_alsologtostderr = true;
-  FLAGS_colorlogtostderr = true;
-  google::InitGoogleLogging(argv[0]);
-  google::InstallFailureSignalHandler();
+  const auto logging = config::fromContext<khronos::NodeSettings>();
+  hydra::logging::setLogLevel(logging.log_level);
+  if (logging.forward_logs_to_ros) {
+    hydra::logging::setSinks({ianvs::makeRosSink(nh.logger())});
+  }
 
   // Allocate the run directory before modules start logging.
   const auto experiment_config =
@@ -71,5 +86,10 @@ int main(int argc, char** argv) {
 
   // Run the experiment.
   manager.run();
+  hydra::logging::logger()->flush();
+  if (logging.forward_logs_to_ros) {
+    hydra::logging::setLogToStderr();
+  }
+
   return 0;
 }

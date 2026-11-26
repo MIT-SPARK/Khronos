@@ -37,7 +37,7 @@
 
 #include "khronos_ros/active_window/ros_change_detection_controller.h"
 
-#include <glog/logging.h>
+#include <hydra/utils/logging.h>
 
 namespace khronos {
 namespace {
@@ -69,20 +69,20 @@ RosChangeDetectionController::RosChangeDetectionController(const Config& config)
       "start", [this](const Trigger::Request::SharedPtr&, Trigger::Response::SharedPtr res) {
         res->success = true;
         res->message = setEnabled(true) ? "started" : "already running";
-        MLOG_NAMED_WITH(this->config, INFO) << "Start: " << res->message;
+        MLOG_NAMED_WITH(this->config, INFO, "Start: {}", res->message);
       });
   stop_srv_ = nh_.create_service<Trigger>(
       "stop", [this](const Trigger::Request::SharedPtr&, Trigger::Response::SharedPtr res) {
         res->success = true;
         res->message = setEnabled(false) ? "stopped" : "already stopped";
-        MLOG_NAMED_WITH(this->config, INFO) << "Stop: " << res->message;
+        MLOG_NAMED_WITH(this->config, INFO, "Stop: {}", res->message);
       });
   reset_srv_ = nh_.create_service<Trigger>(
       "reset", [this](const Trigger::Request::SharedPtr&, Trigger::Response::SharedPtr res) {
         requestReset();
         res->success = true;
         res->message = "reset requested";
-        MLOG_NAMED_WITH(this->config, INFO) << "Reset requested.";
+        MLOG_NAMED_WITH(this->config, INFO, "Reset requested.");
       });
 }
 

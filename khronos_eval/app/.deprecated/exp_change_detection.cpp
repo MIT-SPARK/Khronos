@@ -1,10 +1,10 @@
-
 #include <filesystem>
 #include <iostream>
 #include <string>
 
 #include <config_utilities/config_utilities.h>
 #include <config_utilities/parsing/yaml.h>
+#include <hydra/utils/logging.h>
 #include <khronos/backend/change_detection/sequential_change_detector.h>
 #include <khronos/common/common_types.h>
 #include <khronos_ros/experiments/experiment_directory.h>
@@ -58,12 +58,6 @@ void declare_config(ChangeDetectionConfig& config) {
  * @brief Run change detection on an experiment directory.
  */
 int main(int argc, char** argv) {
-  FLAGS_alsologtostderr = true;
-  FLAGS_colorlogtostderr = true;
-  google::ParseCommandLineFlags(&argc, &argv, false);
-  google::InitGoogleLogging(argv[0]);
-  google::InstallFailureSignalHandler();
-
   // Check arguments.
   if (argc < 2 || argc > 5 || argv[1] == std::string("--help") || argv[1] == std::string("-h")) {
     std::cout << "Usage: " << argv[0]
@@ -98,7 +92,7 @@ int main(int argc, char** argv) {
 
   // Validate conig.
   config::checkValid(config);
-  LOG(INFO) << "\n" << config;
+  HYDRA_LOG(INFO, "\n{}", config);
 
   // Check if the experiment directory exists and is valid.
   if (!khronos::isExperimentDirectory(config.experiment_directory)) {

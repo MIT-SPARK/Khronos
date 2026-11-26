@@ -20,7 +20,6 @@ find_package(cv_bridge REQUIRED)
 
 set(PCL_FIND_QUIETLY TRUE)
 find_package(PCL REQUIRED COMPONENTS io kdtree common search)
-find_package(gflags REQUIRED)
 find_package(OpenCV REQUIRED)
 
 # ##############################################################################
@@ -58,13 +57,13 @@ ament_target_dependencies(${PROJECT_NAME} PUBLIC
 # ##############################################################################
 
 add_executable(exp_pipeline app/exp_pipeline.cpp)
-target_link_libraries(exp_pipeline ${PROJECT_NAME} ${gflags_LIBRARIES})
+target_link_libraries(exp_pipeline ${PROJECT_NAME})
 
 add_executable(eval_visualizer_node app/eval_visualizer_node.cpp)
-target_link_libraries(eval_visualizer_node ${PROJECT_NAME} ${gflags_LIBRARIES})
+target_link_libraries(eval_visualizer_node ${PROJECT_NAME})
 
 add_executable(cd_visualizer_node app/cd_visualizer_node.cpp)
-target_link_libraries(cd_visualizer_node ${PROJECT_NAME} ${gflags_LIBRARIES})
+target_link_libraries(cd_visualizer_node ${PROJECT_NAME})
 
 # ##############################################################################
 # Export #

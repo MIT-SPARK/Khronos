@@ -5,6 +5,7 @@
 #include <config_utilities/config.h>
 #include <config_utilities/types/path.h>
 #include <hydra/utils/csv_reader.h>
+#include <hydra/utils/logging.h>
 #include <khronos_ros/visualization/visualization_utils.h>
 #include <spark_dsg/colormaps.h>
 
@@ -73,20 +74,28 @@ void EvalVisualizer::draw() {
     previous_robot_time_idx_ = config.get().robot_time;
     previous_query_time_idx_ = config.get().query_time;
     if (robot_time_idx >= data_.size()) {
-      LOG(WARNING) << "Robot time index " << robot_time_idx
-                   << " is out of bounds (max: " << data_.size() - 1 << ")";
+      HYDRA_LOG(WARNING,
+                "Robot time index {} is out of bounds (max: {})",
+                robot_time_idx,
+                data_.size() - 1);
       robot_time_idx = data_.size() - 1;
     }
     const size_t num_query_times = data_[robot_time_idx].size();
     if (query_time_idx >= num_query_times) {
-      LOG(WARNING) << "Query time index " << query_time_idx
-                   << " is out of bounds (max: " << num_query_times - 1 << ") for robot time "
-                   << robot_time_idx << ".";
+      HYDRA_LOG(WARNING,
+                "Query time index {} is out of bounds (max: {}) for robot time {}.",
+                query_time_idx,
+                num_query_times - 1,
+                robot_time_idx);
       query_time_idx = num_query_times - 1;
     }
-    LOG(INFO) << "Displaying data for robot time " << robot_time_idx << " ("
-              << times_seconds_[robot_time_idx] << "s) and query time " << query_time_idx << " ("
-              << times_seconds_[query_time_idx] << "s).";
+
+    HYDRA_LOG(INFO,
+              "Displaying data for robot time {} ({}s) and query time {} ({}s).",
+              robot_time_idx,
+              times_seconds_[robot_time_idx],
+              query_time_idx,
+              times_seconds_[query_time_idx]);
   }
 
   const auto& data = data_[robot_time_idx][query_time_idx];
@@ -391,26 +400,27 @@ void EvalVisualizer::loadData() {
   // Get the file names and check if they exist.
   const auto visualization_directory = config.get().visualization_directory;
   if (visualization_directory.empty()) {
-    LOG(FATAL) << "Param 'visualization_directory' not set.";
+    HYDRA_LOG(FATAL, "Param 'visualization_directory' not set.");
   }
   const auto objects_file = visualization_directory / "objects.csv";
   if (!std::filesystem::exists(objects_file)) {
-    LOG(FATAL) << "File '" << objects_file << "' does not exist.";
+    HYDRA_LOG(FATAL, "File '{}' does not exist.", objects_file);
   }
   const auto associations_file = visualization_directory / "associations.csv";
   if (!std::filesystem::exists(associations_file)) {
-    LOG(FATAL) << "File '" << associations_file << "' does not exist.";
+    HYDRA_LOG(FATAL, "File '{}' does not exist.", associations_file);
   }
-  LOG(INFO) << "Loading Visualization data from '" << visualization_directory << "'...";
+
+  HYDRA_LOG(INFO, "Loading Visualization data from '{}'...", visualization_directory);
 
   // Load the data.
   hydra::CsvReader objects_reader(objects_file);
   if (!objects_reader) {
-    LOG(FATAL) << "Could not read '" << objects_file << "'.";
+    HYDRA_LOG(FATAL, "Could not read '{}'.", objects_file);
   }
   hydra::CsvReader associations_reader(associations_file);
   if (!associations_reader) {
-    LOG(FATAL) << "Could not read '" << associations_file << "'.";
+    HYDRA_LOG(FATAL, "Could not read '{}'.", associations_file);
   }
 
   // Parse objects.
@@ -499,7 +509,8 @@ void EvalVisualizer::loadData() {
   for (const size_t stamp : times_) {
     times_seconds_.emplace_back(static_cast<float>(stamp - times_[0]) / 1e9f);
   }
-  LOG(INFO) << "Loaded " << data_.size() << " maps with " << times_.size() << " time stamps.";
+
+  HYDRA_LOG(INFO, "Loaded {} maps with {} time stamps.", data_.size(), times_.size());
 }
 
 }  // namespace khronos

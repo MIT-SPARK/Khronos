@@ -39,7 +39,7 @@
 
 #include <vector>
 
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <spatial_hash/grid.h>
 
 #include "khronos/active_window/data/frame_data.h"

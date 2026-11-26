@@ -46,7 +46,7 @@
 #include <geometry_msgs/msg/vector3.hpp>
 #include <hydra/common/run_settings.h>
 #include <hydra/input/sensor_map.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <hydra_ros/utils/input_data_to_messages.h>
 #include <hydra_visualizer/utils/marker_tracker.h>
 #include <ianvs/lazy_publisher_group.h>

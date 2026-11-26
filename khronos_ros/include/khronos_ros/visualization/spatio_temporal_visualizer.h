@@ -45,7 +45,7 @@
 #include <config_utilities/config_utilities.h>
 #include <config_utilities/dynamic_config.h>
 #include <hydra/common/robot_prefix_config.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <hydra_visualizer/plugins/mesh_plugin.h>
 #include <hydra_visualizer/scene_graph_renderer.h>
 #include <khronos/common/common_types.h>

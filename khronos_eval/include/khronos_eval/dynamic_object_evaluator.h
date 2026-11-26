@@ -7,8 +7,8 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/utils/logging.h>
 #include <hydra/utils/nearest_neighbor_utilities.h>
+#include <hydra/utils/verbosity_config.h>
 #include <khronos/common/common_types.h>
 
 // TODO(marcus): this should all be included in the ObjectEvaluator

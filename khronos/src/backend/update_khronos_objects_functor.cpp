@@ -2,8 +2,8 @@
 
 #include <config_utilities/config.h>
 #include <config_utilities/validation.h>
-#include <glog/logging.h>
 #include <hydra/backend/backend_utilities.h>
+#include <hydra/utils/logging.h>
 #include <hydra/utils/mesh_utilities.h>
 #include <kimera_pgmo/deformation_graph.h>
 #include <kimera_pgmo/utils/common_functions.h>
@@ -40,7 +40,7 @@ void UpdateKhronosObjectsFunctor::call(const DynamicSceneGraph& unmerged,
                                        const UpdateInfo::ConstPtr& info) const {
   Timer spin_timer("backend/update_khronos_objects", info->timestamp_ns);
   if (!unmerged.hasLayer(DsgLayers::OBJECTS)) {
-    MLOG(3) << "Skipping khronos object update due to missing layer";
+    MLOG(3, "Skipping khronos object update due to missing layer");
     return;
   }
 

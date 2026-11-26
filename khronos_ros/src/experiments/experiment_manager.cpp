@@ -46,7 +46,7 @@
 #include <stdexcept>
 #include <string>
 
-#include <glog/logging.h>
+#include <hydra/utils/logging.h>
 #include <ianvs/spin_functions.h>
 #include <khronos/common/common_types.h>
 
@@ -109,7 +109,7 @@ ExperimentManager::ExperimentManager(const Config& config,
       nh_(nh) {
   // Verify output directory.
   if (!data_dir_) {
-    MLOG(1) << "No output directory specified. Not saving experiment data.";
+    MLOG(1, "No output directory specified. Not saving experiment data.");
     return;
   }
   logger_ = std::make_shared<ExperimentLogger>(data_dir_.path());
@@ -144,24 +144,25 @@ ExperimentManager::ExperimentManager(const Config& config,
                                                      std::placeholders::_3));
   }
 
-  MLOG(1) << "Setup output directory: '" << data_dir_.path() << "'.";
+  MLOG(1, "Setup output directory: '{}'.", data_dir_.path());
 
   // Setup service for termination.
   finish_mapping_and_save_srv_ = nh_.create_service<std_srvs::srv::Empty>(
       "finish_mapping_and_save", &ExperimentManager::finishMappingAndSaveCallback, this);
 }
 
-ExperimentManager::~ExperimentManager() { MLOG(1) << "Finished."; }
+ExperimentManager::~ExperimentManager() { MLOG(1, "Finished."); }
 
 void ExperimentManager::run() {
   // Run
   if (logger_) {
     logger_->log("Starting experiment.");
   }
-  MLOG_NAMED(INFO) << "Initializing pipeline...";
+
+  MLOG_NAMED(INFO, "Initializing pipeline...");
   khronos_->init();
   logConfigs();
-  MLOG_NAMED(INFO) << "Starting pipeline...";
+  MLOG_NAMED(INFO, "Starting pipeline...");
   khronos_->start();
   ianvs::spinAndWait(nh_, config.exit_after_clock);
   if (logger_) {
@@ -252,7 +253,8 @@ void ExperimentManager::logData() {
   if (!data_dir_) {
     return;
   }
-  MLOG(1) << "Writing data to output directory: '" << data_dir_.path() << "' ...";
+
+  MLOG(1, "Writing data to output directory: '{}' ...", data_dir_.path());
 
   // Log timing.
   if (config.log_timing || config.log_timing_details) {
@@ -285,7 +287,8 @@ void ExperimentManager::logData() {
     logger_->log("Saved final spatio-temporal map to '" + data_dir_.path().string() + "'.");
     logger_->setFlag("Experiment Finished Cleanly");
   }
-  MLOG(1) << "Finished writing data to output directory: '" << data_dir_.path() << "'.";
+
+  MLOG(1, "Finished writing data to output directory: '{}'.", data_dir_.path());
 }
 
 void ExperimentManager::logConfigs() {
@@ -293,7 +296,7 @@ void ExperimentManager::logConfigs() {
     return;
   }
   const std::string params = config::toString(khronos_->config);
-  MLOG_NAMED(INFO) << "Config: \n" << params;
+  MLOG_NAMED(INFO, "Config: \n{}", params);
 
   if (!data_dir_) {
     return;

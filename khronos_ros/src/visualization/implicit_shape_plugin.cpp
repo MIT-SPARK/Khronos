@@ -4,7 +4,7 @@
 #include <config_utilities/factory.h>
 #include <config_utilities/types/enum.h>
 #include <config_utilities/validation.h>
-#include <glog/logging.h>
+#include <hydra/utils/logging.h>
 #include <nlohmann/json.hpp>
 #include <spark_dsg/colormaps.h>
 #include <spark_dsg/node_attributes.h>
@@ -146,7 +146,7 @@ void ImplicitShapePlugin::draw(const std_msgs::msg::Header& header, const SceneG
     fillRequest(*attrs, *req);
     const auto rep = ianvs::call_service(*client_, req);
     if (!rep) {
-      LOG(ERROR) << "CRISP service call failed!";
+      HYDRA_LOG(ERROR, "CRISP service call failed!");
       continue;
     }
 
@@ -157,7 +157,7 @@ void ImplicitShapePlugin::draw(const std_msgs::msg::Header& header, const SceneG
 
     const auto num_verts = rep->vertices.size();
     const auto num_faces = rep->triangles.size();
-    MLOG(1) << "Got " << num_verts << " vertices and " << num_faces << " faces";
+    MLOG(1, "Got {} vertices and {} faces", num_verts, num_faces);
 
     auto msg = std::make_unique<kimera_pgmo_msgs::msg::Mesh>();
     fillMesh(header, *rep, ns, color, *msg);

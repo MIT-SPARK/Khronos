@@ -38,7 +38,7 @@
 #include "khronos_ros/active_window/active_window_change_detector_publisher.h"
 
 #include <config_utilities/config.h>
-#include <glog/logging.h>
+#include <hydra/utils/logging.h>
 #include <rclcpp/time.hpp>
 
 namespace khronos {
@@ -83,7 +83,7 @@ ActiveWindowChangeDetectorPublisher::ActiveWindowChangeDetectorPublisher(
   // once the robot is rediscovered, even though the robot only publishes on change.
   changes_pub_ = nh_.create_publisher<khronos_msgs::msg::AwcdChanges>(
       config.topic, rclcpp::QoS(1).transient_local().reliable());
-  MLOG(1) << "Initialized.";
+  MLOG(1, "Initialized.");
 }
 
 void ActiveWindowChangeDetectorPublisher::call(

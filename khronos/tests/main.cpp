@@ -32,11 +32,10 @@
  * Government is authorized to reproduce and distribute reprints for Government
  * purposes notwithstanding any copyright notation herein.
  * -------------------------------------------------------------------------- */
-#include <glog/logging.h>
 #include <gtest/gtest.h>
+#include <hydra/utils/logging.h>
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  google::InitGoogleLogging(argv[0]);
   return RUN_ALL_TESTS();
 }

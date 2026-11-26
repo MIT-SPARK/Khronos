@@ -44,7 +44,7 @@
 #include <config_utilities/config.h>
 #include <config_utilities/types/path.h>
 #include <config_utilities/validation.h>
-#include <glog/logging.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos_ros/visualization/visualization_utils.h"
 
@@ -108,7 +108,7 @@ ActiveWindowChangeDetectorVisualizer::ActiveWindowChangeDetectorVisualizer(
   status_pub_ = nh_.create_publisher<MarkerArray>("change_detection/status", config.queue_size);
   status_voxels_pub_ =
       nh_.create_publisher<MarkerArray>("change_detection/voxels", config.queue_size);
-  MLOG(1) << "Initialized.";
+  MLOG(1, "Initialized.");
 }
 
 void ActiveWindowChangeDetectorVisualizer::call(
@@ -135,7 +135,7 @@ void ActiveWindowChangeDetectorVisualizer::call(
       removed << spark_dsg::NodeSymbol(obj.id).str() << ", ";
     }
 
-    MLOG(2) << "Removed objects: " << removed.str();
+    MLOG(2, "Removed objects: {}", removed.str());
   }
 
   // set stamps for all visualizations
@@ -158,7 +158,7 @@ void ActiveWindowChangeDetectorVisualizer::call(
 
 void ActiveWindowChangeDetectorVisualizer::drawPriorGraph(const DynamicSceneGraph::Ptr& dsg) const {
   if (!dsg) {
-    MLOG(2) << "No prior graph provided, skipping draw";
+    MLOG(2, "No prior graph provided, skipping draw");
     return;
   }
   if (!renderer_ && !mesh_plugin_) {
@@ -168,12 +168,13 @@ void ActiveWindowChangeDetectorVisualizer::drawPriorGraph(const DynamicSceneGrap
   // Only redraw if renderer has changes or we haven't drawn yet. The prior graph is static, so
   // without a renderer it is drawn once.
   if (has_drawn_ && (!renderer_ || !renderer_->hasChange())) {
-    MLOG(2) << "Prior graph already drawn and no changes detected, "
-               "skipping draw";
+    MLOG(2,
+         "Prior graph already drawn and no changes detected, skipping "
+         "draw");
     return;
   }
 
-  MLOG(2) << "Drawing prior graph";
+  MLOG(2, "Drawing prior graph");
 
   std_msgs::msg::Header header;
   header.frame_id = frame_;
@@ -242,8 +243,11 @@ void ActiveWindowChangeDetectorVisualizer::visualizeAddedObjects(
   header.frame_id = frame_;
   header.stamp = getStamp();
   for (const auto& obj : newly_added_objects) {
-    MLOG(2) << "Visualizing newly added object with id " << obj.id << " ("
-            << obj.absorbed_track_ids.size() + 1 << " merged track(s))";
+    MLOG(2,
+         "Visualizing newly added object with id {} ({} "
+         "merged track(s))",
+         obj.id,
+         obj.absorbed_track_ids.size() + 1);
     const BoundingBox& bbox = obj.prior_bounding_box;
     if (!bbox.isValid()) {
       continue;

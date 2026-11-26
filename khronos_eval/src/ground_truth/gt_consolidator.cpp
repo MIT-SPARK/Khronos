@@ -5,6 +5,7 @@
 #include <config_utilities/parsing/yaml.h>
 #include <config_utilities/types/path.h>
 #include <hydra/utils/csv_reader.h>
+#include <hydra/utils/logging.h>
 
 #include "khronos_eval/utils/io_utils.h"
 
@@ -51,11 +52,12 @@ void GTConsolidator::loadData() {
     is_setup_ = true;
   }
 
-  LOG(INFO) << "Loaded " << gt_dsg_with_mesh_->getLayer(DsgLayers::OBJECTS).numNodes()
-            << " static objects.";
-  LOG(INFO) << "Loaded " << gt_dynamic_dsg_->getLayer(DsgLayers::OBJECTS).numNodes()
-            << " dynamic objects.";
-  LOG(INFO) << "Loaded " << gt_changes_.size() << " ground truth changes.";
+  HYDRA_LOG(INFO,
+            "Loaded {} static objects.",
+            gt_dsg_with_mesh_->getLayer(DsgLayers::OBJECTS).numNodes());
+  HYDRA_LOG(
+      INFO, "Loaded {} dynamic objects.", gt_dynamic_dsg_->getLayer(DsgLayers::OBJECTS).numNodes());
+  HYDRA_LOG(INFO, "Loaded {} ground truth changes.", gt_changes_.size());
 }
 
 std::map<NodeSymbol, std::vector<GTConsolidator::GtChange>> GTConsolidator::readChanges(
@@ -68,14 +70,14 @@ std::map<NodeSymbol, std::vector<GTConsolidator::GtChange>> GTConsolidator::read
   std::map<NodeSymbol, std::vector<GTConsolidator::GtChange>> gt_changes;
   hydra::CsvReader reader(changes_file);
   if (!reader.isSetup()) {
-    LOG(WARNING) << "Ground truth changes file is set but could not be read!";
+    HYDRA_LOG(WARNING, "Ground truth changes file is set but could not be read!");
     return {};
   }
 
   // Check the data is correct and read it.
   for (const auto& header : {"ObjectSymbol", "AppearedAt", "DisappearedAt"}) {
     if (!reader.hasHeader(header)) {
-      LOG(WARNING) << "Ground truth changes file is missing header '" << header << "'.";
+      HYDRA_LOG(WARNING, "Ground truth changes file is missing header '{}'.", header);
       return {};
     }
   }
@@ -97,11 +99,11 @@ std::map<NodeSymbol, std::vector<GTConsolidator::GtChange>> GTConsolidator::read
 
 void GTConsolidator::consolidateDSG() {
   if (!is_setup_) {
-    LOG(ERROR) << "GTConsolidator is not setup!";
+    HYDRA_LOG(ERROR, "GTConsolidator is not setup!");
     return;
   }
 
-  LOG(INFO) << "Consolidating DSG...";
+  HYDRA_LOG(INFO, "Consolidating DSG...");
   size_t num_static_objects_invalid = 0;
   size_t num_static_objects_valid = 0;
   size_t num_dynamic_objects_invalid = 0;
@@ -153,28 +155,29 @@ void GTConsolidator::consolidateDSG() {
 
     NodeId new_node_id = gt_dsg_with_mesh_->getLayer(DsgLayers::OBJECTS).numNodes();
     if (gt_dsg_with_mesh_->hasNode(new_node_id)) {
-      LOG(FATAL) << "Node " << new_node_id
-                 << " already exists in static DSG! Figure out a way to deal with this.";
+      HYDRA_LOG(FATAL,
+                "Node {} already exists in static DSG! Figure out a way to deal with this.",
+                new_node_id);
     }
     gt_dsg_with_mesh_->emplaceNode(
         DsgLayers::OBJECTS, new_node_id, std::make_unique<KhronosObjectAttributes>(*attrs));
   }
 
-  LOG(INFO) << "Consolidated DSG.";
-  LOG(INFO) << "Found " << num_static_objects_invalid << " invalid static objects.";
-  LOG(INFO) << "Found " << num_static_objects_valid << " valid static objects.";
-  LOG(INFO) << "Found " << num_dynamic_objects_invalid << " invalid dynamic objects.";
-  LOG(INFO) << "Found " << num_dynamic_objects_valid << " valid dynamic objects.";
+  HYDRA_LOG(INFO, "Consolidated DSG.");
+  HYDRA_LOG(INFO, "Found {} invalid static objects.", num_static_objects_invalid);
+  HYDRA_LOG(INFO, "Found {} valid static objects.", num_static_objects_valid);
+  HYDRA_LOG(INFO, "Found {} invalid dynamic objects.", num_dynamic_objects_invalid);
+  HYDRA_LOG(INFO, "Found {} valid dynamic objects.", num_dynamic_objects_valid);
 }
 
 void GTConsolidator::saveDSG() {
   if (config.save_dsg) {
     gt_dsg_with_mesh_->save(config.output_dir + "/gt_dsg_consolidated.json", false);
-    LOG(INFO) << "Saved DSG.";
+    HYDRA_LOG(INFO, "Saved DSG.");
   }
   if (config.save_dsg_with_mesh) {
     gt_dsg_with_mesh_->save(config.output_dir + "/gt_dsg_with_mesh_consolidated.json", true);
-    LOG(INFO) << "Saved DSG with mesh.";
+    HYDRA_LOG(INFO, "Saved DSG with mesh.");
   }
 }
 

@@ -44,7 +44,7 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/run_settings.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <hydra_visualizer/plugins/mesh_plugin.h>
 #include <hydra_visualizer/scene_graph_renderer.h>
 #include <hydra_visualizer/utils/marker_tracker.h>

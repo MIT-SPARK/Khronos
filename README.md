@@ -71,7 +71,7 @@ cd ~/ros2_ws/src
 
 Install system dependencies:
 ```bash
-sudo apt install ros-$ROS_DISTRO-gtsam libgoogle-glog-dev nlohmann-json3-dev
+sudo apt install ros-$ROS_DISTRO-gtsam libspdlog-dev nlohmann-json3-dev
 ```
 
 Get Khronos and all source dependencies:
@@ -195,7 +195,13 @@ pre-commit install
 Khronos modules inherit Hydra's `default_verbosity` unless their `verbosity`
 is set. Use `log_name` to choose the component label and `log_prefix` and
 `log_suffix` for its delimiters. The delimiters default to `[` and `] `.
-Set `log_name: ''` to omit the label.
+Labels are hidden by default. Set `show_log_prefix: true` in a module's config to
+include its label; an empty `log_name` also hides it.
+
+Diagnostic output uses spdlog through Hydra. Set `log_level` to a textual
+severity such as `info` or `warning`; set `default_verbosity` for inherited
+module diagnostics. The Khronos node optionally forwards to ROS with
+`forward_logs_to_ros: true`. These replace the old glog-specific controls.
 
 Use level 1 for lifecycle messages and summaries, level 2 for per-update
 output, and level 3 for normal diagnostic details. Reserve level 4 for very

@@ -50,7 +50,7 @@
 #include <vector>
 
 #include <hydra/common/robot_config.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <nlohmann/json.hpp>
 #include <opencv2/core.hpp>
 

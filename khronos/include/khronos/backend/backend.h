@@ -47,7 +47,6 @@
 #include <hydra/backend/backend_module.h>
 #include <hydra/common/run_settings.h>
 #include <hydra/common/shared_module_state.h>
-#include <hydra/utils/logging.h>
 
 #include "khronos/backend/change_detection/sequential_change_detector.h"
 #include "khronos/backend/change_state.h"

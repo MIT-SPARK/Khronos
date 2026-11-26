@@ -37,8 +37,8 @@
 
 #include "khronos/backend/update_functions.h"
 
-#include <glog/logging.h>
 #include <gtsam/geometry/Pose3.h>
+#include <hydra/utils/logging.h>
 #include <hydra/utils/pgmo_mesh_traits.h>
 #include <khronos/common/common_types.h>
 
@@ -78,7 +78,8 @@ void UpdateObjectsFunctor::call(const DynamicSceneGraph& /* unmerged */,
   }
 
   const auto& layer = graph.getLayer(DsgLayers::OBJECTS);
-  const auto& objects_values = *info->pgmo_values; //NOTE(marcus): maybe use place_values instead??
+  const auto& objects_values = *info->pgmo_values;  // NOTE(marcus): maybe use place_values
+                                                    // instead??
 
   std::map<NodeId, NodeId> nodes_to_merge;
   std::set<NodeId> merge_targets;
@@ -88,7 +89,8 @@ void UpdateObjectsFunctor::call(const DynamicSceneGraph& /* unmerged */,
     // Update all objects with their new poses.
     // TODO(marcus): track down why this is now necessary
     if (!objects_values.exists(id)) {
-      LOG(ERROR) << "Failure to update object " << NodeSymbol(id).getLabel() << ": PGMO value not found.";
+      HYDRA_LOG(
+          ERROR, "Failure to update object {}: PGMO value not found.", NodeSymbol(id).getLabel());
       continue;
     } else {
       updateObject(objects_values, id, attrs);

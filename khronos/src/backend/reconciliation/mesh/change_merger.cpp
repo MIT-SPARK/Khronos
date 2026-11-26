@@ -38,6 +38,7 @@
 #include "khronos/backend/reconciliation/mesh/change_merger.h"
 
 #include <config_utilities/config_utilities.h>
+#include <hydra/utils/logging.h>
 #include <hydra/utils/nearest_neighbor_utilities.h>
 
 namespace khronos {
@@ -94,8 +95,10 @@ void ChangeMerger::merge(DynamicSceneGraph& dsg, const BackgroundChanges& change
 
   // Write the new mesh.
   dsg.mesh()->eraseVertices(vertices_to_delete);
-  MLOG(2) << "Removed " << num_prev_faces - dsg.mesh()->numFaces() << " faces and "
-          << num_prev_vertices - dsg.mesh()->numVertices() << " vertices.";
+  MLOG(2,
+       "Removed {} faces and {} vertices.",
+       num_prev_faces - dsg.mesh()->numFaces(),
+       num_prev_vertices - dsg.mesh()->numVertices());
 }
 
 }  // namespace khronos

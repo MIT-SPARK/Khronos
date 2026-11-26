@@ -42,8 +42,8 @@
 #include <thread>
 #include <vector>
 
-#include <glog/logging.h>
 #include <hydra/reconstruction/index_getter.h>
+#include <hydra/utils/logging.h>
 #include <spatial_hash/neighbor_utils.h>
 
 namespace khronos {
@@ -77,8 +77,10 @@ void TrackingIntegrator::updateBlocks(const FrameData& data, VolumetricMap& map)
   const BlockIndices all_blocks = map.getTsdfLayer().allocatedBlockIndices();
   const BlockIndices updated_blocks =
       map.getTsdfLayer().blockIndicesWithCondition(TsdfBlock::trackingUpdated);
-  MLOG(3) << "Updating " << all_blocks.size() << " total blocks and " << updated_blocks.size()
-          << " ever-free blocks.";
+  MLOG(3,
+       "Updating {} total blocks and {} ever-free blocks.",
+       all_blocks.size(),
+       updated_blocks.size());
 
   // Update tracking information and occupancy counter in parallel by block.
   BlockIndexGetter all_indices(all_blocks);
@@ -135,9 +137,10 @@ void TrackingIntegrator::updateBlockTracking(const FrameData* data,
                                              BlockIndexGetter* index_getter,
                                              VolumetricMap* map) const {
   if (window_ == nullptr) {
-    LOG(FATAL) << config.get_log_prefix()
-               << "map_window is required. Call setWindow() with a valid "
-                  "VolumetricWindow before updateBlocks.";
+    HYDRA_LOG(FATAL,
+              "{}map_window is required. Call setWindow() with a valid "
+              "VolumetricWindow before updateBlocks.",
+              config.get_log_prefix());
   }
   const float tsdf_threshold = config.tsdf_occupancy_threshold < 0
                                    ? config.tsdf_occupancy_threshold * -map->config.voxel_size

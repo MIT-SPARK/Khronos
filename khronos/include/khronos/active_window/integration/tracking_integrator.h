@@ -43,7 +43,7 @@
 #include <hydra/active_window/volumetric_window.h>
 #include <hydra/common/run_settings.h>
 #include <hydra/reconstruction/index_getter.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <spatial_hash/neighbor_utils.h>
 
 #include "khronos/active_window/data/frame_data.h"

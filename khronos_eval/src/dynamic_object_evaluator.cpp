@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 
+#include <hydra/utils/logging.h>
 #include <khronos/utils/khronos_attribute_utils.h>
 #include <khronos/utils/output_file_utils.h>
 
@@ -33,11 +34,11 @@ bool DynamicObjectEvaluator::evaluate(const std::string& name, const uint64_t qu
     return false;
   }
   if (!gt_dsg_.dsg) {
-    LOG(ERROR) << "Ground truth DSG not set.";
+    HYDRA_LOG(ERROR, "Ground truth DSG not set.");
     return false;
   }
   if (!eval_dsg_.dsg) {
-    LOG(ERROR) << "Eval DSG not set.";
+    HYDRA_LOG(ERROR, "Eval DSG not set.");
     return false;
   }
 
@@ -73,7 +74,7 @@ bool DynamicObjectEvaluator::evaluate(const std::string& name, const uint64_t qu
 
 void DynamicObjectEvaluator::setGroundTruthDSG(DynamicSceneGraph::Ptr dsg) {
   if (!dsg) {
-    LOG(ERROR) << "Ground truth DSG pointer is not valid.";
+    HYDRA_LOG(ERROR, "Ground truth DSG pointer is not valid.");
     return;
   }
   gt_dsg_.dsg = std::move(dsg);
@@ -107,7 +108,7 @@ void DynamicObjectEvaluator::setGroundTruthDSG(DynamicSceneGraph::Ptr dsg) {
 
 void DynamicObjectEvaluator::setEvalDSG(DynamicSceneGraph::Ptr dsg) {
   if (!dsg) {
-    LOG(ERROR) << "Eval DSG pointer is not valid.";
+    HYDRA_LOG(ERROR, "Eval DSG pointer is not valid.");
     return;
   }
   eval_dsg_.dsg = std::move(dsg);
@@ -180,14 +181,17 @@ DynamicObjectEvaluator::RawMetrics DynamicObjectEvaluator::computeAssociationsCe
       size_t index;
       if (!search.search(from_centroid, distance_squared, index) ||
           distance_squared > max_distance_sq) {
-        MLOG(3) << NodeSymbol(id) << ": no candidates found. dist squared: " << distance_squared;
+        MLOG(3, "{}: no candidates found. dist squared: {}", NodeSymbol(id), distance_squared);
         result.failed[timestamp].emplace(id);
         continue;
       }
 
       result.associations[timestamp][id] = ids[index];
-      MLOG(3) << NodeSymbol(id) << " -> " << NodeSymbol(ids[index]) << " ("
-              << std::sqrt(distance_squared) << "m).";
+      MLOG(3,
+           "{} -> {} ({}m).",
+           NodeSymbol(id),
+           NodeSymbol(ids[index]),
+           std::sqrt(distance_squared));
     }
   }
 
@@ -233,7 +237,7 @@ DynamicObjectEvaluator::DetectionMetrics DynamicObjectEvaluator::computeDetectio
     }
   }
 
-  LOG_IF(ERROR, already_visited > 0) << "already_visited: " << already_visited;
+  HYDRA_LOG_IF(ERROR, already_visited > 0, "already_visited: {}", already_visited);
   return result;
 }
 

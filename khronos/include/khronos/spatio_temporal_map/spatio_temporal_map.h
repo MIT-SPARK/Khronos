@@ -43,7 +43,7 @@
 #include <vector>
 
 #include <hydra/common/run_settings.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 
 #include "khronos/common/common_types.h"
 

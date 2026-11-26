@@ -44,7 +44,7 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <ianvs/node_handle.h>
 #include <khronos_msgs/msg/awcd_changes.hpp>
 #include <spark_dsg/dynamic_scene_graph.h>

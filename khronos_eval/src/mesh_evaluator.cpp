@@ -5,6 +5,7 @@
 #include <future>
 #include <vector>
 
+#include <hydra/utils/logging.h>
 #include <pcl/io/ply_io.h>
 
 namespace khronos {
@@ -49,7 +50,7 @@ bool MeshEvaluator::loadGroundTruthMesh(const std::string& file_path) {
   pcl::PointCloud<pcl::PointXYZ> vertices;
   pcl::fromPCLPointCloud2(gt_mesh.cloud, vertices);
   if (vertices.empty()) {
-    LOG(ERROR) << "Ground truth mesh '" << file_path << "' has no vertices.";
+    HYDRA_LOG(ERROR, "Ground truth mesh '{}' has no vertices.", file_path);
     return false;
   }
   gt_mesh_vertices_.resize(vertices.size());
@@ -81,12 +82,12 @@ bool MeshEvaluator::loadDSG(const std::string& file_path) {
   // Load the DSG mesh.
   log("Loading DSG from '" + file_path + "'...");
   if (!std::filesystem::exists(file_path)) {
-    LOG(ERROR) << "DSG file '" << file_path << "' does not exist.";
+    HYDRA_LOG(ERROR, "DSG file '{}' does not exist.", file_path);
     return false;
   }
   DynamicSceneGraph::Ptr dsg = DynamicSceneGraph::load(file_path);
   if (!dsg) {
-    LOG(ERROR) << "Failed to load DSG '" << file_path << "'.";
+    HYDRA_LOG(ERROR, "Failed to load DSG '{}'.", file_path);
     return false;
   }
 
@@ -95,7 +96,7 @@ bool MeshEvaluator::loadDSG(const std::string& file_path) {
     return false;
   }
   if (dsg_mesh_vertices_.empty()) {
-    LOG(ERROR) << "DSG '" << file_path << "' has no vertices.";
+    HYDRA_LOG(ERROR, "DSG '{}' has no vertices.", file_path);
 
     return false;
   }

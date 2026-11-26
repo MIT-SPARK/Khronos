@@ -18,9 +18,9 @@
 
   <depend>cv_bridge</depend>
   <depend>hydra_ros</depend>
+  <depend>ianvs</depend>
   <depend>khronos</depend>
   <depend>khronos_msgs</depend>
-  <depend>libgflags-dev</depend>
   <depend>rclcpp</depend>
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>

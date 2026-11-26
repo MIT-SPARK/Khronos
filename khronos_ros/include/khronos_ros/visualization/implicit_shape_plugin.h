@@ -3,7 +3,7 @@
 #include <string>
 
 #include <Eigen/Dense>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <hydra_visualizer/adapters/node_color.h>
 #include <hydra_visualizer/plugins/visualizer_plugin.h>
 #include <ianvs/node_handle.h>
