@@ -7,7 +7,7 @@
 #include <vector>
 
 #include <config_utilities/dynamic_config.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <ianvs/node_handle.h>
 #include <khronos/backend/change_detection/ray_verificator.h>
 #include <khronos/common/common_types.h>

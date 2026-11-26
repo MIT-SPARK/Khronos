@@ -48,7 +48,7 @@
 #include <hydra/input/sensor_map.h>
 #include <hydra/reconstruction/mesh_integrator.h>
 #include <hydra/reconstruction/projective_integrator.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 
 #include "khronos/active_window/data/frame_data.h"
 #include "khronos/active_window/data/frame_data_buffer.h"

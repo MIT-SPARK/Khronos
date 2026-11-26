@@ -39,10 +39,11 @@
 
 #include <cstdint>
 #include <map>
+#include <set>
 
 #include <hydra/common/labelspace.h>
 #include <hydra/reconstruction/volumetric_map.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <spatial_hash/neighbor_utils.h>
 
 #include "khronos/active_window/data/frame_data.h"

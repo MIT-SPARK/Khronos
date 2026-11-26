@@ -39,7 +39,7 @@
 #include <vector>
 
 #include <hydra/common/run_settings.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 
 #include "khronos/active_window/data/frame_data.h"
 #include "khronos/active_window/tracking/tracker.h"

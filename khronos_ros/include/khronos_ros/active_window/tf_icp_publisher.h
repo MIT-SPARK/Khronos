@@ -41,7 +41,7 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <hydra_ros/utils/tf_lookup.h>
 #include <ianvs/node_handle.h>
 #include <tf2_ros/static_transform_broadcaster.h>

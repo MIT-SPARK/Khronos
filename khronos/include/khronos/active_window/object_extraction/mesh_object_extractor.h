@@ -45,7 +45,7 @@
 #include <hydra/common/run_settings.h>
 #include <hydra/input/sensor_map.h>
 #include <hydra/reconstruction/mesh_integrator.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 
 #include "khronos/active_window/integration/object_integrator.h"
 #include "khronos/active_window/object_extraction/object_extractor.h"

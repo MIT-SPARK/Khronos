@@ -46,7 +46,7 @@
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/robot_prefix_config.h>
 #include <hydra/common/run_settings.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <spatial_hash/grid.h>
 
 #include "khronos/common/common_types.h"

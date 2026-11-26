@@ -41,7 +41,7 @@
 #include <utility>
 #include <vector>
 
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <khronos/active_window/data/frame_data.h>
 #include <khronos/active_window/data/reconstruction_types.h>
 #include <std_srvs/srv/empty.hpp>

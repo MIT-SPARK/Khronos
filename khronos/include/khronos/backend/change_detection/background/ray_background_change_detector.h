@@ -39,7 +39,7 @@
 #include <vector>
 
 #include <config_utilities/config_utilities.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 
 #include "khronos/backend/change_detection/background/background_change_detector.h"
 #include "khronos/backend/change_detection/ray_change_detector.h"

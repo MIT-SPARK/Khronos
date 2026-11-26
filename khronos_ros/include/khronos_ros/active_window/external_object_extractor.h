@@ -4,7 +4,7 @@
 #include <vector>
 
 #include <hydra/input/camera.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 #include <ianvs/node_handle.h>
 #include <khronos/active_window/object_extraction/object_extractor.h>
 #include <khronos_msgs/srv/extract_implicit_object.hpp>

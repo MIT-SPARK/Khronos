@@ -45,7 +45,7 @@
 
 #include <config_utilities/config_utilities.h>
 #include <hydra/common/run_settings.h>
-#include <hydra/utils/logging.h>
+#include <hydra/utils/verbosity_config.h>
 
 #include "khronos/backend/change_detection/ray_verificator.h"
 #include "khronos/backend/change_state.h"
