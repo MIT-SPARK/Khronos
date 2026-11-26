@@ -190,6 +190,12 @@ pip install pre-commit
 pre-commit install
 ```
 
+GitHub Actions runs pre-commit on pull requests and pushes to `main` and `dcist`.
+Pull requests targeting `dcist` and pushes to `dcist` also build all Khronos
+packages on ROS2 Jazzy and run the `khronos` and `khronos_ros` tests. CI imports
+source dependencies from [.ci_install/dcist.yaml](.ci_install/dcist.yaml), using
+Hydra's `develop` branch and its development dependencies, with TensorRT disabled.
+
 ## Logging
 
 Khronos modules inherit Hydra's `default_verbosity` unless their `verbosity`
