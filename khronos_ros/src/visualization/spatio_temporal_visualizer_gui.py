@@ -32,19 +32,19 @@ class SpatioTemporalVisualizerGUIConfig:
     @staticmethod
     def from_node_params(node):
         config = SpatioTemporalVisualizerGUIConfig()
-        
+
         if not USE_ROS:
             return config
-        
+
         # Get parameters from ROS2 node
-        node.declare_parameter('gui.visualizer_ns', '/spatio_temporal_visualizer')
-        node.declare_parameter('gui.query_time_unit', 's')
-        node.declare_parameter('gui.robot_time_unit', 's')
-        
-        config.visualizer_ns = node.get_parameter('gui.visualizer_ns').value
-        config.query_time_unit = node.get_parameter('gui.query_time_unit').value
-        config.robot_time_unit = node.get_parameter('gui.robot_time_unit').value
-        
+        node.declare_parameter("gui.visualizer_ns", "/spatio_temporal_visualizer")
+        node.declare_parameter("gui.query_time_unit", "s")
+        node.declare_parameter("gui.robot_time_unit", "s")
+
+        config.visualizer_ns = node.get_parameter("gui.visualizer_ns").value
+        config.query_time_unit = node.get_parameter("gui.query_time_unit").value
+        config.robot_time_unit = node.get_parameter("gui.robot_time_unit").value
+
         return config
 
     def verify(self):
@@ -65,7 +65,11 @@ class SpatioTemporalVisualizerGUI(tk.Frame):
         self.grid()
 
         # Data.
-        self.config = SpatioTemporalVisualizerGUIConfig.from_node_params(ros_node) if ros_node else SpatioTemporalVisualizerGUIConfig()
+        self.config = (
+            SpatioTemporalVisualizerGUIConfig.from_node_params(ros_node)
+            if ros_node
+            else SpatioTemporalVisualizerGUIConfig()
+        )
         self.config.verify()
         print(f"[GUI] Config loaded, visualizer_ns = {self.config.visualizer_ns}")
         self.map_stamps = []
@@ -102,7 +106,7 @@ class SpatioTemporalVisualizerGUI(tk.Frame):
         if not USE_ROS:
             self.map_stamps = [int(i * 1e9) for i in [2, 3, 4, 5]]
             return
-            
+
         # Wait till the spatio temporal visualizer is up by waiting for the service to be available.
         # Show a temporary window while waiting.
         srv_name = f"{self.config.visualizer_ns}/is_setup"
@@ -114,9 +118,11 @@ class SpatioTemporalVisualizerGUI(tk.Frame):
 
         # Wait for the service to be available.
         dots = 0
-        is_setup_client = self.ros_node.create_client(SpatioTemporalVisualizerSetup, srv_name)
+        is_setup_client = self.ros_node.create_client(
+            SpatioTemporalVisualizerSetup, srv_name
+        )
         print(f"[GUI] Created client for service: {srv_name}")
-        
+
         attempts = 0
         while not is_setup_client.wait_for_service(timeout_sec=0.25):
             dots = (dots + 1) % 4
@@ -124,23 +130,26 @@ class SpatioTemporalVisualizerGUI(tk.Frame):
             tmp_label_dots.update()
             attempts += 1
             if attempts % 10 == 0:
-                print(f"[GUI] Still waiting for service {srv_name} (attempt {attempts})")
+                print(
+                    f"[GUI] Still waiting for service {srv_name} (attempt {attempts})"
+                )
+
             if not rclpy.ok():
                 return
 
         # Remove the temporary label and store the setup.
         tmp_label.destroy()
         tmp_label_dots.destroy()
-        
+
         # Call the setup service
         request = SpatioTemporalVisualizerSetup.Request()
         future = is_setup_client.call_async(request)
-        
+
         # Wait for the response (blocking)
         while not future.done():
             self.master.update()
             time.sleep(0.01)
-            
+
         setup = future.result()
         self.map_stamps = [int(i) for i in setup.map_stamps]
         self.robot_time = setup.initial_robot_time
@@ -148,26 +157,29 @@ class SpatioTemporalVisualizerGUI(tk.Frame):
         self.time_mode = setup.initial_time_mode
 
         # Connect to the visualizer services and topics.
-        self.play_srv = self.ros_node.create_client(SetBool, f"{self.config.visualizer_ns}/play")
+        self.play_srv = self.ros_node.create_client(
+            SetBool, f"{self.config.visualizer_ns}/play"
+        )
         self.set_time_mode_srv = self.ros_node.create_client(
             SpatioTemporalVisualizerSetTimeMode,
-            f"{self.config.visualizer_ns}/set_time_mode"
+            f"{self.config.visualizer_ns}/set_time_mode",
         )
         self.set_state_srv = self.ros_node.create_client(
-            SpatioTemporalVisualizerSetState, 
-            f"{self.config.visualizer_ns}/set_state"
+            SpatioTemporalVisualizerSetState, f"{self.config.visualizer_ns}/set_state"
         )
         self.set_play_forward_srv = self.ros_node.create_client(
             SetBool, f"{self.config.visualizer_ns}/set_play_forward"
         )
-        
+
         # Create subscription with QoS profile matching the publisher
-        qos_profile = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL)
+        qos_profile = QoSProfile(
+            depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL
+        )
         self.vis_state_sub = self.ros_node.create_subscription(
             SpatioTemporalVisualizerState,
             f"{self.config.visualizer_ns}/state",
             self.vis_state_cb,
-            qos_profile
+            qos_profile,
         )
         print("[SpatioTemporalVisualizerGUI] Connected to the visualizer.")
 
@@ -392,7 +404,7 @@ class SpatioTemporalVisualizerGUI(tk.Frame):
             self.play_forward_btn["text"] = "Play: Forward"
             self.play_forward_btn["bg"] = "light blue"
             self.play_forward = True
-        
+
         request = SetBool.Request()
         request.data = self.play_forward
         self.call_service_async(self.set_play_forward_srv, request)
@@ -427,7 +439,7 @@ class SpatioTemporalVisualizerGUI(tk.Frame):
         request = SpatioTemporalVisualizerSetTimeMode.Request()
         request.time_mode = self.time_mode
         future = self.call_service_async(self.set_time_mode_srv, request)
-        
+
         # For this one we need the response, so we'll wait for it
         def handle_response(future):
             try:
@@ -438,7 +450,7 @@ class SpatioTemporalVisualizerGUI(tk.Frame):
                 )
             except Exception as e:
                 print(f"Service call failed: {e}")
-        
+
         if future:
             future.add_done_callback(handle_response)
 
@@ -606,9 +618,9 @@ class SpatioTemporalVisualizerGUI(tk.Frame):
 
 class VisualizerGUINode(Node):
     def __init__(self):
-        super().__init__('spatio_temporal_visualizer_gui')
+        super().__init__("spatio_temporal_visualizer_gui")
         self.gui = None
-        
+
     def set_gui(self, gui):
         self.gui = gui
 
@@ -620,28 +632,28 @@ def main():
         rclpy.init()
         node = VisualizerGUINode()
         print("[GUI] ROS node created")
-        
+
         # Create executor in a separate thread
         executor = MultiThreadedExecutor()
         executor.add_node(node)
-        
+
         # Run executor in background thread
         executor_thread = threading.Thread(target=executor.spin, daemon=True)
         executor_thread.start()
-        
+
         # Create GUI
         root = tk.Tk()
         app = SpatioTemporalVisualizerGUI(master=root, ros_node=node)
         node.set_gui(app)
-        
+
         def on_shutdown():
             print("[SpatioTemporalVisualizerGUI] Shutting down.")
             root.quit()
             executor.shutdown()
             rclpy.shutdown()
-        
+
         root.protocol("WM_DELETE_WINDOW", on_shutdown)
-        
+
         try:
             app.mainloop()
         except KeyboardInterrupt:

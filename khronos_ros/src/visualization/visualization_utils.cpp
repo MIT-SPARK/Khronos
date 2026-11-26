@@ -40,9 +40,9 @@
 namespace khronos {
 
 visualization_msgs::msg::Marker setBoundingBox(const BoundingBox& bb,
-                                          const Color& color,
-                                          const std_msgs::msg::Header& header,
-                                          const float scale) {
+                                               const Color& color,
+                                               const std_msgs::msg::Header& header,
+                                               const float scale) {
   visualization_msgs::msg::Marker msg;
   msg.header = header;
   msg.type = visualization_msgs::msg::Marker::LINE_LIST;

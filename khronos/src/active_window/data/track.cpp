@@ -136,8 +136,7 @@ void Track::absorb(Track&& other) {
   updateSemantics(other.semantics);
   // Confidence counts observations, so it adds up too.
   confidence = std::min(confidence + other.confidence, 1.0f);
-  if (other.sequence_number &&
-      (!sequence_number || *other.sequence_number > *sequence_number)) {
+  if (other.sequence_number && (!sequence_number || *other.sequence_number > *sequence_number)) {
     sequence_number = other.sequence_number;
   }
 }

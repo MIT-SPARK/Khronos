@@ -1,0 +1,50 @@
+---
+name: Khronos Build and Test
+on: {push: {branches: [dcist]}, pull_request: {branches: [dcist]}}
+permissions: {contents: read}
+jobs:
+  ros2:
+    runs-on: ubuntu-latest
+    container: ros:jazzy-perception
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+      ROS_LOG_DIR: ${{ github.workspace }}/log/ros
+    steps:
+      - uses: actions/checkout@v6
+        with: {path: src/khronos}
+      - name: CCache
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ runner.os }}-jazzy-ccache-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-jazzy-ccache-
+      - name: Dependencies
+        run: |
+          apt-get update && apt-get install -y python3-vcstool git ccache
+          vcs import src < src/khronos/.ci_install/dcist.yaml
+          rosdep update --rosdistro jazzy
+          rosdep install --rosdistro jazzy --from-paths src --ignore-src -r -y
+      - name: Build
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          mkdir -p "$ROS_LOG_DIR"
+          colcon build --symlink-install --packages-up-to khronos khronos_msgs khronos_ros khronos_eval \
+            --cmake-args --no-warn-unused-cli -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=ON -DHYDRA_ENABLE_PYTHON=ON \
+            -DSEMANTIC_INFERENCE_USE_TRT=OFF
+      - name: Test
+        id: tests
+        shell: bash
+        run: |
+          source install/setup.bash
+          mkdir -p "$ROS_LOG_DIR"
+          colcon test --packages-select khronos khronos_ros --return-code-on-test-failure \
+            --event-handlers console_direct+ --ctest-args --output-on-failure
+      - name: Test results
+        if: ${{ !cancelled() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure') }}
+        shell: bash
+        run: |
+          source install/setup.bash
+          colcon test-result --test-result-base build --verbose

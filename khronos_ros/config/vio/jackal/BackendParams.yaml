@@ -1,4 +1,5 @@
 %YAML:1.0
+---
 # Backend modality for regular VIO
 # 0: Structureless factors only, 4: SPR pipeline
 backend_modality: 0

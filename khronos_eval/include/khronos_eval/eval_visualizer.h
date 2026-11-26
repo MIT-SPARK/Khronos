@@ -7,8 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include <ianvs/node_handle.h>
 #include <config_utilities/dynamic_config.h>
+#include <ianvs/node_handle.h>
 #include <khronos/common/common_types.h>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>

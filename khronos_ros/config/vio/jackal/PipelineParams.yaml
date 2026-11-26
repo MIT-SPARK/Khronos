@@ -1,4 +1,5 @@
 %YAML:1.0
+---
 # Type of VIO Frontend to use
 # 0: MonoImu
 # 1: StereoImu

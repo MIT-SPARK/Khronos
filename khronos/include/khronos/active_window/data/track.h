@@ -81,7 +81,7 @@ using Observations = std::vector<Observation>;
  * @brief Accumulated evidence of a single voxel of a track.
  */
 struct TrackVoxel {
-  //! Number of observations whose points fell into this voxel (at most one hit per observation).
+  //! Number of observations contributing points to this voxel, counted once each.
   int hits = 0;
   //! Timestamp of the latest observation that hit this voxel.
   TimeStamp last_seen = 0;
@@ -160,7 +160,8 @@ struct Track {
                         int min_hits);
 
   /**
-   * @brief Accumulated voxels with at least accumulated_min_hits hits (what the bounding box covers).
+   * @brief Accumulated voxels with at least accumulated_min_hits hits (what the bounding box
+   * covers).
    */
   GlobalIndexSet confirmedVoxels() const;
 
